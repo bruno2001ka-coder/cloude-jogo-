@@ -3,8 +3,9 @@ import*as THREE from'three';
 import{scene}from'./core.js';
 import{player,jogadorBoxDebugTemp}from'./Player.js';
 import{obstaculos,superficiesAndaveis}from'./Physics.js';
-import{casasPos}from'./WorldGenerator.js';
+import{casasPos,refugios}from'./WorldGenerator.js';
 import{plantas,lojaPos,receptadorPos}from'./Economy.js';
+import{heli,policiais,policia}from'./Police.js';
 
 // ===== RADAR (minimapa estilo GTA): canvas 2D separado, não usa o pipeline WebGL — custo desprezível por frame.
 const radarCanvas=document.getElementById('radar'),radarCtx=radarCanvas.getContext('2d');
@@ -38,7 +39,12 @@ export function atualizarRadar(){
   radarCtx.restore();
   desenharPontoRadar(lojaPos.x,lojaPos.z,'#5ec2ff',5,true);
   desenharPontoRadar(receptadorPos.x,receptadorPos.z,'#ff5e5e',5,true);
+  for(const r of refugios)desenharPontoRadar(r.x,r.z,'#c23a3a',4,false);
   for(const pl of plantas)if(!pl.colhida)desenharPontoRadar(pl.x,pl.z,'#7cfc00',3.5,false);
+  // helicóptero e policiais só ficam "acesos" no radar quando a polícia está de olho em algo — senão
+  // some, já que patrulhando bem longe não é uma ameaça que o jogador precise rastrear o tempo todo.
+  if(policia.estado!=='patrulha')desenharPontoRadar(heli.position.x,heli.position.z,'#8fd4ff',5,true);
+  if(policia.estado==='combate')for(const pol of policiais)if(pol.vivo)desenharPontoRadar(pol.pos.x,pol.pos.z,'#ff3b3b',3,false);
   // seta do jogador: fixa no centro (norte-fixo), só gira pra indicar a direção que o personagem está olhando.
   radarCtx.save();radarCtx.translate(cx,cy);radarCtx.rotate(Math.PI-player.rotation.y);
   radarCtx.fillStyle='#ffe17a';radarCtx.beginPath();radarCtx.moveTo(0,-8);radarCtx.lineTo(6,7);radarCtx.lineTo(0,3);radarCtx.lineTo(-6,7);radarCtx.closePath();radarCtx.fill();

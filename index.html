@@ -25,11 +25,22 @@
 #mira::after{content:'';position:absolute;top:50%;left:50%;width:3px;height:3px;background:currentColor;border-radius:50%;transform:translate(-50%,-50%)}
 @media(pointer:coarse){#touch{display:block}#hint{bottom:16px;left:auto;right:16px;transform:none;font-size:11px}}canvas{display:block;width:100%;height:100%;touch-action:none;filter:saturate(1.08) contrast(1.05) brightness(1.01)}
 #vinheta{position:fixed;inset:0;z-index:4;pointer-events:none;background:radial-gradient(ellipse at center,rgba(0,0,0,0) 55%,rgba(5,8,4,.35) 100%)}
+#danoFlash{position:fixed;inset:0;z-index:15;pointer-events:none;background:radial-gradient(ellipse at center,rgba(200,20,20,.05) 40%,rgba(180,10,10,.55) 100%);opacity:0;transition:opacity .12s ease-out}
+#alertaPolicia{display:none;position:fixed;z-index:9;top:14px;left:50%;transform:translateX(-50%);padding:8px 16px;border-radius:20px;background:rgba(120,10,10,.85);border:1px solid #ff6b6b;color:#ffd6d6;font-size:12px;font-weight:800;letter-spacing:.08em;box-shadow:0 6px 18px rgba(0,0,0,.4);animation:piscaAlerta 1s infinite}
+@keyframes piscaAlerta{0%,100%{opacity:1}50%{opacity:.45}}
+#refugioIndicador{display:none;position:fixed;z-index:9;top:56px;left:50%;transform:translateX(-50%);padding:6px 14px;border-radius:16px;background:rgba(20,30,50,.85);border:1px solid #6ba0ff;color:#c6dcff;font-size:11px;font-weight:800;letter-spacing:.06em}
+#avisoPolicia{display:none;position:fixed;z-index:11;top:96px;left:50%;transform:translateX(-50%);max-width:88vw;text-align:center;padding:10px 16px;border-radius:12px;background:rgba(10,14,10,.92);border:1px solid #e7c568;color:#f4f0da;font-size:12px;font-weight:600;line-height:1.4;box-shadow:0 8px 24px rgba(0,0,0,.4);transition:opacity .3s}
+#miraCombate{display:none;position:fixed;z-index:6;top:50%;left:50%;transform:translate(-50%,-50%);width:26px;height:26px;pointer-events:none}
+#miraCombate::before,#miraCombate::after{content:'';position:absolute;background:rgba(255,70,70,.9);box-shadow:0 0 4px rgba(0,0,0,.6)}
+#miraCombate::before{left:50%;top:0;width:2px;height:100%;transform:translateX(-50%)}
+#miraCombate::after{top:50%;left:0;height:2px;width:100%;transform:translateY(-50%)}
+#fireBtn{display:none;align-items:center;justify-content:center;position:fixed;z-index:8;right:26px;bottom:140px;width:64px;height:64px;border-radius:50%;border:2px solid #ff8f6b;background:rgba(200,60,30,.88);color:#fff2ea;font-weight:900;font-size:20px;box-shadow:0 8px 24px rgba(0,0,0,.35);touch-action:none;-webkit-tap-highlight-color:transparent;cursor:pointer;user-select:none}
+#fireBtn:active{transform:scale(.92);background:rgba(220,70,35,1)}
 </style>
 </head>
 <body>
 <div id="startScreen"><div class="brandMark">Q3D</div><div class="startKicker">BAIRRO · CASA · HISTÓRIAS</div><h1>QUINTAL <span>3D</span></h1><p>Construa seu lar em um bairro brasileiro cheio de cor.</p><button id="playBtn">JOGAR AGORA</button><small>gráficos web · progresso salvo neste dispositivo</small></div>
-<div id="hud"><strong>QUINTAL 3D</strong><br>gráficos web · mapa vazio<br><span id="pos">x 0.0 · z 0.0</span><br><span id="statusEconomia"></span><br><span style="font-size:10px;opacity:.85">🔵 mercado (vaso/terra) · 🔴 esconderijo (semente/venda) · 🟢 sua muda</span></div>
+<div id="hud"><strong>QUINTAL 3D</strong><br>gráficos web · mapa vazio<br><span id="pos">x 0.0 · z 0.0</span><br><span id="statusEconomia"></span> · <span id="hpJogador">❤️ 100</span><br><span style="font-size:10px;opacity:.85">🔵 mercado (vaso/terra) · 🔴 esconderijo (semente/venda) · 🟢 sua muda · 🟥 refúgio anti-polícia</span></div>
 <div id="acaoPanel"></div>
 <button id="invBtn" aria-label="Inventário">🎒</button>
 <div id="invPanel"></div>
@@ -38,10 +49,16 @@
 <canvas id="radar" aria-label="Radar"></canvas>
 <button id="droneBtn" aria-label="Modo drone">🚁</button>
 <div id="hint">Joystick para andar · arraste para olhar · PULAR para saltar · chegue perto de um ponto de interesse pra ver as ações</div>
+<div id="alertaPolicia">🚁 ALERTA POLICIAL</div>
+<div id="refugioIndicador">🫥 ESCONDIDO</div>
+<div id="avisoPolicia"></div>
+<div id="miraCombate"></div>
 
 <div id="touch" aria-label="Joystick de movimento"><div id="stickBase"><div id="stick"></div></div></div>
 <button id="jumpBtn" aria-label="Pular">PULAR</button>
+<button id="fireBtn" aria-label="Atirar">🔫</button>
 <div id="vinheta"></div>
+<div id="danoFlash"></div>
 <script type="module" src="./src/main.js"></script>
 </body>
 </html>

@@ -146,6 +146,17 @@ export function colher(planta){
     atualizarStatusEconomia();renderizarAcoes();
   }
 }
+// Usado pela polícia (Police.js) quando encontra uma plantação sem o jogador por perto pra defender:
+// a muda é perdida, sem pacotes — ao contrário de colher(), que é o jogador colhendo de propósito.
+export function confiscarPlanta(planta){
+  if(planta.colhida)return;
+  planta.colhida=true;
+  scene.remove(planta.grupo);
+  const idx=plantas.indexOf(planta);if(idx>=0)plantas.splice(idx,1);
+  atualizarStatusEconomia();renderizarAcoes();
+}
+// Multa aplicada pela polícia quando o jogador é rendido num confronto (ver Police.js).
+export function aplicarMulta(valor){dinheiro=Math.max(0,dinheiro-valor);atualizarStatusEconomia()}
 let ultimoContextoTipo=null;
 export function renderizarAcoes(){
   const ctx=contextoAtual(),tipo=ctx?ctx.tipo:null;

@@ -3,6 +3,7 @@ import*as THREE from'three';
 import{pularJogador}from'./Player.js';
 import{droneState,subirDrone}from'./Camera.js';
 import{alternarDebug}from'./UI.js';
+import{atirar}from'./Police.js';
 
 export const inputState={yaw:0,targetYaw:0,pitch:.28,targetPitch:.28,joyX:0,joyY:0,joyActive:false,joyId:null};
 export const keys=Object.create(null);
@@ -14,6 +15,7 @@ function pularOuSubir(){if(droneState.ativo){subirDrone()}else{pularJogador()}}
 addEventListener('keydown',e=>{
   if(e.code==='Space'){pularOuSubir();e.preventDefault();return}
   if(e.code==='KeyV'){alternarDebug();return}
+  if(e.code==='KeyF'){atirar();return}
   const k=keyMap[e.key]||e.code;if(k){keys[k]=true;e.preventDefault()}
 });
 addEventListener('keyup',e=>{const k=keyMap[e.key]||e.code;if(k){keys[k]=false;e.preventDefault()}});
