@@ -1,1 +1,6 @@
 fly.toml
+# O Dockerfile faz `COPY . /srv/http/`. Sem estas linhas o .git inteiro entra na imagem e fica
+# SERVIDO PUBLICAMENTE em /.git/ — o histórico completo do repositório, aberto para quem souber pedir.
+.git
+.github
+docs

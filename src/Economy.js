@@ -7,8 +7,12 @@ import{obstaculos,superficiesAndaveis}from'./Physics.js';
 import{criarSombraContato,folhaMat,folhaClara}from'./Materials.js';
 import{criarEsconderijo}from'./WorldGenerator.js';
 import{player}from'./Player.js';
+import{POLOS,PRECOS}from'./Poles.js';
 
-export let dinheiro=300;export const inventario={vaso:0,terra:0,semente:0,pacote:0};
+export let dinheiro=300;
+// `municao` e `colete` são consumidos pelo sistema de combate (Police.js). Ficam no inventário, e não
+// dentro do Police, porque Economy → Police seria dependência circular: o Police já importa a Economy.
+export const inventario={vaso:0,terra:0,semente:0,pacote:0,municao:24,colete:0};
 const potMat=new THREE.MeshStandardMaterial({color:0x8a5a3a,roughness:.85});
 const floraMat=new THREE.MeshStandardMaterial({color:0x9fc75c,roughness:.8});
 const floraAcentoMat=new THREE.MeshStandardMaterial({color:0xf3e9b8,roughness:.6,emissive:0xc9b878,emissiveIntensity:.15});
@@ -18,8 +22,14 @@ export const plantas=[];
 function distXZ(a,b){return Math.hypot(a.x-b.x,a.z-b.z)}
 function bloco(geo,material,x,y,z,parent){const m=new THREE.Mesh(geo,material);m.position.set(x,y,z);m.castShadow=true;m.receiveShadow=true;parent.add(m);return m}
 
-export const lojaPos=new THREE.Vector3(0,0,-18);// reaproveita o mercadinho já existente no bairro
-export const receptadorPos=new THREE.Vector3(50,0,30);
+// ===== OS 4 POLOS ECONÔMICOS =====
+// As coordenadas vêm de Poles.js (fonte única, compartilhada com o WorldGenerator e o radar). O mapa
+// forma um quadrilátero em torno do bairro, com nenhum trecho menor que 60 m: o jogador é obrigado a
+// atravessar a área patrulhada pelo helicóptero pra fechar um ciclo econômico.
+export const lojaPos=new THREE.Vector3(POLOS.sementes.x,0,POLOS.sementes.z);// mercadinho já existente no bairro
+export const receptadorPos=new THREE.Vector3(POLOS.receptador.x,0,POLOS.receptador.z);
+export const fazendaPos=new THREE.Vector3(POLOS.fazenda.x,0,POLOS.fazenda.z);
+export const armasPos=new THREE.Vector3(POLOS.armas.x,0,POLOS.armas.z);
 criarEsconderijo(receptadorPos.x,receptadorPos.z);
 
 // Planta em vaso, estilizada em 3 estágios (broto/vegetativa/flora), com a mesma técnica de aglomerados das árvores.
@@ -78,16 +88,18 @@ export function atualizarMiraPlantio(){
 }
 export function contextoAtual(){
   const p=player.position;
-  if(distXZ(p,lojaPos)<4.5)return{tipo:'loja'};
-  if(distXZ(p,receptadorPos)<4.5)return{tipo:'receptador'};
+  if(distXZ(p,lojaPos)<POLOS.sementes.raio)return{tipo:'loja'};
+  if(distXZ(p,receptadorPos)<POLOS.receptador.raio)return{tipo:'receptador'};
+  if(distXZ(p,fazendaPos)<POLOS.fazenda.raio)return{tipo:'fazenda'};
+  if(distXZ(p,armasPos)<POLOS.armas.raio)return{tipo:'armas'};
   const plantaProxima=plantas.find(pl=>!pl.colhida&&Math.hypot(pl.x-p.x,pl.z-p.z)<1.6);
   if(plantaProxima)return{tipo:'planta',planta:plantaProxima};
   return null;
 }
 const acaoPanel=document.getElementById('acaoPanel'),statusEconomia=document.getElementById('statusEconomia');
-export function atualizarStatusEconomia(){statusEconomia.textContent=`R$${dinheiro} · 🪴${inventario.vaso} 🌱${inventario.terra} 🌾${inventario.semente} 📦${inventario.pacote}`}
-export function comprar(item,preco){if(dinheiro>=preco){dinheiro-=preco;inventario[item]++;atualizarStatusEconomia();renderizarAcoes();renderizarInventario()}}
-export function venderPacotes(){if(inventario.pacote>0){dinheiro+=inventario.pacote*40;inventario.pacote=0;atualizarStatusEconomia();renderizarAcoes();renderizarInventario()}}
+export function atualizarStatusEconomia(){statusEconomia.textContent=`R$${dinheiro} · 🪴${inventario.vaso} 🌱${inventario.terra} 🌾${inventario.semente} 📦${inventario.pacote} 🔫${inventario.municao} 🛡${inventario.colete}`}
+export function comprar(item,preco,quantidade=1){if(dinheiro>=preco){dinheiro-=preco;inventario[item]+=quantidade;atualizarStatusEconomia();renderizarAcoes();renderizarInventario()}}
+export function venderPacotes(){if(inventario.pacote>0){dinheiro+=inventario.pacote*PRECOS.receptadorPacote;inventario.pacote=0;atualizarStatusEconomia();renderizarAcoes();renderizarInventario()}}
 export function plantarAqui(){
   const alvo=calcularAlvoPlantio();
   if(inventario.vaso>0&&inventario.terra>0&&inventario.semente>0&&alvo&&alvo.valido){
@@ -158,16 +170,33 @@ export function confiscarPlanta(planta){
 // Multa aplicada pela polícia quando o jogador é rendido num confronto (ver Police.js).
 export function aplicarMulta(valor){dinheiro=Math.max(0,dinheiro-valor);atualizarStatusEconomia()}
 let ultimoContextoTipo=null;
+// Botão de compra: mesmo formato nos 4 polos, desabilitado quando falta dinheiro.
+function botaoLoja(rotulo,preco,aoClicar){
+  const b=document.createElement('button');b.textContent=rotulo;b.disabled=dinheiro<preco;b.onclick=aoClicar;
+  acaoPanel.appendChild(b);return b;
+}
 export function renderizarAcoes(){
   const ctx=contextoAtual(),tipo=ctx?ctx.tipo:null;
   acaoPanel.innerHTML='';
   if(tipo==='loja'){
-    const b1=document.createElement('button');b1.textContent='Comprar Vaso (R$10)';b1.disabled=dinheiro<10;b1.onclick=()=>comprar('vaso',10);acaoPanel.appendChild(b1);
-    const b2=document.createElement('button');b2.textContent='Comprar Terra (R$8)';b2.disabled=dinheiro<8;b2.onclick=()=>comprar('terra',8);acaoPanel.appendChild(b2);
+    // Mercado de Sementes (centro do bairro): caro, porém seguro e no caminho de tudo.
+    botaoLoja(`Comprar Vaso (R$${PRECOS.mercadoVaso})`,PRECOS.mercadoVaso,()=>comprar('vaso',PRECOS.mercadoVaso));
+    botaoLoja(`Comprar Terra (R$${PRECOS.mercadoTerra})`,PRECOS.mercadoTerra,()=>comprar('terra',PRECOS.mercadoTerra));
+    botaoLoja(`Comprar Semente (R$${PRECOS.mercadoSemente})`,PRECOS.mercadoSemente,()=>comprar('semente',PRECOS.mercadoSemente));
+    acaoPanel.style.display='flex';
+  }else if(tipo==='fazenda'){
+    // Depósito Rural (oeste, longe): o insumo na fonte, pelo menor preço do mapa.
+    botaoLoja(`Comprar Terra (R$${PRECOS.fazendaTerra})`,PRECOS.fazendaTerra,()=>comprar('terra',PRECOS.fazendaTerra));
+    botaoLoja(`Comprar Vaso (R$${PRECOS.fazendaVaso})`,PRECOS.fazendaVaso,()=>comprar('vaso',PRECOS.fazendaVaso));
+    acaoPanel.style.display='flex';
+  }else if(tipo==='armas'){
+    // Loja de Armas (nordeste): é o polo que sustenta o sistema de combate — sem munição não há defesa.
+    botaoLoja(`Comprar ${PRECOS.armasMunicaoQtd} balas (R$${PRECOS.armasMunicao})`,PRECOS.armasMunicao,()=>comprar('municao',PRECOS.armasMunicao,PRECOS.armasMunicaoQtd));
+    botaoLoja(`Comprar Colete (R$${PRECOS.armasColete})`,PRECOS.armasColete,()=>comprar('colete',PRECOS.armasColete));
     acaoPanel.style.display='flex';
   }else if(tipo==='receptador'){
-    const b1=document.createElement('button');b1.textContent='Comprar Semente Rara (R$25)';b1.disabled=dinheiro<25;b1.onclick=()=>comprar('semente',25);acaoPanel.appendChild(b1);
-    const b2=document.createElement('button');b2.textContent=`Vender ${inventario.pacote} pacote(s) (+R$${inventario.pacote*40})`;b2.disabled=inventario.pacote<=0;b2.onclick=venderPacotes;acaoPanel.appendChild(b2);
+    botaoLoja(`Comprar Semente Rara (R$${PRECOS.receptadorSemente})`,PRECOS.receptadorSemente,()=>comprar('semente',PRECOS.receptadorSemente));
+    const b2=document.createElement('button');b2.textContent=`Vender ${inventario.pacote} pacote(s) (+R$${inventario.pacote*PRECOS.receptadorPacote})`;b2.disabled=inventario.pacote<=0;b2.onclick=venderPacotes;acaoPanel.appendChild(b2);
     acaoPanel.style.display='flex';
   }else if(tipo==='planta'){
     const nomes=['Broto','Vegetativa','Flora (pronta)'],pronta=ctx.planta.estagio===2;

@@ -4,7 +4,7 @@
 // percorrido em cada frame é testado contra as PAREDES e contra os alvos: o que vier primeiro ganha.
 import*as THREE from'three';
 import{scene}from'./core.js';
-import{primeiroImpactoNoSegmento}from'./Physics.js';
+import{primeiroImpactoNoSegmento,intersectarSegmentoCaixa}from'./Physics.js';
 
 const VELOCIDADE=95,VIDA_MAX=1.6,RAIO_BALA=.045;
 
@@ -62,7 +62,7 @@ export function atualizarBalas(dt,obterAlvos){
 
     // 2) algum alvo é atingido ANTES da parede? (se a parede vier primeiro, o tiro morre nela)
     for(const alvo of obterAlvos(b.deDoJogador)){
-      const hit=intersectarCaixa(alvo.caixa,ax,ay,az,bx-ax,by-ay,bz-az);
+      const hit=intersectarSegmentoCaixa(alvo.caixa,ax,ay,az,bx-ax,by-ay,bz-az);
       if(hit!==null&&hit<melhorT){melhorT=hit;alvoAtingido=alvo}
     }
 
@@ -86,22 +86,6 @@ export function atualizarBalas(dt,obterAlvos){
     im.mesh.scale.setScalar(1+im.vida*5);
     if(im.vida>.22){scene.remove(im.mesh);im.mesh.material.dispose();impactos.splice(i,1)}
   }
-}
-
-// t de entrada do segmento na caixa, ou null. Mesmo slab test do Physics, mas contra uma caixa só.
-function intersectarCaixa(caixa,ox,oy,oz,dx,dy,dz){
-  let t0=0,t1=1;
-  const min=[caixa.min.x,caixa.min.y,caixa.min.z],max=[caixa.max.x,caixa.max.y,caixa.max.z];
-  const o=[ox,oy,oz],d=[dx,dy,dz];
-  for(let e=0;e<3;e++){
-    if(Math.abs(d[e])<1e-9){if(o[e]<min[e]||o[e]>max[e])return null;continue}
-    let ta=(min[e]-o[e])/d[e],tb=(max[e]-o[e])/d[e];
-    if(ta>tb){const tmp=ta;ta=tb;tb=tmp}
-    if(ta>t0)t0=ta;
-    if(tb<t1)t1=tb;
-    if(t0>t1)return null;
-  }
-  return t0;
 }
 
 export function limparBalas(){

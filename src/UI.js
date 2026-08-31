@@ -4,7 +4,9 @@ import{scene}from'./core.js';
 import{player,jogadorBoxDebugTemp}from'./Player.js';
 import{obstaculos,superficiesAndaveis}from'./Physics.js';
 import{casasPos,refugios}from'./WorldGenerator.js';
-import{plantas,lojaPos,receptadorPos}from'./Economy.js';
+import{plantas,lojaPos,receptadorPos,fazendaPos,armasPos}from'./Economy.js';
+import{POLOS}from'./Poles.js';
+import{amostrarCelulasBloqueadas}from'./NavMesh.js';
 import{heli,policiais,policia}from'./Police.js';
 
 // ===== RADAR (minimapa estilo GTA): canvas 2D separado, não usa o pipeline WebGL — custo desprezível por frame.
@@ -37,8 +39,13 @@ export function atualizarRadar(){
     radarCtx.fillRect(cx+dx-(c.w/2)*escala,cy+dz-(c.d/2)*escala,c.w*escala,c.d*escala);
   }
   radarCtx.restore();
-  desenharPontoRadar(lojaPos.x,lojaPos.z,'#5ec2ff',5,true);
-  desenharPontoRadar(receptadorPos.x,receptadorPos.z,'#ff5e5e',5,true);
+  // Os 4 polos econômicos, cada um na cor declarada em Poles.js e sempre visível (gruda na borda do
+  // radar quando fica fora de alcance, tipo waypoint de GTA): sem isso o jogador nunca acharia a
+  // Fazenda nem a Loja de Armas, que ficam fora do bairro.
+  desenharPontoRadar(lojaPos.x,lojaPos.z,POLOS.sementes.cor,5,true);
+  desenharPontoRadar(receptadorPos.x,receptadorPos.z,POLOS.receptador.cor,5,true);
+  desenharPontoRadar(fazendaPos.x,fazendaPos.z,POLOS.fazenda.cor,5,true);
+  desenharPontoRadar(armasPos.x,armasPos.z,POLOS.armas.cor,5,true);
   for(const r of refugios)desenharPontoRadar(r.x,r.z,'#c23a3a',4,false);
   for(const pl of plantas)if(!pl.colhida)desenharPontoRadar(pl.x,pl.z,'#7cfc00',3.5,false);
   // helicóptero e policiais só ficam "acesos" no radar quando a polícia está de olho em algo — senão
@@ -51,15 +58,30 @@ export function atualizarRadar(){
   radarCtx.restore();
 }
 
-// ===== MODO DEBUG VISUAL: wireframes das caixas de colisão =====
+// ===== MODO DEBUG VISUAL: wireframes das caixas de colisão + malha de navegação =====
 // Vermelho = obstáculos sólidos (paredes/muretas/postes, bloqueiam X/Z). Verde = superfícies andáveis (lajes/degraus, só eixo Y). Amarelo = hitbox do jogador.
+// Roxo = células BLOQUEADAS da NavMesh em volta do jogador: é o que a polícia enxerga como parede ao
+// traçar rota. Sem essa camada, depurar "por que o policial deu a volta por ali" é adivinhação.
 const debugGroup=new THREE.Group();debugGroup.visible=false;scene.add(debugGroup);
-let debugConstruido=false;
+let debugConstruido=false,navPontos=null;
+const navMat=new THREE.PointsMaterial({color:0xb066ff,size:.22,sizeAttenuation:true});
 function construirDebugColisao(){
   if(debugConstruido)return;debugConstruido=true;
   for(const box of obstaculos)debugGroup.add(new THREE.Box3Helper(box,0xff2222));
   for(const surf of superficiesAndaveis)debugGroup.add(new THREE.Box3Helper(new THREE.Box3().setFromObject(surf),0x33ff55));
   debugGroup.add(new THREE.Box3Helper(jogadorBoxDebugTemp,0xffee33));
+  navPontos=new THREE.Points(new THREE.BufferGeometry(),navMat);navPontos.frustumCulled=false;debugGroup.add(navPontos);
+}
+// Só amostra as células perto do jogador, só enquanto o debug está ligado e no máximo 4x por segundo:
+// a grade inteira tem 214 mil células e reconstruir a nuvem de pontos por frame custaria mais que o jogo.
+let proximaAmostraNav=0;
+export function atualizarDebugNavMesh(){
+  if(!debugGroup.visible||!navPontos)return;
+  const agora=performance.now()/1000;
+  if(agora<proximaAmostraNav)return;
+  proximaAmostraNav=agora+.25;
+  navPontos.geometry.dispose();
+  navPontos.geometry=new THREE.BufferGeometry().setFromPoints(amostrarCelulasBloqueadas(player.position.x,player.position.z,20));
 }
 const debugBtn=document.getElementById('debugBtn');
 export function alternarDebug(){construirDebugColisao();debugGroup.visible=!debugGroup.visible;debugBtn.classList.toggle('on',debugGroup.visible);debugBtn.textContent=debugGroup.visible?'DEBUG ON':'DEBUG'}

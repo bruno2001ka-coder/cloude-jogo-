@@ -97,3 +97,21 @@ export function primeiroImpactoNoSegmento(ax,ay,az,bx,by,bz){
   if(melhorT===Infinity)return null;
   return{t:melhorT,x:ax+dx*melhorT,y:ay+dy*melhorT,z:az+dz*melhorT};
 }
+
+// Slab test de um SEGMENTO contra UMA AABB: devolve o t de entrada (0 = A, 1 = B) ou null.
+// Fica aqui, e não duplicado em Bullets/Police, porque é o mesmo teste que a bala, a mira da crosshair
+// e a linha de visão usam — duas implementações do mesmo slab test divergem na primeira correção.
+export function intersectarSegmentoCaixa(caixa,ox,oy,oz,dx,dy,dz){
+  let t0=0,t1=1;
+  const min=[caixa.min.x,caixa.min.y,caixa.min.z],max=[caixa.max.x,caixa.max.y,caixa.max.z];
+  const o=[ox,oy,oz],d=[dx,dy,dz];
+  for(let e=0;e<3;e++){
+    if(Math.abs(d[e])<1e-9){if(o[e]<min[e]||o[e]>max[e])return null;continue}
+    let ta=(min[e]-o[e])/d[e],tb=(max[e]-o[e])/d[e];
+    if(ta>tb){const tmp=ta;ta=tb;tb=tmp}
+    if(ta>t0)t0=ta;
+    if(tb<t1)t1=tb;
+    if(t0>t1)return null;
+  }
+  return t0;
+}

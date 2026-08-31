@@ -8,9 +8,10 @@ import{atualizarAmbiente}from'./Environment.js';
 import{atualizarAnimais}from'./WorldGenerator.js';
 import{atualizarNPCs}from'./NPCs.js';
 import{atualizarPlantas,atualizarMiraPlantio,isInventarioAberto,renderizarInventario,contextoAtual,getUltimoContextoTipo,renderizarAcoes}from'./Economy.js';
-import{atualizarRadar}from'./UI.js';
+import{atualizarRadar,atualizarDebugNavMesh}from'./UI.js';
 import{atualizarPolicia}from'./Police.js';
 import{inputState,keys,initDragLook,atualizarSuavizacaoInput}from'./Input.js';
+import{atualizarSkyline}from'./Skyline.js';
 
 camera.position.set(0,EYE_HEIGHT,16);
 initDragLook(renderer.domElement);
@@ -34,8 +35,8 @@ function tick(){
     vigiarTravamento(dt,querendoAndar);
     atualizarCameraSeguidora(dt,player.position,inputState.yaw,inputState.pitch,EYE_HEIGHT);
   }
-  atualizarAmbiente(dt);
-  atualizarPlantas();atualizarRadar();atualizarNPCs(dt);atualizarAnimais(dt);atualizarPolicia(dt);
+  atualizarAmbiente(dt);atualizarSkyline();
+  atualizarPlantas();atualizarRadar();atualizarNPCs(dt);atualizarAnimais(dt);atualizarPolicia(dt);atualizarDebugNavMesh();
   if(isInventarioAberto()){atualizarMiraPlantio();renderizarInventario()}
   {const ctxA=contextoAtual(),chave=ctxA?ctxA.tipo+(ctxA.planta?ctxA.planta.estagio:''):null;if(chave!==getUltimoContextoTipo())renderizarAcoes()}
   pos.textContent=droneState.ativo?`🚁 x ${droneState.x.toFixed(1)} · z ${droneState.z.toFixed(1)} · alt ${droneState.y.toFixed(0)}m`:`x ${player.position.x.toFixed(1)} · z ${player.position.z.toFixed(1)}`;

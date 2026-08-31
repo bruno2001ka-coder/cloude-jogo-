@@ -38,11 +38,17 @@
 #fireBtn:active{transform:scale(.92);background:rgba(220,70,35,1)}
 #destravarBtn{position:fixed;z-index:9;top:228px;right:14px;padding:8px 12px;border-radius:8px;border:1px solid #f1d178;background:rgba(45,38,12,.82);color:#f1d178;font-size:11px;font-weight:800;letter-spacing:.06em;cursor:pointer;touch-action:manipulation}
 #destravarBtn:active{background:rgba(231,197,104,.9);color:#1b2417}
+/* BARRA DE VIDA: trilho + fatia de saúde (matiz calculada em HealthBar.js) + fatia de armadura por cima. */
+#barraVidaTrilho{position:relative;width:158px;height:11px;margin-top:5px;border-radius:6px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.18);overflow:hidden}
+#barraVida{position:absolute;left:0;top:0;height:100%;width:100%;border-radius:5px;background:#3fae3f;transition:width .18s ease-out,background .18s linear}
+#barraArmadura{position:absolute;left:0;top:0;height:3px;width:0;border-radius:2px;background:#5eb8ff;box-shadow:0 0 5px rgba(94,184,255,.7);transition:width .18s ease-out,opacity .2s}
+#textoVida{position:absolute;right:5px;top:-1px;font-size:9px;font-weight:800;letter-spacing:.04em;color:#f2f7ee;text-shadow:0 1px 2px rgba(0,0,0,.85);line-height:12px}
+#municaoHud{color:#ffc98a;font-weight:800}
 </style>
 </head>
 <body>
 <div id="startScreen"><div class="brandMark">Q3D</div><div class="startKicker">BAIRRO · CASA · HISTÓRIAS</div><h1>QUINTAL <span>3D</span></h1><p>Construa seu lar em um bairro brasileiro cheio de cor.</p><button id="playBtn">JOGAR AGORA</button><small>gráficos web · progresso salvo neste dispositivo</small></div>
-<div id="hud"><strong>QUINTAL 3D</strong><br>gráficos web · mapa vazio<br><span id="pos">x 0.0 · z 0.0</span><br><span id="statusEconomia"></span> · <span id="hpJogador">❤️ 100</span><br><span style="font-size:10px;opacity:.85">🔵 mercado (vaso/terra) · 🔴 esconderijo (semente/venda) · 🟢 sua muda · 🟥 refúgio anti-polícia</span></div>
+<div id="hud"><strong>QUINTAL 3D</strong><br>gráficos web · mapa vazio<br><span id="pos">x 0.0 · z 0.0</span><br><span id="statusEconomia"></span> · <span id="municaoHud">🔫 24</span><div id="barraVidaTrilho"><div id="barraVida"></div><div id="barraArmadura"></div><div id="textoVida">100 ❤</div></div><span style="font-size:10px;opacity:.85">🔵 sementes · 🟠 armas · 🟡 fazenda · 🔴 receptador · 🟢 sua muda · 🟥 refúgio</span></div>
 <div id="acaoPanel"></div>
 <button id="invBtn" aria-label="Inventário">🎒</button>
 <div id="invPanel"></div>
@@ -51,7 +57,7 @@
 <canvas id="radar" aria-label="Radar"></canvas>
 <button id="droneBtn" aria-label="Modo drone">🚁</button>
 <button id="destravarBtn" aria-label="Destravar personagem">DESTRAVAR</button>
-<div id="hint">Joystick para andar · arraste para olhar · PULAR para saltar · chegue perto de um ponto de interesse pra ver as ações</div>
+<div id="hint">Joystick para andar · arraste para olhar · PULAR para saltar · F ou 🔫 para atirar · chegue perto de um ponto de interesse pra ver as ações</div>
 <div id="alertaPolicia">🚁 ALERTA POLICIAL</div>
 <div id="refugioIndicador">🫥 ESCONDIDO</div>
 <div id="avisoPolicia"></div>

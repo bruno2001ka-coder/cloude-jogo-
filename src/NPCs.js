@@ -2,6 +2,7 @@
 import*as THREE from'three';
 import{obterElevacao}from'./Terrain.js';
 import{colidePedestreXZ,buscarPosicaoLivre}from'./Physics.js';
+import{distanciaLivreHorizontal}from'./NavMesh.js';
 import{bairro}from'./WorldGenerator.js';
 
 function bloco(geo,material,x,y,z,parent){const m=new THREE.Mesh(geo,material);m.position.set(x,y,z);m.castShadow=true;m.receiveShadow=true;parent.add(m);return m}
@@ -9,6 +10,8 @@ function bloco(geo,material,x,y,z,parent){const m=new THREE.Mesh(geo,material);m
 // Corpo com a largura REAL da silhueta (braços inclusos). Antes era .28, quase metade do corpo — por isso
 // os moradores enterravam ombro e braço dentro da parede ao encostar nela.
 export const PEDESTRE_MEIA_LARG=.45,PEDESTRE_MEIA_PROF=.22,PEDESTRE_ALTURA=1.6;
+// Alcance do raycast horizontal de antecipação: pouco mais que um passo de 1 s na velocidade máxima.
+const LOOKAHEAD=2.2;
 
 // Centro da faixa LIVRE da viela, não o centro da viela: as escadarias ocupam o lado colado na casa,
 // então andar pelo meio da viela faria o morador atravessar os degraus.
@@ -74,11 +77,23 @@ export function atualizarNPCs(dt){
     const dx=npc.alvo.x-npc.pos.x,dz=npc.alvo.z-npc.pos.z,dist=Math.hypot(dx,dz);
     let moveu=false;
     if(dist>.1){
-      const vx=dx/dist*npc.velocidade,vz=dz/dist*npc.velocidade;
-      const nx=npc.pos.x+vx*dt,nz=npc.pos.z+vz*dt;
-      if(!colidePedestre(nx,npc.pos.z)){npc.pos.x=nx;moveu=true}
-      if(!colidePedestre(npc.pos.x,nz)){npc.pos.z=nz;moveu=true}
-      if(moveu)npc.grupo.rotation.y=Math.atan2(vx,vz);else{npc.rota=[];npc.alvo=null}
+      // RAYCASTING HORIZONTAL (look-ahead): antes o morador só descobria a parede colidindo com ela e
+      // ficava raspando no muro até o desencravador agir. Agora ele "enxerga" à frente na altura do
+      // peito e desiste da rota ANTES de encostar, escolhendo outro destino como faria alguém andando.
+      const alturaPeito=obterElevacao(npc.pos.x,npc.pos.z)+1.1;
+      const livre=distanciaLivreHorizontal(npc.pos.x,npc.pos.z,dx/dist,dz/dist,LOOKAHEAD,alturaPeito);
+      if(livre<LOOKAHEAD*.45){
+        // Parede à frente: abandona a rota e escolhe outro destino no próximo frame. Só o MOVIMENTO é
+        // pulado — o desencravador e a atualização de posição abaixo continuam rodando, senão um morador
+        // que já tivesse acabado dentro da parede ficaria fora do alcance de quem o resolve.
+        npc.rota=[];npc.alvo=null;
+      }else{
+        const vx=dx/dist*npc.velocidade,vz=dz/dist*npc.velocidade;
+        const nx=npc.pos.x+vx*dt,nz=npc.pos.z+vz*dt;
+        if(!colidePedestre(nx,npc.pos.z)){npc.pos.x=nx;moveu=true}
+        if(!colidePedestre(npc.pos.x,nz)){npc.pos.z=nz;moveu=true}
+        if(moveu)npc.grupo.rotation.y=Math.atan2(vx,vz);else{npc.rota=[];npc.alvo=null}
+      }
     }
     // Se por qualquer motivo acabou dentro de uma parede (spawn ruim, empurrão, geometria nova),
     // desencrava em vez de ficar preso pra sempre tentando andar contra o obstáculo.
