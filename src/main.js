@@ -4,7 +4,7 @@ import*as THREE from'three';
 import{camera,renderer,composer}from'./core.js';
 import{EYE_HEIGHT,player,atualizarMovimentoJogador,vigiarTravamento,destravarJogador}from'./Player.js';
 import{droneState,alternarDrone,atualizarCameraDrone,atualizarCameraSeguidora}from'./Camera.js';
-import{atualizarAmbiente}from'./Environment.js';
+import{atualizarAmbiente,obterBandaFase}from'./Environment.js';
 import{atualizarAnimais}from'./WorldGenerator.js';
 import{atualizarNPCs}from'./NPCs.js';
 import{atualizarPlantas,atualizarMiraPlantio,isInventarioAberto,renderizarInventario,contextoAtual,getUltimoContextoTipo,renderizarAcoes}from'./Economy.js';
@@ -23,6 +23,7 @@ document.getElementById('destravarBtn').addEventListener('click',()=>destravarJo
 const startScreen=document.getElementById('startScreen'),playBtn=document.getElementById('playBtn');let gameStarted=false;playBtn.addEventListener('click',()=>{gameStarted=true;startScreen.classList.add('hide');document.body.classList.add('started')});
 
 const clock=new THREE.Clock(),pos=document.getElementById('pos');
+const faseIcone=document.getElementById('faseIcone');let bandaAnteriorHud=null;const ICONES_FASE={noite:'🌙',nascer:'🌅',dia:'🌞',por:'🌇'};
 function tick(){
   const dt=Math.min(clock.getDelta(),.05);
   atualizarSuavizacaoInput(dt);
@@ -36,6 +37,7 @@ function tick(){
     atualizarCameraSeguidora(dt,player.position,inputState.yaw,inputState.pitch,EYE_HEIGHT);
   }
   atualizarAmbiente(dt);atualizarSkyline();
+  {const banda=obterBandaFase();if(banda!==bandaAnteriorHud){faseIcone.textContent=ICONES_FASE[banda];bandaAnteriorHud=banda}}
   atualizarPlantas();atualizarRadar();atualizarNPCs(dt);atualizarAnimais(dt);atualizarPolicia(dt);atualizarDebugNavMesh();
   if(isInventarioAberto()){atualizarMiraPlantio();renderizarInventario()}
   {const ctxA=contextoAtual(),chave=ctxA?ctxA.tipo+(ctxA.planta?ctxA.planta.estagio:''):null;if(chave!==getUltimoContextoTipo())renderizarAcoes()}

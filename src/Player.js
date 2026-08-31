@@ -5,8 +5,8 @@ import{obterElevacao}from'./Terrain.js';
 import{obstaculos,superficiesAndaveis,caixaColideComObstaculos,buscarPosicaoLivre}from'./Physics.js';
 import{criarSombraContato}from'./Materials.js';
 
-export const EYE_HEIGHT=1.27;
-export const PLAYER_HEIGHT=1.4;
+export const EYE_HEIGHT=0.8;
+export const PLAYER_HEIGHT=0.9;
 export const PLAYER_SCALE=PLAYER_HEIGHT/3.31;
 
 export const player=new THREE.Group();
@@ -57,9 +57,9 @@ export function jogadorColideNaPosicao(x,z){
 // mesmo que um na cabeça. As três zonas abaixo são derivadas de PLAYER_HEIGHT (antes o código de
 // combate usava +1.5 fixo, sendo o personagem 1,4 m — a caixa passava da cabeça).
 const ZONAS_JOGADOR=[
-  {nome:'cabeca',de:.78,ate:1,meia:.20,multiplicador:2},
-  {nome:'tronco',de:.42,ate:.78,meia:.26,multiplicador:1},
-  {nome:'pernas',de:0,ate:.42,meia:.18,multiplicador:.6},
+  {nome:'cabeca',de:.78,ate:1,meia:.14,multiplicador:2},
+  {nome:'tronco',de:.42,ate:.78,meia:.17,multiplicador:1},
+  {nome:'pernas',de:0,ate:.42,meia:.12,multiplicador:.6},
 ];
 const caixasJogador=ZONAS_JOGADOR.map(()=>new THREE.Box3());
 // Reaproveita as mesmas Box3 a cada chamada: montado uma vez por frame por quem consulta (ver Police.js),
@@ -148,5 +148,5 @@ export function vigiarTravamento(dt,querendoAndar){
 let walk=0;const velocity=new THREE.Vector3(),desired=new THREE.Vector3();
 export function atualizarMovimentoJogador(dt,keys,joyX,joyY,yaw){
   const smooth=1-Math.exp(-18*dt);
-  let x=(keys.KeyD?1:0)-(keys.KeyA?1:0)+joyX,z=(keys.KeyS?1:0)-(keys.KeyW?1:0)-joyY,m=Math.hypot(x,z);desired.set(0,0,0);if(m){x/=m;z/=m;const f=new THREE.Vector3(-Math.sin(yaw),0,-Math.cos(yaw)),r=new THREE.Vector3(Math.cos(yaw),0,-Math.sin(yaw));desired.set((r.x*x-f.x*z)*5.8,0,(r.z*x-f.z*z)*5.8)}velocity.lerp(desired,smooth);const proximaX=player.position.x+velocity.x*dt;if(!jogadorColideNaPosicao(proximaX,player.position.z)){player.position.x=proximaX}else{velocity.x=0}const proximaZ=player.position.z+velocity.z*dt;if(!jogadorColideNaPosicao(player.position.x,proximaZ)){player.position.z=proximaZ}else{velocity.z=0}player.position.x=THREE.MathUtils.clamp(player.position.x,-100,92);player.position.z=THREE.MathUtils.clamp(player.position.z,-100,100);atualizarFisicaVertical(dt);preencherHitboxJogador(jogadorBoxDebugTemp,player.position.x,player.position.z);const speed=Math.hypot(velocity.x,velocity.z);if(speed>.08){const wanted=Math.atan2(velocity.x,velocity.z);let da=wanted-player.rotation.y;while(da>Math.PI)da-=Math.PI*2;while(da<-Math.PI)da+=Math.PI*2;player.rotation.y+=da*(1-Math.exp(-14*dt));walk+=dt*(6+speed*1.3);const swing=Math.sin(walk)*Math.min(.55,speed*.075);legs[0].rotation.x=swing;legs[1].rotation.x=-swing;arms[0].rotation.x=-swing*.45;arms[1].rotation.x=swing*.45}else{for(const limb of [...legs,...arms])limb.rotation.x*=Math.exp(-12*dt)}
+  let x=(keys.KeyD?1:0)-(keys.KeyA?1:0)+joyX,z=(keys.KeyS?1:0)-(keys.KeyW?1:0)+joyY,m=Math.hypot(x,z);desired.set(0,0,0);if(m){x/=m;z/=m;const f=new THREE.Vector3(-Math.sin(yaw),0,-Math.cos(yaw)),r=new THREE.Vector3(Math.cos(yaw),0,-Math.sin(yaw));desired.set((r.x*x-f.x*z)*5.8,0,(r.z*x-f.z*z)*5.8)}velocity.lerp(desired,smooth);const proximaX=player.position.x+velocity.x*dt;if(!jogadorColideNaPosicao(proximaX,player.position.z)){player.position.x=proximaX}else{velocity.x=0}const proximaZ=player.position.z+velocity.z*dt;if(!jogadorColideNaPosicao(player.position.x,proximaZ)){player.position.z=proximaZ}else{velocity.z=0}player.position.x=THREE.MathUtils.clamp(player.position.x,-100,92);player.position.z=THREE.MathUtils.clamp(player.position.z,-100,100);atualizarFisicaVertical(dt);preencherHitboxJogador(jogadorBoxDebugTemp,player.position.x,player.position.z);const speed=Math.hypot(velocity.x,velocity.z);if(speed>.08){const wanted=Math.atan2(velocity.x,velocity.z);let da=wanted-player.rotation.y;while(da>Math.PI)da-=Math.PI*2;while(da<-Math.PI)da+=Math.PI*2;player.rotation.y+=da*(1-Math.exp(-14*dt));walk+=dt*(6+speed*1.3);const swing=Math.sin(walk)*Math.min(.55,speed*.075);legs[0].rotation.x=swing;legs[1].rotation.x=-swing;arms[0].rotation.x=-swing*.45;arms[1].rotation.x=swing*.45}else{for(const limb of [...legs,...arms])limb.rotation.x*=Math.exp(-12*dt)}
 }

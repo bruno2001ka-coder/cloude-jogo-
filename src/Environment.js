@@ -2,6 +2,8 @@
 import*as THREE from'three';
 import{RGBELoader}from'three/addons/loaders/RGBELoader.js';
 import{scene,camera,renderer}from'./core.js';
+import{predioMat}from'./Skyline.js';
+import{janela,janelaAcesa}from'./Materials.js';
 
 const HORIZONTE_COLOR=0xcfe3ea;
 scene.fog=new THREE.FogExp2(HORIZONTE_COLOR,.013);
@@ -46,12 +48,78 @@ const nuvemMat=new THREE.SpriteMaterial({map:criarTexturaNuvem(),transparent:tru
 const nuvens=[];
 for(let i=0;i<8;i++){const s=new THREE.Sprite(nuvemMat);const ang=Math.random()*Math.PI*2,raio=75+Math.random()*95;s.position.set(Math.cos(ang)*raio,55+Math.random()*30,Math.sin(ang)*raio);const esc=16+Math.random()*13;s.scale.set(esc,esc*.5,1);scene.add(s);nuvens.push(s)}
 
-scene.add(new THREE.HemisphereLight(0x9ec9e8,0x6b4a34,0.75));
+const hemi=new THREE.HemisphereLight(0x9ec9e8,0x6b4a34,0.75);scene.add(hemi);
 const sun=new THREE.DirectionalLight(0xffe6bd,2.35);sun.position.set(-35,60,25);sun.castShadow=true;sun.shadow.mapSize.width=2048;sun.shadow.mapSize.height=2048;sun.shadow.camera.left=-82;sun.shadow.camera.right=82;sun.shadow.camera.top=96;sun.shadow.camera.bottom=-96;sun.shadow.camera.near=1;sun.shadow.camera.far=180;sun.shadow.camera.updateProjectionMatrix();sun.shadow.bias=-.0004;sun.shadow.radius=3;scene.add(sun);
 const fillLight=new THREE.DirectionalLight(0x8fb4e0,0.4);fillLight.position.set(40,25,-30);scene.add(fillLight);
+// Lua: segunda luz direcional fixa, sem sombra (evita dobrar o custo de shadow map). Faz cross-fade
+// com o sol — mais simples e mais barato que arquear o sol pra "debaixo do chão" à noite.
+const lua=new THREE.DirectionalLight(0xaac4ff,0);lua.position.set(38,45,-50);scene.add(lua);
 
-// Chamado a cada frame: mantém céu/pano de fundo centrados na câmera e as nuvens derivando devagar.
+// ===== CICLO DE DIA E NOITE =====
+// ?ciclo=N na URL acelera o ciclo pra N segundos, útil pra testar sem esperar os 8 minutos padrão.
+const CICLO_DURACAO_S=+new URLSearchParams(location.search).get('ciclo')||480;
+let fase=.32;// 0=meia-noite · .25=nascer · .5=meio-dia · .75=pôr — começa de manhã, ninguém abre o jogo no escuro
+
+// Paletas em 4 pontos-chave (meia-noite/nascer/meio-dia/pôr). O meio-dia reaproveita as cores
+// originais do jogo, então a aparência em fase=.5 é idêntica à versão sem ciclo.
+const CT=[new THREE.Color(0x0a1330),new THREE.Color(0x6f8fc4),new THREE.Color(0x3f7fc9),new THREE.Color(0x5a5f9c)];// corTopo
+const CH=[new THREE.Color(0x121c33),new THREE.Color(0xe8b98a),new THREE.Color(HORIZONTE_COLOR),new THREE.Color(0xe89a6b)];// corHorizonte
+const CB=[new THREE.Color(0x08101f),new THREE.Color(0xf0c98e),new THREE.Color(0xe4d3ab),new THREE.Color(0xc97a4e)];// corBase
+const HEMI_CEU_DIA=new THREE.Color(0x9ec9e8),HEMI_CEU_NOITE=new THREE.Color(0x22314f);
+const HEMI_CHAO_DIA=new THREE.Color(0x6b4a34),HEMI_CHAO_NOITE=new THREE.Color(0x141824);
+const HORIZ_TINTA_DIA=new THREE.Color(0xffffff),HORIZ_TINTA_NOITE=new THREE.Color(0x1e2f52);
+const NUVEM_COR_DIA=new THREE.Color(0xffffff),NUVEM_COR_NOITE=new THREE.Color(0x8fa0c0);
+const PREDIO_TINTA_DIA=new THREE.Color(0xffffff),PREDIO_TINTA_NOITE=new THREE.Color(0x2a3550);
+const _corTmp=new THREE.Color();
+// Blend cíclico entre as 4 cores-chave conforme a fase do dia (0..1).
+function corFase(f,cores){const p=f*4,i=Math.floor(p)%4,t=p-Math.floor(p);return _corTmp.copy(cores[i]).lerp(cores[(i+1)%4],t)}
+
+// Estrelas: nasce como filho do domo do céu, então acompanha a câmera de graça (mesmo truque do
+// domo/horizonte/nuvens) sem precisar de posição própria por frame.
+function criarEstrelas(n,raio){
+  const pos=new Float32Array(n*3);
+  for(let i=0;i<n;i++){const u=Math.random(),v=Math.random(),th=u*Math.PI*2,ph=Math.acos(v)*.85;// hemisfério de cima, só acima do horizonte pintado
+    pos[i*3]=raio*Math.sin(ph)*Math.cos(th);pos[i*3+1]=raio*Math.cos(ph);pos[i*3+2]=raio*Math.sin(ph)*Math.sin(th)}
+  const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.BufferAttribute(pos,3));return geo;
+}
+const estrelasMat=new THREE.PointsMaterial({color:0xffffff,size:1.6,sizeAttenuation:false,transparent:true,depthWrite:false,depthTest:false,fog:false,opacity:0});
+const estrelas=new THREE.Points(criarEstrelas(260,222),estrelasMat);ceu.add(estrelas);
+
+// Avança o relógio e modula tudo que reage à hora do dia: sol/lua, céu, névoa, nuvens, prédios, janelas.
+function atualizarCicloDia(dt){
+  fase=(fase+dt/CICLO_DURACAO_S)%1;
+  const theta=(fase-.25)*Math.PI*2,altura=Math.sin(theta),arco=Math.cos(theta);
+  const quanNoite=1-THREE.MathUtils.smoothstep(altura,-.2,.15);
+
+  sun.position.set(-35*arco,Math.max(altura,0)*62+8,25*arco);
+  sun.intensity=Math.pow(Math.max(altura,0),.6)*2.35;
+  sun.castShadow=altura>0;
+  lua.intensity=quanNoite*.4;
+
+  ceuUniforms.corTopo.value.copy(corFase(fase,CT));
+  ceuUniforms.corHorizonte.value.copy(corFase(fase,CH));
+  ceuUniforms.corBase.value.copy(corFase(fase,CB));
+  scene.fog.color.copy(ceuUniforms.corHorizonte.value);
+
+  hemi.color.copy(HEMI_CEU_DIA).lerp(HEMI_CEU_NOITE,quanNoite);
+  hemi.groundColor.copy(HEMI_CHAO_DIA).lerp(HEMI_CHAO_NOITE,quanNoite);
+  hemi.intensity=THREE.MathUtils.lerp(.75,.28,quanNoite);
+
+  horizonteMat.color.copy(HORIZ_TINTA_DIA).lerp(HORIZ_TINTA_NOITE,quanNoite);
+  nuvemMat.color.copy(NUVEM_COR_DIA).lerp(NUVEM_COR_NOITE,quanNoite);
+  nuvemMat.opacity=THREE.MathUtils.lerp(.85,.22,quanNoite);
+  estrelasMat.opacity=quanNoite*.9;
+
+  renderer.toneMappingExposure=THREE.MathUtils.lerp(1.05,.85,quanNoite);
+  janelaAcesa.emissiveIntensity=THREE.MathUtils.lerp(.25,.95,quanNoite);
+  janela.emissiveIntensity=THREE.MathUtils.lerp(.06,.16,quanNoite);
+  predioMat.color.copy(PREDIO_TINTA_DIA).lerp(PREDIO_TINTA_NOITE,quanNoite*.75);
+}
+export function obterBandaFase(){return fase<.22||fase>.78?'noite':fase<.30?'nascer':fase<.68?'dia':'por'}
+
+// Chamado a cada frame: avança o ciclo dia/noite, mantém céu/pano de fundo centrados na câmera e as nuvens derivando devagar.
 export function atualizarAmbiente(dt){
+  atualizarCicloDia(dt);
   ceu.position.copy(camera.position);
   horizonte.position.set(camera.position.x,22,camera.position.z);
   for(const nv of nuvens){nv.position.x+=dt*.6;nv.position.z+=dt*.25;if(nv.position.x>200)nv.position.x-=400;if(nv.position.z>200)nv.position.z-=400}

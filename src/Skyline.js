@@ -18,7 +18,7 @@ const HORIZONTE=new THREE.Color(0xcfe3ea);
 const predioGeo=new THREE.BoxGeometry(1,1,1);
 predioGeo.translate(0,.5,0);
 // MeshBasicMaterial: a cidade não recebe luz nem sombra — é silhueta, não cenário jogável.
-const predioMat=new THREE.MeshBasicMaterial({fog:false});
+export const predioMat=new THREE.MeshBasicMaterial({fog:false});
 const predios=new THREE.InstancedMesh(predioGeo,predioMat,NUM_PREDIOS);
 predios.castShadow=false;predios.receiveShadow=false;
 predios.frustumCulled=false;// o grupo pai se move todo frame; o bounding box do culling nasceria errado

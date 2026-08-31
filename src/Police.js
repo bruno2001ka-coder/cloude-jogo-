@@ -106,14 +106,11 @@ const uniformeMat=new THREE.MeshStandardMaterial({color:0x232c3d,roughness:.7}),
 function blocoP(geo,mat,x,y,z,parent){const m=new THREE.Mesh(geo,mat);m.position.set(x,y,z);m.castShadow=true;m.receiveShadow=true;parent.add(m);return m}
 
 // ===== ZONAS DE ACERTO DO POLICIAL =====
-// Uma AABB única de ±0,35 × 1,8 m trata um tiro no pé igual a um na cabeça — grosseiro demais pra um
-// sistema de combate. Faixas verticais em coordenadas locais do corpo, com multiplicador de dano.
-// Com HP = 100 e dano-base 34, três tiros no tronco continuam matando (idêntico ao HP = 3 anterior),
-// mas dois na cabeça resolvem: nenhuma regressão de sensação, ganho de precisão.
+// Redimensionado para ~1,15m altura (escala 0.64) mantendo proporções com jogador 0.9m.
 const ZONAS_POLICIAL=[
-  {nome:'cabeca',de:1.3,ate:1.78,meia:.26,multiplicador:2},
-  {nome:'tronco',de:.62,ate:1.3,meia:.34,multiplicador:1},
-  {nome:'pernas',de:0,ate:.62,meia:.22,multiplicador:.6},
+  {nome:'cabeca',de:.83,ate:1.14,meia:.16,multiplicador:2},
+  {nome:'tronco',de:.40,ate:.83,meia:.22,multiplicador:1},
+  {nome:'pernas',de:0,ate:.40,meia:.14,multiplicador:.6},
 ];
 
 function criarPolicial(indice){
@@ -126,6 +123,7 @@ function criarPolicial(indice){
   const pernas=[-.14,.14].map(lx=>blocoP(new THREE.BoxGeometry(.13,.55,.16),uniformeMat,lx,.29,0,g));
   const bracos=[-.37,.37].map(lx=>blocoP(new THREE.BoxGeometry(.13,.58,.16),skinMat,lx,.9,0,g));
   const arma=blocoP(new THREE.BoxGeometry(.08,.1,.42),armaMat,.37,.68,.18,g);
+  g.scale.setScalar(.64);
   scene.add(g);
   return{
     grupo:g,pernas,bracos,arma,hp:POLICIAL_HP,vivo:true,caindo:false,quedaT:0,
@@ -135,7 +133,7 @@ function criarPolicial(indice){
     rota:null,indiceRota:0,destinoRota:null,proximoReplan:indice*.35,
     // As caixas de acerto são criadas UMA vez e só têm os valores reescritos por frame.
     caixas:ZONAS_POLICIAL.map(()=>new THREE.Box3()),
-    barra:criarBarraMundo(2.05,1),
+    barra:criarBarraMundo(1.3,.64),
   };
 }
 // Reescreve as caixas de acerto do policial na posição atual (sem alocar) e devolve a lista.
