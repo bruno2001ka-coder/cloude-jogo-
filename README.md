@@ -9,8 +9,10 @@ Jogo 3D em Three.js — bairro brasileiro estilizado, com cultivo/economia, bots
   string-pulling por raycast horizontal. É o que faz a polícia contornar os quarteirões em vez de
   andar contra a parede.
 - **Combate** (`src/Police.js`, `src/Bullets.js`, `src/HealthBar.js`) — máquina de estados explícita
-  da polícia (patrulha · indo · rapel · confiscando · combate · recuando), balas com trajetória real,
-  zonas de acerto por parte do corpo (cabeça ×2, tronco ×1, pernas ×0,6) e barra de vida com armadura.
+  da polícia (patrulha · indo · pairando · rapel · confiscando · combate · recuando), balas com
+  trajetória real, zonas de acerto por parte do corpo (cabeça ×2, tronco ×1, pernas ×0,6) e barra de
+  vida com armadura. O helicóptero patrulha o mapa e acha a plantação **por sobrevoo** — só enxerga
+  a muda florida, para em cima dela e aí desce os policiais de rapel.
 - **4 polos econômicos** (`src/Poles.js`) — Fazenda (oeste, insumo barato), Mercado de Sementes
   (centro), Loja de Armas (nordeste, munição e colete) e Receptador (sudeste, semente rara e venda),
   dispostos em quadrilátero pra obrigar a travessia do bairro patrulhado.

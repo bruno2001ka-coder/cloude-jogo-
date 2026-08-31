@@ -366,3 +366,76 @@ Os quatro contextos disparam com os preços certos. Compra na Loja de Armas: R$1
 | Distância da câmera ao jogador | 4,81 m (alvo do `Camera.js`: 5 m com suavização) ✓ |
 | Altura do salto | 120 cm ✓ |
 | Erros de console em toda a suíte | **0** |
+
+---
+
+## ADENDO — Ciclo de balanceamento: patrulha de verdade
+
+Levantado pelo Bruno jogando: *"na hora que eu planto o helicóptero já acha as plantas"*.
+
+### O achado: o ciclo econômico era impossível de completar
+
+Não era questão de dificuldade. Medindo a linha do tempo a partir do plantio:
+
+| Momento | t |
+|---|---|
+| Muda nasce (estágio 0) | 0 s |
+| Heli voa em linha reta até a coordenada exata (12 m/s) | ~5–16 s |
+| Detecta → rapel → confisco (9 s) | **~19 s → muda perdida** |
+| Muda ficaria colhível (2 × 22 s) | **44 s** |
+
+A muda era confiscada ~25 s **antes** de sequer poder ser colhida. Vencendo o tiroteio, o cooldown de
+22 s recolocava o heli em cima por volta de t=45 s: janela de 1 a 6 segundos pra colher.
+
+**Causa raiz:** o bloco "CAÇA ATIVA" no estado `patrulha` reescrevia `heliAlvo` com a coordenada
+exata da muda **a cada frame**. O waypoint aleatório logo abaixo nunca chegava a rodar enquanto
+existisse qualquer planta — o helicóptero era um míssil teleguiado, onisciente, disparado no segundo
+em que a semente entrava no chão. E a varredura testava só `!p.colhida`: um broto de 12 cm era
+enxergado de 38 m de altura igual a uma planta florida.
+
+Esse bloco tinha sido acrescentado num ciclo anterior por um motivo legítimo — com raio de detecção
+de 10 m, a patrulha aleatória nunca achava nada e a polícia simplesmente não aparecia no jogo. A
+correção precisava resolver os dois lados.
+
+### A correção
+
+1. **Só a muda florida é vista do alto** (`PLANTA_DETECTAVEL_ESTAGIO = 2`). Broto e vegetativa
+   parecem qualquer mato de 38 m. Os 44 s de crescimento ficam livres.
+2. **Fim do beeline.** O `heliAlvo` volta a ser sorteado só ao chegar no waypoint anterior. Com 55%
+   de chance o sorteio cai num disco de 30 m em volta de uma muda madura — a polícia *bate a região*,
+   não vai na coordenada. Sorteio por `√u` pra distribuir uniformemente na área do disco; sem isso o
+   ponto se amontoa no centro, que é justamente o comportamento teleguiado que se está removendo.
+3. **`DETECCAO_RAIO` 10 → 20 m**, pra que um sobrevoo genuíno enxergue:
+
+   | Raio | Área varrida | Mapa inteiro | Detecção esperada |
+   |---|---|---|---|
+   | 10 m | 240 m²/s | 150 s | 4–5 min — na prática, nunca |
+   | 20 m | 480 m²/s | 75 s | ~2 min |
+   | 20 m + viés 55% | — | — | **mediana medida: 11,4 s pós-floração** |
+
+4. **Novo estado `pairando`** (1,2 s) entre `indo` e `rapel`: o heli estabiliza sobre a muda e
+   desinclina antes de soltar as cordas. Antes ele chegava a 3 m e as cordas apareciam no mesmo
+   frame — não dava pra ler que ele tinha achado alguma coisa.
+5. **Holofote trava na muda** durante `indo`/`pairando`/`rapel`, em vez de apontar sempre reto pra
+   baixo. Sinal visual de "ele te achou", de graça — o `SpotLight` e o cone já existiam.
+6. **Aviso na floração**, uma vez por muda: é quando o relógio de risco começa a correr.
+
+### Validação medida
+
+| Verificação | Resultado |
+|---|---|
+| Muda imatura detectada em 60 s de jogo? | **Não**, nunca ✓ |
+| Muda sobrevive aos 44 s de crescimento com heli no ar? | **Sim** — o teste que antes falhava 100% ✓ |
+| Tempo até detecção pós-floração (30 amostras) | mín 0 s · **mediana 11,4 s** · máx 43,7 s · nenhum "nunca" |
+| Distância média heli↔muda, muda imatura | 63,2 m (patrulha pura, sem atração) |
+| Distância média heli↔muda, muda florida | 56,3 m (viés puxando pra região) |
+| Caminho da FSM | `patrulha → indo → pairando → rapel → combate` ✓ |
+| Aviso de floração | 1 disparo, só após florescer ✓ |
+
+Somando a detecção (mediana 11,4 s) ao tempo de encontro (`indo` + `pairando` 1,2 s + `rapel` 1,5 s +
+`confisco` 9 s), o jogador tem ~23 s de reação a partir do aviso — cobre a maior parte do mapa a
+5,8 m/s. Estando ao lado da muda quando ela floresce, a colheita é imediata e nem há confronto.
+
+**Anti-regressão** (reexecutada por inteiro): erro angular da mira 0,000°, zonas de acerto
+68/34/20,4 e 0 atrás da parede, NavMesh construída em 12,8 ms com pior A\* de 4,6 ms, câmera a 4,81 m
+do jogador, salto de 120 cm, compra na loja de armas debitando R$105. **Zero erros de console.**

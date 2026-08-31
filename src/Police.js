@@ -8,16 +8,21 @@
 // tinha custado uma chamada `encerrarEncontro(false)` numa função sem parâmetro e três cópias da rotina
 // de limpeza do encontro.
 //
-//                    planta detectada (raio 10 m) ∧ ¬escondido
+//        muda FLORIDA avistada em sobrevoo (raio 20 m) ∧ ¬escondido
 //     ┌──────────┐ ──────────────────────────────────────────► ┌────────┐
 //     │ PATRULHA │ ◄─────────── cooldown 22 s ───┐              │  INDO  │
 //     └──────────┘                                │             └────────┘
 //                                            ┌──────────┐            │ d(heli,planta) < 3
 //          todos abatidos ∨ escondido 4,5 s  │ RECUANDO │            ▼
-//          ∨ jogador rendido ───────────────►└──────────┘        ┌────────┐
-//                                                 ▲              │ RAPEL  │ (t = 1,5 s)
-//                            ┌────────────────────┴──────┐       └────────┘
-//                            │                           │            │
+//          ∨ jogador rendido ───────────────►└──────────┘       ┌──────────┐
+//                                                 ▲             │ PAIRANDO │ (t = 1,2 s)
+//                            ┌────────────────────┤             └──────────┘
+//                            │                    │                  │
+//                            │                    │                  ▼
+//                            │                    │              ┌────────┐
+//                            │                    │              │ RAPEL  │ (t = 1,5 s)
+//                            │                    │              └────────┘
+//                            │                    │                  │
 //                       ┌─────────┐   o jogador se aproxima   ┌──────────────┐
 //                       │ COMBATE │ ◄────────────────────────  │ CONFISCANDO  │ (t = 9 s → confisca)
 //                       └─────────┘                            └──────────────┘
@@ -35,7 +40,20 @@ import{aplicarDano,renderizarVidaJogador,criarBarraMundo}from'./HealthBar.js';
 import{droneState}from'./Camera.js';
 
 const HELI_ALTURA=38,HELI_VELOCIDADE=12,MAPA_LIMITE=95;
-const DETECCAO_RAIO=10,APROX_RAIO=3;
+// Raio de detecção dimensionado pra funcionar em SOBREVOO, agora que o heli não vai mais direto na
+// coordenada da muda: mapa de 190x190 = 36.100 m², heli a 12 m/s, faixa varrida = 2R x v.
+//   R=10 →  240 m²/s → mapa inteiro em 150 s → na prática a polícia nunca achava nada
+//   R=20 →  480 m²/s → mapa inteiro em  75 s → com o viés de patrulha abaixo, ~15-40 s pós-floração
+const DETECCAO_RAIO=20,APROX_RAIO=3;
+// Só a muda FLORIDA é vista do alto. Broto e vegetativa parecem qualquer mato de 38 m de altura — e
+// sem esse filtro a muda era confiscada por volta de t=19 s sendo que só fica colhível em t=44 s, ou
+// seja, o ciclo econômico do jogo era impossível de completar.
+const PLANTA_DETECTAVEL_ESTAGIO=2;
+// Viés de patrulha: fração dos waypoints sorteados DENTRO de um disco em volta de uma muda madura.
+// É o que substitui a antiga "caça ativa" — a polícia bate a região, em vez de ir na coordenada.
+const PATRULHA_VIES=.55,PATRULHA_RAIO_VIES=30;
+// Tempo que o heli fica estabilizado sobre a plantação antes de soltar as cordas.
+const PAIRANDO_DURACAO=1.2;
 const RAPEL_DURACAO=1.5,NUM_POLICIAIS=2;
 const COMBATE_RAIO_ATIVACAO=16;
 const POLICIAL_HP=100,POLICIAL_VELOCIDADE=2,POLICIAL_ALCANCE_TIRO=13,POLICIAL_APROX_MIN=7;
@@ -156,6 +174,37 @@ atualizarHudSaude();atualizarHudMunicao();
 
 function distXZ(a,b){return Math.hypot(a.x-b.x,a.z-b.z)}
 function jogadorEscondido(){return refugios.some(r=>distXZ(player.position,r)<REFUGIO_RAIO)}
+
+// Uma muda só existe pros olhos da polícia depois de florescer.
+function plantaDetectavel(p){return !p.colhida&&p.estagio>=PLANTA_DETECTAVEL_ESTAGIO}
+function mudasMaduras(){return plantas.filter(plantaDetectavel)}
+
+// Próximo ponto da patrulha. Com PATRULHA_VIES de chance cai num disco de PATRULHA_RAIO_VIES em volta
+// de uma muda madura sorteada — o heli "está batendo aquela região", não indo na coordenada exata dela.
+// Nunca devolve o ponto da planta: é sempre um ponto do disco, e o disco é maior que o raio de detecção.
+function sortearWaypointPatrulha(){
+  const maduras=mudasMaduras();
+  if(maduras.length&&Math.random()<PATRULHA_VIES){
+    const alvo=maduras[Math.floor(Math.random()*maduras.length)];
+    const ang=Math.random()*Math.PI*2;
+    // sqrt(u) distribui uniformemente NA ÁREA do disco; sem isso o sorteio se amontoa no centro,
+    // que é justamente o comportamento teleguiado que estamos tirando.
+    const raio=PATRULHA_RAIO_VIES*Math.sqrt(Math.random());
+    return{x:THREE.MathUtils.clamp(alvo.x+Math.cos(ang)*raio,-MAPA_LIMITE,MAPA_LIMITE),
+           z:THREE.MathUtils.clamp(alvo.z+Math.sin(ang)*raio,-MAPA_LIMITE,MAPA_LIMITE)};
+  }
+  return{x:(Math.random()*2-1)*MAPA_LIMITE,z:(Math.random()*2-1)*MAPA_LIMITE};
+}
+
+// Aviso único por muda, no frame em que ela floresce: é quando o relógio de risco começa a correr, e
+// sem esse sinal o jogador continua sendo pego de surpresa mesmo com o balanceamento certo.
+function avisarFloracao(){
+  for(const p of plantas){
+    if(p.colhida||p.avisadaFloracao||p.estagio<PLANTA_DETECTAVEL_ESTAGIO)continue;
+    p.avisadaFloracao=true;
+    mostrarAviso('🌾 Sua muda floresceu — do alto dá pra ver. Colha rápido ou se esconda.',3400);
+  }
+}
 
 // ===== Dano ao jogador (armadura em série — ver HealthBar.aplicarDano) =====
 function receberDanoJogador(dano){
@@ -353,31 +402,25 @@ const ESTADOS={
       policia.alvoPlanta=null;
       policia.cooldownAte=performance.now()/1000+COOLDOWN_ENTRE_BUSCAS;
       policia.tempoEscondidoAcumulado=0;
-      heliAlvo={x:(Math.random()*2-1)*MAPA_LIMITE,z:(Math.random()*2-1)*MAPA_LIMITE};
+      heliAlvo=sortearWaypointPatrulha();
     },
     aoAtualizar(dt,agora){
-      // CAÇA ATIVA: com o heli indo pra pontos aleatórios num mapa de 190 m e raio de detecção de 10 m,
-      // a chance de ele topar com a plantação por acaso era mínima — na prática a polícia nunca aparecia.
-      // Agora, havendo plantação e o cooldown vencido, ele vai direto atrás dela.
-      if(agora>=policia.cooldownAte&&!jogadorEscondido()){
-        let maisProxima=null,menorDist=Infinity;
-        for(const p of plantas){
-          if(p.colhida)continue;
-          const d2=distXZ(heli.position,p);
-          if(d2<menorDist){menorDist=d2;maisProxima=p}
-        }
-        if(maisProxima)heliAlvo={x:maisProxima.x,z:maisProxima.z};
-      }
+      // PATRULHA DE VERDADE. Antes existia aqui uma "caça ativa" que reescrevia o heliAlvo com a
+      // coordenada EXATA da muda a cada frame: o waypoint aleatório logo abaixo nunca chegava a ser
+      // usado, e o helicóptero virava um míssil teleguiado que saía atrás da planta no segundo em que
+      // ela nascia. Agora o destino só é sorteado ao CHEGAR no waypoint anterior, e o sorteio no
+      // máximo puxa pra região da muda (ver sortearWaypointPatrulha), nunca pro ponto dela.
       const dx=heliAlvo.x-heli.position.x,dz=heliAlvo.z-heli.position.z,d=Math.hypot(dx,dz);
-      if(d<3){heliAlvo={x:(Math.random()*2-1)*MAPA_LIMITE,z:(Math.random()*2-1)*MAPA_LIMITE}}
+      if(d<3){heliAlvo=sortearWaypointPatrulha()}
       else{heli.position.x+=dx/d*HELI_VELOCIDADE*dt;heli.position.z+=dz/d*HELI_VELOCIDADE*dt;heli.rotation.z=THREE.MathUtils.clamp(-dz/d*.35,-.35,.35);heli.rotation.y=Math.atan2(dx,dz)}
       heli.position.y=THREE.MathUtils.lerp(heli.position.y,HELI_ALTURA,dt*2);
       if(agora<policia.cooldownAte||jogadorEscondido())return;
+      // Achou por sobrevoo: só enxerga muda florida, e só dentro do raio de detecção.
       for(const p of plantas){
-        if(!p.colhida&&distXZ(heli.position,p)<DETECCAO_RAIO){
+        if(plantaDetectavel(p)&&distXZ(heli.position,p)<DETECCAO_RAIO){
           policia.alvoPlanta=p;
           transitar('indo');
-          mostrarAviso('🚁 A polícia achou sua plantação — corre pra defender!',3400);
+          mostrarAviso('🚁 O helicóptero achou sua plantação — corre pra defender!',3400);
           return;
         }
       }
@@ -388,9 +431,23 @@ const ESTADOS={
       const alvo=policia.alvoPlanta;
       if(!alvo||alvo.colhida){transitar('recuando');return}
       const dx=alvo.x-heli.position.x,dz=alvo.z-heli.position.z,d=Math.hypot(dx,dz);
-      if(d<APROX_RAIO){transitar('rapel');return}
+      if(d<APROX_RAIO){transitar('pairando');return}
       heli.position.x+=dx/d*HELI_VELOCIDADE*1.3*dt;heli.position.z+=dz/d*HELI_VELOCIDADE*1.3*dt;
       heli.rotation.y=Math.atan2(dx,dz);
+    }
+  },
+  // Ele PARA em cima da plantação antes de descer o rapel. Sem esse estado o heli chegava a 3 m e as
+  // cordas apareciam no mesmo frame — não dava pra ler que ele tinha achado alguma coisa.
+  pairando:{
+    aoAtualizar(dt){
+      const alvo=policia.alvoPlanta;
+      if(!alvo||alvo.colhida){transitar('recuando');return}
+      policia.tempoEstado+=dt;
+      // estabiliza exatamente sobre a muda e desinclina, como um helicóptero pairando de verdade
+      heli.position.x=THREE.MathUtils.lerp(heli.position.x,alvo.x,1-Math.exp(-4*dt));
+      heli.position.z=THREE.MathUtils.lerp(heli.position.z,alvo.z,1-Math.exp(-4*dt));
+      heli.rotation.z=THREE.MathUtils.lerp(heli.rotation.z,0,1-Math.exp(-5*dt));
+      if(policia.tempoEstado>=PAIRANDO_DURACAO)transitar('rapel');
     }
   },
   rapel:{
@@ -473,15 +530,20 @@ export function atualizarPolicia(dt){
   montarAlvosDoFrame();
   atualizarBalas(dt,alvosDaBala);
 
-  // Holofote sempre mirando o chão logo abaixo do helicóptero, e o feixe cônico acompanhando.
-  const chaoAbaixo=obterElevacao(heli.position.x,heli.position.z);
-  holofoteAlvo.position.set(heli.position.x,chaoAbaixo,heli.position.z);
+  // Holofote: em patrulha varre o chão logo abaixo do heli; a partir do momento em que ele acha a
+  // plantação, TRAVA na muda. É o sinal visual de "ele te achou" — de graça, já que o SpotLight e o
+  // cone do feixe existem desde sempre.
+  const travado=policia.alvoPlanta&&(policia.estado==='indo'||policia.estado==='pairando'||policia.estado==='rapel');
+  const focoX=travado?policia.alvoPlanta.x:heli.position.x;
+  const focoZ=travado?policia.alvoPlanta.z:heli.position.z;
+  const chaoAbaixo=obterElevacao(focoX,focoZ);
+  holofoteAlvo.position.set(focoX,chaoAbaixo,focoZ);
   const alturaFeixe=heli.position.y-chaoAbaixo;
-  feixe.position.set(heli.position.x,(heli.position.y+chaoAbaixo)/2,heli.position.z);
+  feixe.position.set((heli.position.x+focoX)/2,(heli.position.y+chaoAbaixo)/2,(heli.position.z+focoZ)/2);
   feixe.scale.set(alturaFeixe*.32,alturaFeixe,alturaFeixe*.32);
 
   // Vida regenera devagar fora de combate; HUD de alerta/esconderijo, munição e mira de combate.
-  conferirColete();atualizarHudMunicao();
+  avisarFloracao();conferirColete();atualizarHudMunicao();
   if(policia.estado==='patrulha'&&saudeJogador<JOGADOR_HP_MAX&&!jogadorRendido){saudeJogador=Math.min(JOGADOR_HP_MAX,saudeJogador+dt*JOGADOR_REGEN);atualizarHudSaude()}
   const emAlerta=policia.estado!=='patrulha';
   alertaEl.style.display=emAlerta?'block':'none';
