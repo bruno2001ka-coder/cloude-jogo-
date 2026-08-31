@@ -23,12 +23,24 @@
 #invPanel button.fechar{background:rgba(120,120,120,.5);color:#eef7e9}
 #mira{position:fixed;z-index:6;top:50%;left:50%;transform:translate(-50%,-50%);width:14px;height:14px;border:2px solid rgba(255,255,255,.85);border-radius:50%;pointer-events:none;display:none;box-shadow:0 0 6px rgba(0,0,0,.6)}
 #mira::after{content:'';position:absolute;top:50%;left:50%;width:3px;height:3px;background:currentColor;border-radius:50%;transform:translate(-50%,-50%)}
+#armaContainer{position:fixed;z-index:4;bottom:0;right:0;width:320px;height:280px;pointer-events:none;display:none;transform-origin:bottom right}
+#armaContainer.visivel{display:block}
+.arma-modelo{position:absolute;bottom:-20px;right:-40px;width:280px;height:240px;transform:rotate(-8deg);transition:transform .15s ease-out}
+.aiming .arma-modelo{transform:rotate(-12deg) translate(-15px,-10px)}
 @media(pointer:coarse){#touch{display:block}#hint{bottom:16px;left:auto;right:16px;transform:none;font-size:11px}}canvas{display:block;width:100%;height:100%;touch-action:none;filter:saturate(1.08) contrast(1.05) brightness(1.01)}
 #vinheta{position:fixed;inset:0;z-index:4;pointer-events:none;background:radial-gradient(ellipse at center,rgba(0,0,0,0) 55%,rgba(5,8,4,.35) 100%)}
 </style>
 </head>
 <body>
 <div id="startScreen"><div class="brandMark">Q3D</div><div class="startKicker">BAIRRO · CASA · HISTÓRIAS</div><h1>QUINTAL <span>3D</span></h1><p>Construa seu lar em um bairro brasileiro cheio de cor.</p><button id="playBtn">JOGAR AGORA</button><small>gráficos web · progresso salvo neste dispositivo</small></div>
+<div id="gameMenu" style="display:none;position:fixed;inset:0;z-index:25;background:rgba(0,0,0,.85);backdrop-filter:blur(4px)">
+  <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:linear-gradient(145deg,rgba(20,30,15,.95),rgba(10,20,10,.9));border:2px solid #e7c568;border-radius:24px;padding:40px;text-align:center;min-width:320px;max-width:90vw">
+    <h2 style="font-size:clamp(28px,6vw,48px);margin:0 0 16px;color:#e7c568;font-weight:900">MENU</h2>
+    <button id="resumeBtn" style="width:100%;margin:8px 0;padding:14px 24px;border:0;border-radius:12px;background:#e7c568;color:#1b2417;font-weight:900;font-size:16px;cursor:pointer">CONTINUAR</button>
+    <button id="settingsBtn" style="width:100%;margin:8px 0;padding:14px 24px;border:0;border-radius:12px;background:rgba(100,100,100,.5);color:#eef7e9;font-weight:900;font-size:16px;cursor:pointer">CONFIGURAÇÕES</button>
+    <button id="quitBtn" style="width:100%;margin:8px 0;padding:14px 24px;border:0;border-radius:12px;background:rgba(180,50,50,.7);color:#fff;font-weight:900;font-size:16px;cursor:pointer">SAIR</button>
+  </div>
+</div>
 <div id="hud"><strong>QUINTAL 3D</strong><br>gráficos web · mapa vazio<br><span id="pos">x 0.0 · z 0.0</span><br><span id="statusEconomia"></span><br><span style="font-size:10px;opacity:.85">🔵 mercado (vaso/terra) · 🔴 esconderijo (semente/venda) · 🟢 sua muda</span></div>
 <div id="acaoPanel"></div>
 <button id="invBtn" aria-label="Inventário">🎒</button>
@@ -41,6 +53,24 @@
 
 <div id="touch" aria-label="Joystick de movimento"><div id="stickBase"><div id="stick"></div></div></div>
 <button id="jumpBtn" aria-label="Pular">PULAR</button>
+<div id="armaContainer"><svg class="arma-modelo" viewBox="0 0 200 180" xmlns="http://www.w3.org/2000/svg">
+  <!-- Corpo da arma -->
+  <rect x="40" y="90" width="120" height="35" rx="4" fill="#2a2a2a"/>
+  <rect x="35" y="85" width="130" height="15" rx="3" fill="#3a3a3a"/>
+  <!-- Cano -->
+  <rect x="155" y="95" width="40" height="18" rx="2" fill="#1a1a1a"/>
+  <rect x="160" y="98" width="30" height="12" rx="2" fill="#252525"/>
+  <!-- Mira -->
+  <rect x="70" y="75" width="8" height="15" rx="2" fill="#1a1a1a"/>
+  <circle cx="74" cy="72" r="4" fill="#ff4444"/>
+  <!-- Empunhadura -->
+  <path d="M60 125 L50 165 L70 165 L75 130 Z" fill="#1a1a1a"/>
+  <path d="M55 130 L48 160 L62 160 L65 135 Z" fill="#2a2a2a"/>
+  <!-- Detalhes -->
+  <rect x="85" y="100" width="25" height="8" rx="2" fill="#4a4a4a"/>
+  <circle cx="100" cy="104" r="3" fill="#5a5a5a"/>
+  <rect x="50" y="110" width="15" height="5" rx="2" fill="#3a3a3a"/>
+</svg></div>
 <div id="vinheta"></div>
 <script type="module">
 import*as THREE from'three';
@@ -385,7 +415,25 @@ function atualizarNPCs(dt){
   }
 }
 const player=new THREE.Group();const skin=new THREE.MeshStandardMaterial({color:0xc79067,roughness:.55}),shirt=new THREE.MeshStandardMaterial({color:0x202b27,roughness:.75}),pants=new THREE.MeshStandardMaterial({color:0x495744,roughness:.85});
-const body=new THREE.Mesh(new THREE.BoxGeometry(1.05,1.55,.62),shirt);body.position.y=1.65;body.castShadow=true;body.receiveShadow=true;player.add(body);const head=new THREE.Mesh(new THREE.BoxGeometry(.7,.7,.66),skin);head.position.y=2.8;head.castShadow=true;head.receiveShadow=true;player.add(head);const faceMat=new THREE.MeshStandardMaterial({color:0x171712,roughness:.8,flatShading:true});for(const x of [-.13,.13]){const eye=new THREE.Mesh(new THREE.BoxGeometry(.11,.12,.045),faceMat);eye.position.set(x,2.88,.345);eye.castShadow=true;eye.receiveShadow=true;player.add(eye)}const mouth=new THREE.Mesh(new THREE.BoxGeometry(.24,.055,.04),faceMat);mouth.position.set(0,2.68,.348);mouth.castShadow=true;mouth.receiveShadow=true;player.add(mouth);const hair=new THREE.Mesh(new THREE.BoxGeometry(.74,.18,.69),new THREE.MeshStandardMaterial({color:0x171712,roughness:.8,flatShading:true}));hair.position.y=3.22;hair.castShadow=true;hair.receiveShadow=true;player.add(hair);const legs=[],arms=[];for(const x of [-.27,.27]){const leg=new THREE.Mesh(new THREE.BoxGeometry(.25,1.05,.3),pants);leg.position.set(x,.55,0);leg.castShadow=true;leg.receiveShadow=true;player.add(leg);legs.push(leg)}for(const x of [-.7,.7]){const arm=new THREE.Mesh(new THREE.BoxGeometry(.25,1.1,.3),skin);arm.position.set(x,1.72,0);arm.castShadow=true;arm.receiveShadow=true;player.add(arm);arms.push(arm)}criarSombraContato(.85,player);player.scale.setScalar(PLAYER_SCALE);player.position.set(0,obterElevacao(0,8),8);scene.add(player);
+const body=new THREE.Mesh(new THREE.BoxGeometry(1.05,1.55,.62),shirt);body.position.y=1.65;body.castShadow=true;body.receiveShadow=true;player.add(body);const head=new THREE.Mesh(new THREE.BoxGeometry(.7,.7,.66),skin);head.position.y=2.8;head.castShadow=true;head.receiveShadow=true;player.add(head);const faceMat=new THREE.MeshStandardMaterial({color:0x171712,roughness:.8,flatShading:true});for(const x of [-.13,.13]){const eye=new THREE.Mesh(new THREE.BoxGeometry(.11,.12,.045),faceMat);eye.position.set(x,2.88,.345);eye.castShadow=true;eye.receiveShadow=true;player.add(eye)}const mouth=new THREE.Mesh(new THREE.BoxGeometry(.24,.055,.04),faceMat);mouth.position.set(0,2.68,.348);mouth.castShadow=true;mouth.receiveShadow=true;player.add(mouth);const hair=new THREE.Mesh(new THREE.BoxGeometry(.74,.18,.69),new THREE.MeshStandardMaterial({color:0x171712,roughness:.8,flatShading:true}));hair.position.y=3.22;hair.castShadow=true;hair.receiveShadow=true;player.add(hair);const legs=[],arms=[];for(const x of [-.27,.27]){const leg=new THREE.Mesh(new THREE.BoxGeometry(.25,1.05,.3),pants);leg.position.set(x,.55,0);leg.castShadow=true;leg.receiveShadow=true;player.add(leg);legs.push(leg)}for(const x of [-.7,.7]){const arm=new THREE.Mesh(new THREE.BoxGeometry(.25,1.1,.3),skin);arm.position.set(x,1.72,0);arm.castShadow=true;arm.receiveShadow=true;player.add(arm);arms.push(arm)}
+
+// Mochila nas costas do personagem
+const mochilaGroup=new THREE.Group();mochilaGroup.position.set(0,1.4,-.35);
+const mochilaBase=new THREE.Mesh(new THREE.BoxGeometry(.55,.65,.25),new THREE.MeshStandardMaterial({color:0x3a3a3a,roughness:.8}));mochilaBase.castShadow=true;mochilaGroup.add(mochilaBase);
+const mochilaBolso=new THREE.Mesh(new THREE.BoxGeometry(.35,.25,.08),new THREE.MeshStandardMaterial({color:0x5a5a5a,roughness:.7}));mochilaBolso.position.set(0,.1,.13);mochilaBolso.castShadow=true;mochilaGroup.add(mochilaBolso);
+const alcaEsq=new THREE.Mesh(new THREE.CylinderGeometry(.04,.04,.25,8),new THREE.MeshStandardMaterial({color:0x2a2a2a,roughness:.6}));alcaEsq.rotation.x=Math.PI/4;alcaEsq.position.set(-.2,.25,0);mochilaGroup.add(alcaEsq);
+const alcaDir=new THREE.Mesh(new THREE.CylinderGeometry(.04,.04,.25,8),new THREE.MeshStandardMaterial({color:0x2a2a2a,roughness:.6}));alcaDir.rotation.x=-Math.PI/4;alcaDir.position.set(.2,.25,0);mochilaGroup.add(alcaDir);
+player.add(mochilaGroup);
+
+// Arma segurada pelo personagem (inicialmente em repouso)
+const armaGroup=new THREE.Group();armaGroup.position.set(.35,1.1,.45);
+const armaCorpo=new THREE.Mesh(new THREE.BoxGeometry(.08,.12,.35),new THREE.MeshStandardMaterial({color:0x2a2a2a,roughness:.5}));armaCorpo.castShadow=true;armaGroup.add(armaCorpo);
+const armaCano=new THREE.Mesh(new THREE.CylinderGeometry(.025,.025,.25,8),new THREE.MeshStandardMaterial({color:0x1a1a1a,roughness:.4}));armaCano.rotation.x=Math.PI/2;armaCano.position.set(0,0,-.28);armaGroup.add(armaCano);
+const armaMira=new THREE.Mesh(new THREE.BoxGeometry(.03,.06,.03),new THREE.MeshStandardMaterial({color:0xff4444,emissive:0xaa0000,emissiveIntensity:.3}));armaMira.position.set(0,.08,-.15);armaGroup.add(armaMira);
+const armaEmpunhadura=new THREE.Mesh(new THREE.BoxGeometry(.06,.15,.08),new THREE.MeshStandardMaterial({color:0x1a1a1a,roughness:.6}));armaEmpunhadura.position.set(0,-.1,.08);armaEmpunhadura.rotation.x=.2;armaGroup.add(armaEmpunhadura);
+player.add(armaGroup);
+
+criarSombraContato(.85,player);player.scale.setScalar(PLAYER_SCALE);player.position.set(0,obterElevacao(0,8),8);scene.add(player);
 // Encontra a superfície andável (laje/degrau) ou o terreno mais alto logo abaixo de um ponto X/Z.
 function encontrarSuperficieAbaixo(x,z,yOrigem){origemVertical.set(x,yOrigem,z);raycasterVertical.set(origemVertical,direcaoBaixo);const terrenoY=obterElevacao(x,z);const hits=raycasterVertical.intersectObjects(superficiesAndaveis,true);const suporte=hits.find(hit=>hit.point.y>=terrenoY-.35);let alvo=suporte?Math.max(suporte.point.y,terrenoY):terrenoY;
   // Trava também contra o topo de paredes/muretas sólidas sob o jogador: sem isso, caindo perto da
@@ -498,12 +546,13 @@ function plantarAqui(){
     plantas.push(criarPlanta(alvo.ponto.x,alvo.ponto.y,alvo.ponto.z));
     potGhost.visible=false;
     atualizarStatusEconomia();renderizarAcoes();renderizarInventario();
+    renderer.domElement.requestPointerLock();
   }
 }
 // ===== INVENTÁRIO: o jogador decide onde plantar — abre o inventário parado no local escolhido e planta ali, na hora que quiser.
 const invBtn=document.getElementById('invBtn'),invPanel=document.getElementById('invPanel');
 let inventarioAberto=false,invEstrutura=null;
-function alternarInventario(){inventarioAberto=!inventarioAberto;renderizarInventario()}
+function alternarInventario(){inventarioAberto=!inventarioAberto;renderizarInventario();if(inventarioAberto){document.exitPointerLock()}}
 // Monta o DOM do painel só UMA VEZ enquanto ele fica aberto: reconstruir o innerHTML a cada frame (60x/s)
 // destruía e recriava o botão embaixo do dedo do jogador — o toque começava num elemento que sumia antes
 // do "click" disparar, e o clique era simplesmente perdido. Agora só o texto/estado dos elementos existentes muda.
@@ -516,7 +565,7 @@ function garantirEstruturaInventario(){
   const linPacote=document.createElement('div');linPacote.className='invLinha';invPanel.appendChild(linPacote);
   const linDica=document.createElement('div');linDica.className='invLinha';linDica.style.opacity='.75';linDica.style.fontSize='11px';linDica.textContent='Mire onde quer plantar — o vaso fantasma verde mostra o lugar';invPanel.appendChild(linDica);
   const btnPlantar=document.createElement('button');btnPlantar.onclick=plantarAqui;invPanel.appendChild(btnPlantar);
-  const btnFechar=document.createElement('button');btnFechar.className='fechar';btnFechar.textContent='Fechar';btnFechar.onclick=alternarInventario;invPanel.appendChild(btnFechar);
+  const btnFechar=document.createElement('button');btnFechar.className='fechar';btnFechar.textContent='Fechar';btnFechar.onclick=()=>{alternarInventario();renderer.domElement.requestPointerLock()};invPanel.appendChild(btnFechar);
   invEstrutura={linVaso,linTerra,linSemente,linPacote,btnPlantar,btnFechar};
   return invEstrutura;
 }
@@ -635,18 +684,100 @@ function alternarDrone(){
   droneBtn.classList.toggle('on',modoDrone);droneBtn.textContent=modoDrone?'🚁 SAIR':'🚁';
 }
 droneBtn.addEventListener('click',alternarDrone);
-addEventListener('keydown',e=>{if(e.code==='KeyV')alternarDebug()});
+addEventListener('keydown',e=>{if(e.code==='KeyV')alternarDebug();if(e.code==='KeyI'&&gameStarted&&!pauseMenuAberto)alternarInventario()});
 const joy={x:0,y:0,active:false,id:null},stickBase=document.getElementById('stickBase'),stick=document.getElementById('stick');function updateJoy(e){const r=stickBase.getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2,max=r.width*.34;let dx=e.clientX-cx,dy=e.clientY-cy;const len=Math.hypot(dx,dy);if(len>max){dx=dx/len*max;dy=dy/len*max}joy.x=dx/max;joy.y=dy/max;stick.style.transform=`translate(${dx}px,${dy}px)`}function releaseJoy(e){if(joy.id!==null&&e.pointerId!==joy.id)return;joy.x=0;joy.y=0;joy.active=false;joy.id=null;stick.style.transform='translate(0,0)'}stickBase.addEventListener('pointerdown',e=>{e.preventDefault();joy.active=true;joy.id=e.pointerId;stickBase.setPointerCapture?.(e.pointerId);updateJoy(e)});stickBase.addEventListener('pointermove',e=>{if(joy.active&&e.pointerId===joy.id)updateJoy(e)});stickBase.addEventListener('pointerup',releaseJoy);stickBase.addEventListener('pointercancel',releaseJoy);
 let yaw=0,targetYaw=0,pitch=.28,targetPitch=.28,drag=false,lastX=0,lastY=0;
 // Mouse (desktop): Pointer Lock dá o giro livre estilo GTA SA, sem precisar segurar o botão depois do 1º clique (exigência do navegador).
 // Touch (celular): mantém o arrastar-pra-olhar de sempre, sem mudança nenhuma.
 renderer.domElement.addEventListener('pointerdown',e=>{drag=true;lastX=e.clientX;lastY=e.clientY;renderer.domElement.setPointerCapture?.(e.pointerId);if(e.pointerType==='mouse'){try{const p=renderer.domElement.requestPointerLock?.();p?.catch?.(()=>{})}catch(err){}}});
+// Forçar Pointer Lock no desktop para FPS
+if(navigator.userAgent.match(/Windows|Macintosh|Linux/)){
+  renderer.domElement.style.cursor='crosshair';
+}
 renderer.domElement.addEventListener('pointermove',e=>{if(document.pointerLockElement===renderer.domElement){targetYaw-=e.movementX*.0035;targetPitch=Math.max(-.12,Math.min(.7,targetPitch-e.movementY*.0025))}else if(drag){const dx=e.clientX-lastX,dy=e.clientY-lastY;lastX=e.clientX;lastY=e.clientY;targetYaw-=dx*.009;targetPitch=Math.max(-.12,Math.min(.7,targetPitch-dy*.006))}});
 renderer.domElement.addEventListener('pointerup',()=>drag=false);renderer.domElement.addEventListener('pointercancel',()=>drag=false);
-const startScreen=document.getElementById('startScreen'),playBtn=document.getElementById('playBtn');let gameStarted=false;playBtn.addEventListener('click',()=>{gameStarted=true;startScreen.classList.add('hide');document.body.classList.add('started')});
+
+// Detectar botão direito do mouse para mira
+addEventListener('mousedown',e=>{if(e.button===2)keys.Button2=true});
+addEventListener('mouseup',e=>{if(e.button===2)keys.Button2=false});
+addEventListener('contextmenu',e=>e.preventDefault());
+
+// Listener para Pointer Lock - essencial para FPS
+document.addEventListener('pointerlockchange',()=>{
+  if(document.pointerLockElement===renderer.domElement){
+    console.log('Pointer Lock ativado - modo FPS');
+  }else{
+    console.log('Pointer Lock desativado');
+  }
+});
+const startScreen=document.getElementById('startScreen'),playBtn=document.getElementById('playBtn');
+const gameMenu=document.getElementById('gameMenu'),resumeBtn=document.getElementById('resumeBtn'),settingsBtn=document.getElementById('settingsBtn'),quitBtn=document.getElementById('quitBtn');
+let gameStarted=false,pauseMenuAberto=false;
+
+// Controles do menu de pause
+playBtn.addEventListener('click',()=>{gameStarted=true;startScreen.classList.add('hide');document.body.classList.add('started')});
+resumeBtn.addEventListener('click',()=>{pauseMenuAberto=false;gameMenu.style.display='none';renderer.domElement.requestPointerLock()});
+settingsBtn.addEventListener('click',()=>{alert('Configurações em desenvolvimento!')});
+quitBtn.addEventListener('click',()=>{location.reload()});
+
+// Abrir menu de pause com ESC
+addEventListener('keydown',e=>{if(e.code==='Escape'&&gameStarted&&!pauseMenuAberto){pauseMenuAberto=true;gameMenu.style.display='block';document.exitPointerLock()}});
+
+// Atualizar visibilidade da arma e mira
+const armaContainer=document.getElementById('armaContainer'),miraEl=document.getElementById('mira');
+let mirando=false;
+function atualizarArmaMira(){
+  const deveMostrarArma=gameStarted&&!inventarioAberto&&!pauseMenuAberto;
+  armaContainer.classList.toggle('visivel',deveMostrarArma);
+  document.body.classList.toggle('aiming',mirando);
+}
 
 const clock=new THREE.Clock(),pos=document.getElementById('pos');let walk=0;const velocity=new THREE.Vector3(),desired=new THREE.Vector3(),camGoal=new THREE.Vector3(),lookGoal=new THREE.Vector3();
-function tick(){const dt=Math.min(clock.getDelta(),.05);const smooth=1-Math.exp(-18*dt),camSmooth=1-Math.exp(-7*dt);yaw=THREE.MathUtils.lerp(yaw,targetYaw,1-Math.exp(-12*dt));pitch=THREE.MathUtils.lerp(pitch,targetPitch,1-Math.exp(-12*dt));if(modoDrone){
+function tick(){const dt=Math.min(clock.getDelta(),.05);const smooth=1-Math.exp(-18*dt),camSmooth=1-Math.exp(-7*dt);yaw=THREE.MathUtils.lerp(yaw,targetYaw,1-Math.exp(-12*dt));pitch=THREE.MathUtils.lerp(pitch,targetPitch,1-Math.exp(-12*dt));
+
+// Calcular velocidade do jogador primeiro (para usar no balanço da arma)
+let speed=0;
+if(!modoDrone){
+  let x=(keys.KeyD?1:0)-(keys.KeyA?1:0)+joy.x,z=(keys.KeyS?1:0)-(keys.KeyW?1:0)-joy.y,m=Math.hypot(x,z);desired.set(0,0,0);if(m){x/=m;z/=m;const f=new THREE.Vector3(-Math.sin(yaw),0,-Math.cos(yaw)),r=new THREE.Vector3(Math.cos(yaw),0,-Math.sin(yaw));desired.set((r.x*x-f.x*z)*5.8,0,(r.z*x-f.z*z)*5.8)}velocity.lerp(desired,smooth);const proximaX=player.position.x+velocity.x*dt;if(!jogadorColideNaPosicao(proximaX,player.position.z)){player.position.x=proximaX}else{velocity.x=0}const proximaZ=player.position.z+velocity.z*dt;if(!jogadorColideNaPosicao(player.position.x,proximaZ)){player.position.z=proximaZ}else{velocity.z=0}player.position.x=THREE.MathUtils.clamp(player.position.x,-100,92);player.position.z=THREE.MathUtils.clamp(player.position.z,-100,100);atualizarFisicaVertical(dt);preencherHitboxJogador(jogadorBoxDebugTemp,player.position.x,player.position.z);speed=Math.hypot(velocity.x,velocity.z);if(speed>.08){const wanted=Math.atan2(velocity.x,velocity.z);let da=wanted-player.rotation.y;while(da>Math.PI)da-=Math.PI*2;while(da<-Math.PI)da+=Math.PI*2;player.rotation.y+=da*(1-Math.exp(-14*dt));walk+=dt*(6+speed*1.3);const swing=Math.sin(walk)*Math.min(.55,speed*.075);legs[0].rotation.x=swing;legs[1].rotation.x=-swing;arms[0].rotation.x=-swing*.45;arms[1].rotation.x=swing*.45}else{for(const limb of [...legs,...arms])limb.rotation.x*=Math.exp(-12*dt)}}
+
+// Mira com botão direito do mouse (apenas no modo normal, não drone)
+if(!modoDrone&&!pauseMenuAberto&&!inventarioAberto){
+  if(keys.Button2!==false){
+    if(!mirando){
+      mirando=true;
+      targetPitch=Math.max(.45,pitch);
+      targetYaw=yaw;
+      // Forçar Pointer Lock ao mirar
+      if(document.pointerLockElement!==renderer.domElement){
+        renderer.domElement.requestPointerLock();
+      }
+    }
+  }else{
+    mirando=false
+  }
+}
+
+// Posicionar arma em FPS: quando mirando, arma mais centralizada; quando andando, arma balança levemente
+if(armaGroup){
+  const baseX=.35,baseY=1.1,baseZ=.45;
+  let targetArmX=baseX,targetArmY=baseY,targetArmZ=baseZ;
+  if(mirando){targetArmX=.18;targetArmY=1.05;targetArmZ=.65}
+  // Balanço da arma ao andar
+  if(speed>.08&&!mirando){const swingAmt=Math.sin(walk*.8)*.02;targetArmY+=swingAmt;targetArmX+=swingAmt*.5}
+  armaGroup.position.x=THREE.MathUtils.lerp(armaGroup.position.x,targetArmX,smooth*.6);
+  armaGroup.position.y=THREE.MathUtils.lerp(armaGroup.position.y,targetArmY,smooth*.6);
+  armaGroup.position.z=THREE.MathUtils.lerp(armaGroup.position.z,targetArmZ,smooth*.6);
+  // Rotação suave da arma
+  const targetRotX=mirando?0.08:0.2,targetRotY=mirando?-0.1:-0.05;
+  armaGroup.rotation.x=THREE.MathUtils.lerp(armaGroup.rotation.x,targetRotX,smooth*.4);
+  armaGroup.rotation.y=THREE.MathUtils.lerp(armaGroup.rotation.y,targetRotY,smooth*.4);
+}
+
+// Atualizar visibilidade da arma e mira HTML
+atualizarArmaMira();
+miraEl.style.display=(gameStarted&&!inventarioAberto&&!pauseMenuAberto&&!modoDrone)?'block':'none';
+
+if(modoDrone){
   let x=(keys.KeyD?1:0)-(keys.KeyA?1:0)+joy.x,z=(keys.KeyS?1:0)-(keys.KeyW?1:0)-joy.y,m=Math.hypot(x,z);
   if(m){x/=m;z/=m;const f=new THREE.Vector3(-Math.sin(yaw),0,-Math.cos(yaw)),r=new THREE.Vector3(Math.cos(yaw),0,-Math.sin(yaw));droneX+=(r.x*x-f.x*z)*DRONE_VELOCIDADE*dt;droneZ+=(r.z*x-f.z*z)*DRONE_VELOCIDADE*dt}
   droneY-=6*dt;droneY=THREE.MathUtils.clamp(droneY,10,110);droneX=THREE.MathUtils.clamp(droneX,-125,125);droneZ=THREE.MathUtils.clamp(droneZ,-125,125);
@@ -656,7 +787,8 @@ function tick(){const dt=Math.min(clock.getDelta(),.05);const smooth=1-Math.exp(
   lookGoal.set(camera.position.x+fDrone.x*cpDrone*40,camera.position.y-spDrone*40,camera.position.z+fDrone.z*cpDrone*40);
   camera.lookAt(lookGoal);
 }else{
-  let x=(keys.KeyD?1:0)-(keys.KeyA?1:0)+joy.x,z=(keys.KeyS?1:0)-(keys.KeyW?1:0)-joy.y,m=Math.hypot(x,z);desired.set(0,0,0);if(m){x/=m;z/=m;const f=new THREE.Vector3(-Math.sin(yaw),0,-Math.cos(yaw)),r=new THREE.Vector3(Math.cos(yaw),0,-Math.sin(yaw));desired.set((r.x*x-f.x*z)*5.8,0,(r.z*x-f.z*z)*5.8)}velocity.lerp(desired,smooth);const proximaX=player.position.x+velocity.x*dt;if(!jogadorColideNaPosicao(proximaX,player.position.z)){player.position.x=proximaX}else{velocity.x=0}const proximaZ=player.position.z+velocity.z*dt;if(!jogadorColideNaPosicao(player.position.x,proximaZ)){player.position.z=proximaZ}else{velocity.z=0}player.position.x=THREE.MathUtils.clamp(player.position.x,-100,92);player.position.z=THREE.MathUtils.clamp(player.position.z,-100,100);atualizarFisicaVertical(dt);preencherHitboxJogador(jogadorBoxDebugTemp,player.position.x,player.position.z);const speed=Math.hypot(velocity.x,velocity.z);if(speed>.08){const wanted=Math.atan2(velocity.x,velocity.z);let da=wanted-player.rotation.y;while(da>Math.PI)da-=Math.PI*2;while(da<-Math.PI)da+=Math.PI*2;player.rotation.y+=da*(1-Math.exp(-14*dt));walk+=dt*(6+speed*1.3);const swing=Math.sin(walk)*Math.min(.55,speed*.075);legs[0].rotation.x=swing;legs[1].rotation.x=-swing;arms[0].rotation.x=-swing*.45;arms[1].rotation.x=swing*.45}else{for(const limb of [...legs,...arms])limb.rotation.x*=Math.exp(-12*dt)}const target=new THREE.Vector3(player.position.x,player.position.y+EYE_HEIGHT,player.position.z);const dist=5;const cp=Math.cos(pitch);camGoal.set(target.x+Math.sin(yaw)*dist*cp,player.position.y+2+Math.sin(pitch)*dist,target.z+Math.cos(yaw)*dist*cp);const camGoalSeguro=cameraSemClipping(target,camGoal);camera.position.lerp(camGoalSeguro,camSmooth);lookGoal.lerp(target,camSmooth);camera.lookAt(lookGoal);
+  // Câmera e movimento já calculados acima - só atualizar a câmera aqui
+  const target=new THREE.Vector3(player.position.x,player.position.y+EYE_HEIGHT,player.position.z);const dist=5;const cp=Math.cos(pitch);camGoal.set(target.x+Math.sin(yaw)*dist*cp,player.position.y+2+Math.sin(pitch)*dist,target.z+Math.cos(yaw)*dist*cp);const camGoalSeguro=cameraSemClipping(target,camGoal);camera.position.lerp(camGoalSeguro,camSmooth);lookGoal.lerp(target,camSmooth);camera.lookAt(lookGoal);
 }
 ceu.position.copy(camera.position);horizonte.position.set(camera.position.x,22,camera.position.z);for(const nv of nuvens){nv.position.x+=dt*.6;nv.position.z+=dt*.25;if(nv.position.x>200)nv.position.x-=400;if(nv.position.z>200)nv.position.z-=400}atualizarPlantas();atualizarRadar();atualizarNPCs(dt);atualizarAnimais(dt);if(inventarioAberto){atualizarMiraPlantio();renderizarInventario()}{const ctxA=contextoAtual(),chave=ctxA?ctxA.tipo+(ctxA.planta?ctxA.planta.estagio:''):null;if(chave!==ultimoContextoTipo)renderizarAcoes()}pos.textContent=modoDrone?`🚁 x ${droneX.toFixed(1)} · z ${droneZ.toFixed(1)} · alt ${droneY.toFixed(0)}m`:`x ${player.position.x.toFixed(1)} · z ${player.position.z.toFixed(1)}`;composer.render();requestAnimationFrame(tick)}
 addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);composer.setSize(innerWidth,innerHeight)});tick();
