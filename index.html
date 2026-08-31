@@ -710,6 +710,7 @@ document.addEventListener('pointerlockchange',()=>{
     console.log('Pointer Lock desativado');
   }
 });
+
 const startScreen=document.getElementById('startScreen'),playBtn=document.getElementById('playBtn');
 const gameMenu=document.getElementById('gameMenu'),resumeBtn=document.getElementById('resumeBtn'),settingsBtn=document.getElementById('settingsBtn'),quitBtn=document.getElementById('quitBtn');
 let gameStarted=false,pauseMenuAberto=false;
@@ -731,6 +732,67 @@ function atualizarArmaMira(){
   armaContainer.classList.toggle('visivel',deveMostrarArma);
   document.body.classList.toggle('aiming',mirando);
 }
+
+// Sistema de tiro do jogador
+const balas=[];const BALA_VELOCIDADE=80;const BALA_GRAVIDADE=9.8;let podeAtirar=true;const TIRO_COOLDOWN=0.15;
+
+function atirarJogador(){
+  if(!podeAtirar||!gameStarted||inventarioAberto||pauseMenuAberto||modoDrone)return;
+  podeAtirar=false;
+  setTimeout(()=>podeAtirar=true,TIRO_COOLDOWN*1000);
+  
+  // Criar bala na posição da arma
+  const balaGeo=new THREE.SphereGeometry(0.04,8,8);
+  const balaMat=new THREE.MeshBasicMaterial({color:0xffff00});
+  const bala=new THREE.Mesh(balaGeo,balaMat);
+  
+  // Posição inicial da bala (na ponta do cano)
+  const armaPosicaoGlobal=new THREE.Vector3();
+  armaGroup.getWorldPosition(armaPosicaoGlobal);
+  bala.position.copy(armaPosicaoGlobal);
+  bala.position.y+=0.05;
+  
+  // Direção do tiro baseada na câmera
+  const direcaoTiro=new THREE.Vector3();
+  camera.getWorldDirection(direcaoTiro);
+  direcaoTiro.normalize();
+  
+  bala.userData={velocidade:direcaoTiro.clone().multiplyScalar(BALA_VELOCIDADE),tempoVida:2.0};
+  balas.push(bala);
+  scene.add(bala);
+  
+  // Efeito de recuo da arma
+  if(armaGroup){
+    armaGroup.position.z+=0.08;
+    armaGroup.rotation.x+=0.15;
+  }
+  
+  // Som de tiro (simples oscillator)
+  try{
+    const audioCtx=new(window.AudioContext||window.webkitAudioContext)();
+    const osc=audioCtx.createOscillator();
+    const gain=audioCtx.createGain();
+    osc.type='sawtooth';
+    osc.frequency.setValueAtTime(800,audioCtx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(100,audioCtx.currentTime+0.1);
+    gain.gain.setValueAtTime(0.3,audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01,audioCtx.currentTime+0.1);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime+0.1);
+  }catch(e){}
+}
+
+// Detectar clique do botão esquerdo para atirar
+addEventListener('mousedown',e=>{
+  if(e.button===0&&gameStarted&&!inventarioAberto&&!pauseMenuAberto&&!modoDrone){
+    atirarJogador();
+  }
+  if(e.button===2)keys.Button2=true
+});
+addEventListener('mouseup',e=>{if(e.button===2)keys.Button2=false});
+addEventListener('contextmenu',e=>e.preventDefault());
 
 const clock=new THREE.Clock(),pos=document.getElementById('pos');let walk=0;const velocity=new THREE.Vector3(),desired=new THREE.Vector3(),camGoal=new THREE.Vector3(),lookGoal=new THREE.Vector3();
 function tick(){const dt=Math.min(clock.getDelta(),.05);const smooth=1-Math.exp(-18*dt),camSmooth=1-Math.exp(-7*dt);yaw=THREE.MathUtils.lerp(yaw,targetYaw,1-Math.exp(-12*dt));pitch=THREE.MathUtils.lerp(pitch,targetPitch,1-Math.exp(-12*dt));
@@ -790,7 +852,32 @@ if(modoDrone){
   // Câmera e movimento já calculados acima - só atualizar a câmera aqui
   const target=new THREE.Vector3(player.position.x,player.position.y+EYE_HEIGHT,player.position.z);const dist=5;const cp=Math.cos(pitch);camGoal.set(target.x+Math.sin(yaw)*dist*cp,player.position.y+2+Math.sin(pitch)*dist,target.z+Math.cos(yaw)*dist*cp);const camGoalSeguro=cameraSemClipping(target,camGoal);camera.position.lerp(camGoalSeguro,camSmooth);lookGoal.lerp(target,camSmooth);camera.lookAt(lookGoal);
 }
-ceu.position.copy(camera.position);horizonte.position.set(camera.position.x,22,camera.position.z);for(const nv of nuvens){nv.position.x+=dt*.6;nv.position.z+=dt*.25;if(nv.position.x>200)nv.position.x-=400;if(nv.position.z>200)nv.position.z-=400}atualizarPlantas();atualizarRadar();atualizarNPCs(dt);atualizarAnimais(dt);if(inventarioAberto){atualizarMiraPlantio();renderizarInventario()}{const ctxA=contextoAtual(),chave=ctxA?ctxA.tipo+(ctxA.planta?ctxA.planta.estagio:''):null;if(chave!==ultimoContextoTipo)renderizarAcoes()}pos.textContent=modoDrone?`🚁 x ${droneX.toFixed(1)} · z ${droneZ.toFixed(1)} · alt ${droneY.toFixed(0)}m`:`x ${player.position.x.toFixed(1)} · z ${player.position.z.toFixed(1)}`;composer.render();requestAnimationFrame(tick)}
+ceu.position.copy(camera.position);horizonte.position.set(camera.position.x,22,camera.position.z);for(const nv of nuvens){nv.position.x+=dt*.6;nv.position.z+=dt*.25;if(nv.position.x>200)nv.position.x-=400;if(nv.position.z>200)nv.position.z-=400}atualizarPlantas();atualizarRadar();atualizarNPCs(dt);atualizarAnimais(dt);if(inventarioAberto){atualizarMiraPlantio();renderizarInventario()}{const ctxA=contextoAtual(),chave=ctxA?ctxA.tipo+(ctxA.planta?ctxA.planta.estagio:''):null;if(chave!==ultimoContextoTipo)renderizarAcoes()}pos.textContent=modoDrone?`🚁 x ${droneX.toFixed(1)} · z ${droneZ.toFixed(1)} · alt ${droneY.toFixed(0)}m`:`x ${player.position.x.toFixed(1)} · z ${player.position.z.toFixed(1)}`;
+
+// Atualizar balas do jogador
+for(let i=balas.length-1;i>=0;i--){
+  const bala=balas[i];
+  bala.userData.tempoVida-=dt;
+  if(bala.userData.tempoVida<=0){
+    scene.remove(bala);
+    balas.splice(i,1);
+    continue;
+  }
+  // Aplicar velocidade e gravidade
+  bala.userData.velocidade.y-=BALA_GRAVIDADE*dt;
+  bala.position.add(bala.userData.velocidade.clone().multiplyScalar(dt));
+  
+  // Colisão com NPCs (polícia)
+  for(const npc of npcs){
+    if(npc.mesh.visible&&npc.mesh.position.distanceTo(bala.position)<0.8){
+      // NPC atingido - respawn em outro lugar
+      npc.mesh.position.set(50+Math.random()*30,0,50+Math.random()*30);
+      break;
+    }
+  }
+}
+
+composer.render();requestAnimationFrame(tick)}
 addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);composer.setSize(innerWidth,innerHeight)});tick();
 })();
 </script>
