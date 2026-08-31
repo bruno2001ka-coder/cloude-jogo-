@@ -305,6 +305,9 @@ function receberDanoJogador(dano){
 }
 function renderJogador(){
   jogadorRendido=true;
+  // O colete é apreendido junto: ser rendido é a "morte" deste jogo, e armadura que sobrevive à
+  // rendição deixaria a placa no corpo depois do respawn sem o jogador ter pagado por ela.
+  armaduraJogador=0;inventario.colete=0;atualizarStatusEconomia();
   mostrarAviso('Você foi rendido pela polícia — plantação perdida e multa aplicada.',3400);
   if(policia.alvoPlanta&&!policia.alvoPlanta.colhida)confiscarPlanta(policia.alvoPlanta);
   aplicarMulta(MULTA_RENDICAO);
