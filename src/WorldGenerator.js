@@ -60,11 +60,28 @@ function criarEscadariaViela(casaGrupo,alturaTotal,w=6,d=4.8,lado=1){
   patamar.castShadow=true;patamar.receiveShadow=true;patamar.userData.superficieEscada=true;
   grupoEscada.add(patamar);
   superficiesAndaveis.push(patamar);
+  // Corrimãos: bloco fino colado nas duas bordas da escadaria (do primeiro degrau até o fim do
+  // patamar), registrado como obstáculo DE VERDADE (também vale pro jogador, ao contrário dos
+  // degraus). Sem eles a lateral da escada não tinha colisão nenhuma pro jogador — dava pra
+  // escorregar de lado pra fora da faixa de subida em qualquer ponto do trajeto e atravessar pro
+  // outro lado da parede da casa. Topo igual ao das muretas do telhado (alturaTotal+.5): mesmo
+  // teto já aceito ali pro caso raro do raycast de pouso não achar a laje embaixo do corrimão.
+  const corrimaoZIni=lzInicio,corrimaoZFim=ultimoLz+prof*1.4,corrimaoComprimento=corrimaoZFim-corrimaoZIni;
+  const corrimaoTopo=alturaTotal+.5,corrimaoFundo=-1,corrimaoAltura=corrimaoTopo-corrimaoFundo,corrimaoY=(corrimaoTopo+corrimaoFundo)/2;
+  const corrimaoMat=bmat(0x5c5c5c);
+  for(const bordaX of[lx-largura/2,lx+largura/2]){
+    const corrimao=new THREE.Mesh(new THREE.BoxGeometry(.06,corrimaoAltura,corrimaoComprimento),corrimaoMat);
+    corrimao.position.set(bordaX,corrimaoY,(corrimaoZIni+corrimaoZFim)/2);
+    corrimao.castShadow=true;corrimao.receiveShadow=true;
+    grupoEscada.add(corrimao);
+    registrarObstaculo(corrimao);
+  }
   grupoEscada.updateMatrixWorld(true);
   // Moradores e policiais não sabem subir escada: registrar os degraus como obstáculo de pedestre faz
-  // eles contornarem a escadaria em vez de atravessar os degraus como se não existissem. O jogador não é
-  // afetado (ele testa só `obstaculos`), então continua subindo normalmente.
-  for(const degrau of grupoEscada.children)registrarObstaculoPedestre(degrau);
+  // eles contornarem a escadaria em vez de atravessar os degraus como se não existissem. O jogador
+  // continua subindo normalmente porque os degraus em si não entram em `obstaculos` — só os corrimãos
+  // acima entram, e ficam nas bordas, fora da faixa central por onde ele sobe.
+  for(const degrau of grupoEscada.children)if(degrau.userData.superficieEscada)registrarObstaculoPedestre(degrau);
   return grupoEscada
 }
 export const casasPos=[];// footprints pro radar mostrar o traçado das ruas, não só pontos soltos
