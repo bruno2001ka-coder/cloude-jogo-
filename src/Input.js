@@ -69,7 +69,7 @@ const PITCH_MIN=-.6,PITCH_MAX=.85;
 const limitarPitch=v=>Math.max(PITCH_MIN,Math.min(PITCH_MAX,v));
 export function initDragLook(rendererDomElement){
   rendererDomElement.addEventListener('pointerdown',e=>{
-    drag=true;lastX=e.clientX;lastY=e.clientY;rendererDomElement.setPointerCapture?.(e.pointerId);
+    drag=true;lastX=e.clientX;lastY=e.clientY;
     // No desktop, com o mouse já travado, o clique é tiro — antes só a tecla F atirava, e com o
     // ponteiro travado o cursor nem alcançava o botão 🔫 na tela.
     if(e.pointerType==='mouse'){
@@ -79,6 +79,12 @@ export function initDragLook(rendererDomElement){
       }
       else{try{const p=rendererDomElement.requestPointerLock?.();p?.catch?.(()=>{})}catch(err){}}
     }
+    // A captura de ponteiro serve pro ARRASTE (dedo, ou mouse sem lock): sem ela, arrastar pra fora
+    // do canvas larga o olhar no meio do giro. Com o pointer lock ativo ela não só é inútil — o
+    // navegador já entrega todo evento aqui — como LANÇA InvalidStateError. Sendo a primeira linha
+    // do handler, essa exceção abortava o resto: no PC o botão esquerdo não atirava e o direito não
+    // mirava. Agora fica por último e dentro de try — nada aqui pode derrubar o tiro e a mira.
+    if(!document.pointerLockElement){try{rendererDomElement.setPointerCapture?.(e.pointerId)}catch(err){}}
   });
   // Sem o menu de contexto o botão direito fica livre pra mirar em vez de abrir o menu do navegador.
   rendererDomElement.addEventListener('contextmenu',e=>e.preventDefault());
