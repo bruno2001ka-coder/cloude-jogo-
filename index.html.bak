@@ -494,12 +494,6 @@ function atualizarNPCs(dt){
       if(moveu)npc.grupo.rotation.y=Math.atan2(vx,vz);else{npc.rota=[];npc.alvo=null}
     }
     npc.grupo.position.set(npc.pos.x,obterElevacao(npc.pos.x,npc.pos.z),npc.pos.z);
-    
-    // Atualizar barra de vida para olhar sempre para a câmera
-    if(npc.barraGrupo){
-      npc.barraGrupo.lookAt(camera.position.x, npc.grupo.position.y + 2.2, camera.position.z);
-    }
-    
     if(moveu){npc.caminhando+=dt*7;const balanco=Math.sin(npc.caminhando)*.5;npc.pernas[0].rotation.x=balanco;npc.pernas[1].rotation.x=-balanco;npc.bracos[0].rotation.x=-balanco*.7;npc.bracos[1].rotation.x=balanco*.7}else{npc.pernas[0].rotation.x*=.9;npc.pernas[1].rotation.x*=.9;npc.bracos[0].rotation.x*=.9;npc.bracos[1].rotation.x*=.9}
   }
 }
