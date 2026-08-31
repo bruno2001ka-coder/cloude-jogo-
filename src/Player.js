@@ -5,8 +5,8 @@ import{obterElevacao}from'./Terrain.js';
 import{obstaculos,superficiesAndaveis,caixaColideComObstaculos,buscarPosicaoLivre}from'./Physics.js';
 import{criarSombraContato}from'./Materials.js';
 
-export const EYE_HEIGHT=1.27;
-export const PLAYER_HEIGHT=1.4;
+export const EYE_HEIGHT=0.8;
+export const PLAYER_HEIGHT=0.9;
 export const PLAYER_SCALE=PLAYER_HEIGHT/3.31;
 
 export const player=new THREE.Group();
@@ -57,9 +57,9 @@ export function jogadorColideNaPosicao(x,z){
 // mesmo que um na cabeça. As três zonas abaixo são derivadas de PLAYER_HEIGHT (antes o código de
 // combate usava +1.5 fixo, sendo o personagem 1,4 m — a caixa passava da cabeça).
 const ZONAS_JOGADOR=[
-  {nome:'cabeca',de:.78,ate:1,meia:.20,multiplicador:2},
-  {nome:'tronco',de:.42,ate:.78,meia:.26,multiplicador:1},
-  {nome:'pernas',de:0,ate:.42,meia:.18,multiplicador:.6},
+  {nome:'cabeca',de:.78,ate:1,meia:.14,multiplicador:2},
+  {nome:'tronco',de:.42,ate:.78,meia:.17,multiplicador:1},
+  {nome:'pernas',de:0,ate:.42,meia:.12,multiplicador:.6},
 ];
 const caixasJogador=ZONAS_JOGADOR.map(()=>new THREE.Box3());
 // Reaproveita as mesmas Box3 a cada chamada: montado uma vez por frame por quem consulta (ver Police.js),

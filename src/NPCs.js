@@ -7,9 +7,8 @@ import{bairro}from'./WorldGenerator.js';
 
 function bloco(geo,material,x,y,z,parent){const m=new THREE.Mesh(geo,material);m.position.set(x,y,z);m.castShadow=true;m.receiveShadow=true;parent.add(m);return m}
 
-// Corpo com a largura REAL da silhueta (braços inclusos). Antes era .28, quase metade do corpo — por isso
-// os moradores enterravam ombro e braço dentro da parede ao encostar nela.
-export const PEDESTRE_MEIA_LARG=.45,PEDESTRE_MEIA_PROF=.22,PEDESTRE_ALTURA=1.6;
+// Corpo com a largura REAL da silhueta (braços inclusos). Reduzido para ~1.0m (escala 0.625).
+export const PEDESTRE_MEIA_LARG=.45,PEDESTRE_MEIA_PROF=.22,PEDESTRE_ALTURA=1.0;
 // Alcance do raycast horizontal de antecipação: pouco mais que um passo de 1 s na velocidade máxima.
 const LOOKAHEAD=2.2;
 
