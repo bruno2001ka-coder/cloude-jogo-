@@ -28,7 +28,12 @@ Jogo 3D em Three.js — bairro brasileiro estilizado, com cultivo/economia, bots
 - **4 polos econômicos** (`src/Poles.js`) — cada insumo tem UM ponto de venda, pra o ciclo obrigar a
   travessia do bairro patrulhado: Fazenda (oeste) é a única fonte de vaso e terra, Mercado (centro) a
   única de semente, Loja de Armas (nordeste) vende armas/munição/colete e o Receptador (sudeste) só
-  escoa os pacotes. Os refúgios ficam **dentro** de casas ocas, com porta — esconder-se é entrar.
+  escoa os pacotes.
+- **Esconderijo** (`src/WorldGenerator.js`, `src/Police.js`) — 8 casas comuns da favela são ocas e
+  têm porta que abre e fecha. Esconder-se é **entrar e fechar a porta**: só as duas condições juntas
+  tiram o jogador do radar da polícia e do helicóptero. A porta fechada é colisor de verdade, então
+  também é preciso abri-la pra sair. Aguentar 16 s escondido faz a polícia desistir da busca e zera
+  o nível de procurado (★★★ no HUD), que fora isso só cai um nível por perseguição encerrada.
 - **Cidade no fundo** (`src/Skyline.js`) — anel de 96 prédios em 1 draw call que acompanha a câmera
   como o céu, sem colisão e sem sombra.
 
