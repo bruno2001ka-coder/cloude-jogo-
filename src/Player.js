@@ -52,6 +52,28 @@ export function jogadorColideNaPosicao(x,z){
   return caixaColideComObstaculos(jogadorBoxTemp);
 }
 
+// ===== ZONAS DE ACERTO DO JOGADOR =====
+// Uma AABB única do corpo inteiro é grosseira demais pra um sistema de combate: um tiro no pé vale o
+// mesmo que um na cabeça. As três zonas abaixo são derivadas de PLAYER_HEIGHT (antes o código de
+// combate usava +1.5 fixo, sendo o personagem 1,4 m — a caixa passava da cabeça).
+const ZONAS_JOGADOR=[
+  {nome:'cabeca',de:.78,ate:1,meia:.20,multiplicador:2},
+  {nome:'tronco',de:.42,ate:.78,meia:.26,multiplicador:1},
+  {nome:'pernas',de:0,ate:.42,meia:.18,multiplicador:.6},
+];
+const caixasJogador=ZONAS_JOGADOR.map(()=>new THREE.Box3());
+// Reaproveita as mesmas Box3 a cada chamada: montado uma vez por frame por quem consulta (ver Police.js),
+// nunca por bala — alocar Box3 por bala/por frame vai direto pro coletor de lixo e microtrava o combate.
+export function zonasDeAcertoJogador(){
+  const{x,y,z}=player.position;
+  return ZONAS_JOGADOR.map((zona,i)=>{
+    const caixa=caixasJogador[i];
+    caixa.min.set(x-zona.meia,y+zona.de*PLAYER_HEIGHT,z-zona.meia);
+    caixa.max.set(x+zona.meia,y+zona.ate*PLAYER_HEIGHT,z+zona.meia);
+    return{caixa,multiplicador:zona.multiplicador,nome:zona.nome};
+  });
+}
+
 // Encontra a superfície andável (laje/degrau) ou o terreno mais alto logo abaixo de um ponto X/Z.
 const raycasterVertical=new THREE.Raycaster();const direcaoBaixo=new THREE.Vector3(0,-1,0);const origemVertical=new THREE.Vector3();
 function encontrarSuperficieAbaixo(x,z,yOrigem){origemVertical.set(x,yOrigem,z);raycasterVertical.set(origemVertical,direcaoBaixo);const terrenoY=obterElevacao(x,z);const hits=raycasterVertical.intersectObjects(superficiesAndaveis,true);const suporte=hits.find(hit=>hit.point.y>=terrenoY-.35);let alvo=suporte?Math.max(suporte.point.y,terrenoY):terrenoY;

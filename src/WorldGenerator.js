@@ -4,6 +4,7 @@ import{scene}from'./core.js';
 import{obterElevacao}from'./Terrain.js';
 import{registrarObstaculo,registrarObstaculoPedestre,superficiesAndaveis}from'./Physics.js';
 import{bmat,tijolo,concreto,janela,janelaAcesa,molduraJanela,porta,agua,posteMat,folhaMat,folhaClara,criarSombraContato}from'./Materials.js';
+import{POLOS}from'./Poles.js';
 
 export const bairro=new THREE.Group();scene.add(bairro);
 const coresBairro=[0xb5651d,0x8b4513,0xc77845,0x9b8068,0x6f7773,0xd09a58,0x7d5c46];
@@ -145,6 +146,50 @@ function criarFazenda(cx,cz){
   return{cx,cz,meiaLarg,meiaProf,celeiro:{x:bx,z:bz,meiaLarg:3.3,meiaProf:2.8}};
 }
 export const FAZENDA=criarFazenda(-86,-50);
+
+// ===== BALCÃO DO DEPÓSITO RURAL (polo Fazenda) =====
+// Marca visual de que o celeiro atende: sem isso o jogador chega no ponto de interação e não entende por
+// que apareceu um painel de compra. Puramente decorativo — nada aqui vira obstáculo, o celeiro já é um.
+function criarBalcaoFazenda(x,z){
+  const g=new THREE.Group();const y=obterElevacao(x,z);g.position.set(x,y,z);bairro.add(g);
+  bloco(new THREE.BoxGeometry(2.6,.12,1),bmat(0x7a5a3a),0,.95,0,g);
+  for(const lx of[-1.1,1.1])bloco(new THREE.BoxGeometry(.12,.95,.12),bmat(0x6b4a2f),lx,.48,0,g);
+  bloco(new THREE.BoxGeometry(2.9,.1,1.3),bmat(0x4a3327),0,2.05,-.1,g);
+  for(const lx of[-1.3,1.3])bloco(new THREE.CylinderGeometry(.05,.05,1.05,6),posteMat,lx,1.55,.5,g);
+  // Sacaria empilhada: sinaliza "terra e vaso vendidos aqui" sem precisar de texto no mundo.
+  for(const[sx,sy,sz]of[[-.7,1.14,.05],[-.35,1.14,-.05],[-.52,1.42,0],[.75,1.14,0]])
+    bloco(new THREE.BoxGeometry(.34,.26,.3),bmat(0xc7b184),sx,sy,sz,g);
+  bloco(new THREE.CylinderGeometry(.2,.16,.26,8),bmat(0x8a5a3a),.35,1.14,.1,g);
+  criarSombraContato(1.9,g);
+  return g;
+}
+criarBalcaoFazenda(POLOS.fazenda.x,POLOS.fazenda.z);
+
+// ===== LOJA DE ARMAS (polo Armas, nordeste) =====
+// Barracão de chapa com balcão gradeado e caixotes de munição. A parede é o único obstáculo registrado;
+// o balcão e os caixotes ficam de fora pra não criar bolsões onde o jogador encrava na hora do tiroteio.
+function criarLojaArmas(x,z){
+  const g=new THREE.Group();const y=obterElevacao(x,z);g.position.set(x,y,z);scene.add(g);
+  const chapa=bmat(0x4d5358),chapaEscura=bmat(0x353b40),ferrugem=bmat(0x7a4a34);
+  const parede=bloco(new THREE.BoxGeometry(6.4,3.4,4.6),chapa,0,1.7,-1.6,g);
+  registrarObstaculo(parede);
+  bloco(new THREE.BoxGeometry(6.9,.16,5.1),chapaEscura,0,3.48,-1.6,g);
+  // Marquise laranja sobre o balcão: é a cor do polo no radar, pra o jogador reconhecer de longe.
+  const marquise=bloco(new THREE.BoxGeometry(6.2,.14,2.2),bmat(0xd4762a),0,2.85,1.05,g);
+  marquise.rotation.x=-.12;
+  for(const lx of[-2.7,2.7])bloco(new THREE.CylinderGeometry(.07,.07,2.7,6),posteMat,lx,1.35,1.95,g);
+  bloco(new THREE.BoxGeometry(5.4,.16,1.1),bmat(0x6b6259),0,1,.75,g);
+  bloco(new THREE.BoxGeometry(5.4,.9,.1),chapaEscura,0,.5,.75,g);
+  // Grade do balcão: barras verticais finas, o detalhe que lê como "loja de armas" à distância.
+  for(let i=-5;i<=5;i++)bloco(new THREE.BoxGeometry(.05,.85,.05),posteMat,i*.5,1.5,.75,g);
+  for(const[cx,cy,cz]of[[-2.2,.3,1.9],[-1.75,.3,2.05],[-2,.85,1.95],[2.3,.3,1.85]])
+    bloco(new THREE.BoxGeometry(.6,.5,.5),ferrugem,cx,cy,cz,g);
+  const lampada=new THREE.PointLight(0xffb066,.9,9);lampada.position.set(0,2.6,1);g.add(lampada);
+  bloco(new THREE.SphereGeometry(.09,8,8),new THREE.MeshStandardMaterial({color:0xffd9a0,emissive:0xffb066,emissiveIntensity:1.5}),0,2.6,1,g);
+  criarSombraContato(4,g,0,-.5);
+  return g;
+}
+criarLojaArmas(POLOS.armas.predio.x,POLOS.armas.predio.z);
 export const animais=[];
 function criarAnimal(tipo,x,z){
   const g=new THREE.Group();const y=obterElevacao(x,z);g.position.set(x,y,z);bairro.add(g);
