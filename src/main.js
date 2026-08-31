@@ -3,7 +3,7 @@
 import*as THREE from'three';
 import{camera,renderer,composer}from'./core.js';
 import{EYE_HEIGHT,player,atualizarMovimentoJogador,vigiarTravamento,destravarJogador}from'./Player.js';
-import{droneState,alternarDrone,atualizarCameraDrone,atualizarCameraSeguidora}from'./Camera.js';
+import{droneState,alternarDrone,atualizarCameraDrone,atualizarCameraSeguidora,miraState}from'./Camera.js';
 import{atualizarAmbiente,obterBandaFase}from'./Environment.js';
 import{atualizarAnimais}from'./WorldGenerator.js';
 import{atualizarNPCs}from'./NPCs.js';
@@ -36,7 +36,9 @@ function tick(){
   if(droneState.ativo){
     atualizarCameraDrone(dt,keys,inputState.joyX,inputState.joyY,inputState.yaw,inputState.pitch);
   }else{
-    atualizarMovimentoJogador(dt,keys,inputState.joyX,inputState.joyY,inputState.yaw);
+    // Mirando, anda a 45% da velocidade: é o custo que faz a mira ser uma ESCOLHA (precisão x
+    // mobilidade) e não um bônus grátis que se deixa ligado o tempo todo.
+    atualizarMovimentoJogador(dt,keys,inputState.joyX,inputState.joyY,inputState.yaw,1-.55*miraState.fator);
     // rede de segurança: só conta como "travado" se ele estiver de fato tentando andar
     const querendoAndar=!!(keys.KeyW||keys.KeyA||keys.KeyS||keys.KeyD)||Math.hypot(inputState.joyX,inputState.joyY)>.2;
     vigiarTravamento(dt,querendoAndar);

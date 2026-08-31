@@ -1,16 +1,16 @@
 // Teclado, joystick virtual e olhar por arraste/Pointer Lock. PULAR (tecla ou botão) sobe o drone quando ele está ativo.
 import*as THREE from'three';
 import{pularJogador}from'./Player.js';
-import{droneState,subirDrone}from'./Camera.js';
+import{droneState,subirDrone,miraState}from'./Camera.js';
 import{alternarDebug}from'./UI.js';
-import{trocarArma,definirGatilho}from'./Police.js';
+import{trocarArma,definirGatilho,definirMira}from'./Police.js';
 import{ORDEM_ARMAS}from'./Weapons.js';
 
 export const inputState={yaw:0,targetYaw:0,pitch:.28,targetPitch:.28,joyX:0,joyY:0,joyActive:false,joyId:null};
 export const keys=Object.create(null);
 const keyMap={w:'KeyW',a:'KeyA',s:'KeyS',d:'KeyD',ArrowUp:'KeyW',ArrowLeft:'KeyA',ArrowDown:'KeyS',ArrowRight:'KeyD'};
 // Solta o gatilho junto com as teclas: trocar de aba com F pressionado deixaria o tiro preso ligado.
-const clearKeys=()=>{for(const k in keys)keys[k]=false;definirGatilho(false)};
+const clearKeys=()=>{for(const k in keys)keys[k]=false;definirGatilho(false);definirMira(false)};
 
 function pularOuSubir(){if(droneState.ativo){subirDrone()}else{pularJogador()}}
 
@@ -22,10 +22,14 @@ addEventListener('keydown',e=>{
   // F vira gatilho SEGURADO. O autorrepeat do teclado tem atraso e taxa próprios do sistema, que não
   // têm nada a ver com o cooldown da arma — quem controla a cadência é o loop, não o teclado.
   if(e.code==='KeyF'){definirGatilho(true);e.preventDefault();return}
+  // Mira SEGURADA no teclado (botão direito do mouse faz o mesmo): é o gesto que todo mundo já tem
+  // no dedo em jogo de tiro. No celular o botão 🎯 alterna, porque lá não dá pra segurar dois.
+  if(e.code==='ShiftLeft'||e.code==='ShiftRight'){definirMira(true);e.preventDefault();return}
   const k=keyMap[e.key]||e.code;if(k){keys[k]=true;e.preventDefault()}
 });
 addEventListener('keyup',e=>{
   if(e.code==='KeyF'){definirGatilho(false);return}
+  if(e.code==='ShiftLeft'||e.code==='ShiftRight'){definirMira(false);return}
   const k=keyMap[e.key]||e.code;if(k){keys[k]=false;e.preventDefault()}
 });
 addEventListener('blur',clearKeys);
@@ -56,15 +60,23 @@ export function initDragLook(rendererDomElement){
     // No desktop, com o mouse já travado, o clique é tiro — antes só a tecla F atirava, e com o
     // ponteiro travado o cursor nem alcançava o botão 🔫 na tela.
     if(e.pointerType==='mouse'){
-      if(document.pointerLockElement===rendererDomElement){if(e.button===0)definirGatilho(true)}
+      if(document.pointerLockElement===rendererDomElement){
+        if(e.button===0)definirGatilho(true);
+        if(e.button===2)definirMira(true);// botão direito = mira, como em qualquer jogo de tiro
+      }
       else{try{const p=rendererDomElement.requestPointerLock?.();p?.catch?.(()=>{})}catch(err){}}
     }
   });
-  rendererDomElement.addEventListener('pointermove',e=>{if(document.pointerLockElement===rendererDomElement){inputState.targetYaw-=e.movementX*.0035;inputState.targetPitch=limitarPitch(inputState.targetPitch-e.movementY*.0025)}else if(drag){const dx=e.clientX-lastX,dy=e.clientY-lastY;lastX=e.clientX;lastY=e.clientY;inputState.targetYaw-=dx*.009;inputState.targetPitch=limitarPitch(inputState.targetPitch-dy*.006)}});
+  // Sem o menu de contexto o botão direito fica livre pra mirar em vez de abrir o menu do navegador.
+  rendererDomElement.addEventListener('contextmenu',e=>e.preventDefault());
+  // Mirando, o giro fica 45% mais lento: é o que transforma a mira em precisão de verdade em vez de
+  // só um zoom — sem isso, o mesmo arraste de dedo joga a mira pra longe do alvo com o FOV fechado.
+  const sens=()=>1-.45*miraState.fator;
+  rendererDomElement.addEventListener('pointermove',e=>{if(document.pointerLockElement===rendererDomElement){const s=sens();inputState.targetYaw-=e.movementX*.0035*s;inputState.targetPitch=limitarPitch(inputState.targetPitch-e.movementY*.0025*s)}else if(drag){const s=sens(),dx=e.clientX-lastX,dy=e.clientY-lastY;lastX=e.clientX;lastY=e.clientY;inputState.targetYaw-=dx*.009*s;inputState.targetPitch=limitarPitch(inputState.targetPitch-dy*.006*s)}});
   // Só o mouse solta o gatilho aqui: no celular o tiro é o botão 🔫 (com captura de ponteiro própria),
   // e soltar por qualquer pointerup do canvas cortaria a rajada quando o segundo dedo, o que gira a
   // câmera, saísse da tela.
-  const soltar=e=>{drag=false;if(e.pointerType==='mouse')definirGatilho(false)};
+  const soltar=e=>{drag=false;if(e.pointerType==='mouse'){definirGatilho(false);if(e.button===2||e.type==='pointercancel')definirMira(false)}};
   rendererDomElement.addEventListener('pointerup',soltar);
   rendererDomElement.addEventListener('pointercancel',soltar);
 }

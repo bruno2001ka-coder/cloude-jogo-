@@ -35,6 +35,7 @@ export function caixaColideComObstaculos(box){
   });
 }
 
+
 function colideNaLista(lista,x,z,y,meiaLarg,meiaProf,altura){
   return lista.some(box=>{
     const overlapX=Math.min(box.max.x,x+meiaLarg)-Math.max(box.min.x,x-meiaLarg);

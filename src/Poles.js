@@ -31,7 +31,10 @@ export const POLOS={
 // `qtd` é o tamanho do pacote de munição — cartucho de escopeta vale mais que bala de pistola.
 export const PRECOS={
   fazendaTerra:6,fazendaVaso:8,
-  mercadoVaso:10,mercadoTerra:8,mercadoSemente:34,
+  // Cada insumo tem UM ponto de venda: vaso e terra na fazenda, semente no mercado. Os preços de
+  // vaso/terra no mercado e de semente no receptador saíram junto com os botões — preço sem loja
+  // que o use é a próxima coisa a divergir sem ninguém notar.
+  mercadoSemente:34,
   armas:{
     pistola:{arma:0,municao:35,qtd:12},// arma:0 — já vem com o jogador, nunca aparece à venda
     rifle:{arma:420,municao:60,qtd:15},
@@ -39,5 +42,5 @@ export const PRECOS={
     metralhadora:{arma:780,municao:95,qtd:40},
   },
   armasColete:70,
-  receptadorSemente:25,receptadorPacote:40,
+  receptadorPacote:40,
 };

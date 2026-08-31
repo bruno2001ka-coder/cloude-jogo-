@@ -37,6 +37,12 @@
 /* Mira em cima de um corpo: fica vermelha e abre. É a confirmação de pontaria antes de gastar a bala. */
 #miraCombate.noAlvo{width:34px;height:34px}
 #miraCombate.noAlvo::before,#miraCombate.noAlvo::after{background:rgba(255,60,60,1);box-shadow:0 0 7px rgba(255,0,0,.9)}
+/* Mira FECHADA (modo de mira): a cruz encolhe junto com o cone de dispersão, então o tamanho dela
+   na tela conta a verdade sobre a precisão em vez de ser enfeite. Ponto central marca o eixo. */
+#miraCombate.fechada{width:14px;height:14px}
+#miraCombate.fechada::before,#miraCombate.fechada::after{background:rgba(120,255,170,.95);box-shadow:0 0 5px rgba(0,0,0,.85)}
+#miraCombate.fechada.noAlvo{width:18px;height:18px}
+#miraCombate.fechada.noAlvo::before,#miraCombate.fechada.noAlvo::after{background:rgba(255,60,60,1)}
 #fireBtn{display:none;align-items:center;justify-content:center;position:fixed;z-index:8;right:22px;bottom:152px;width:80px;height:80px;border-radius:50%;border:2px solid #ff8f6b;background:rgba(200,60,30,.88);color:#fff2ea;font-weight:900;font-size:22px;box-shadow:0 8px 24px rgba(0,0,0,.35);touch-action:none;-webkit-tap-highlight-color:transparent;cursor:pointer;user-select:none}
 #fireBtn:active{transform:scale(.92);background:rgba(220,70,35,1)}
 /* Troca de arma: empilhado acima do botão de tiro, na coluna do polegar direito.
@@ -45,6 +51,11 @@
 #armaBtn:active{transform:scale(.92);background:rgba(231,197,104,.95);color:#1b2417}
 #armaIcone{font-size:22px;line-height:1}
 #armaMunicao{font-size:11px;font-weight:800;letter-spacing:.04em}
+/* Modo de mira: alternador do lado do gatilho (o polegar direito não consegue segurar dois botões).
+   Fica à ESQUERDA do botão de tiro pra não competir com o dedo que atira. */
+#miraBtn{display:none;align-items:center;justify-content:center;position:fixed;z-index:8;right:112px;bottom:160px;width:62px;height:62px;border-radius:50%;border:2px solid #7ee0a8;background:rgba(12,38,26,.85);color:#7ee0a8;font-size:24px;box-shadow:0 6px 18px rgba(0,0,0,.35);touch-action:none;-webkit-tap-highlight-color:transparent;cursor:pointer;user-select:none}
+#miraBtn.on{background:rgba(90,220,150,.92);color:#07231a;border-color:#d8ffe9}
+#miraBtn:active{transform:scale(.92)}
 /* DEBUG é ferramenta de desenvolvimento: fica fora da tela do jogador, salvo com ?debug=1 na URL.
    A tecla V continua ligando as caixas de colisão pra quem está desenvolvendo. */
 #debugBtn{display:none}
@@ -70,7 +81,7 @@ body.debug #debugBtn{display:block}
 <canvas id="radar" aria-label="Radar"></canvas>
 <button id="droneBtn" aria-label="Modo drone">🚁</button>
 <button id="destravarBtn" aria-label="Destravar personagem">DESTRAVAR</button>
-<div id="hint">Joystick para andar · arraste para olhar · segure 🔫 pra rajada · toque na arma pra trocar · chegue perto de um ponto de interesse pra ver as ações<br><span style="opacity:.8">🔵 sementes · 🟠 armas · 🟡 fazenda · 🔴 receptador · 🟢 sua muda · 🟥 refúgio</span></div>
+<div id="hint">Joystick para andar · arraste para olhar · segure 🔫 pra rajada · 🎯 mira fechada · toque na arma pra trocar<br><span style="opacity:.8">🔵 sementes · 🟠 armas · 🟡 fazenda · 🔴 receptador · 🟢 sua muda · 🟥 refúgio (entre na casa)</span></div>
 <div id="alertaPolicia">🚁 ALERTA POLICIAL</div>
 <div id="refugioIndicador">🫥 ESCONDIDO</div>
 <div id="avisoPolicia"></div>
@@ -80,6 +91,7 @@ body.debug #debugBtn{display:block}
 <button id="jumpBtn" aria-label="Pular">PULAR</button>
 <button id="fireBtn" aria-label="Atirar">🔫</button>
 <button id="armaBtn" aria-label="Trocar de arma"><span id="armaIcone">🔫</span><span id="armaMunicao">24</span></button>
+<button id="miraBtn" aria-label="Modo de mira">🎯</button>
 <div id="vinheta"></div>
 <div id="danoFlash"></div>
 <script type="module" src="./src/main.js"></script>
