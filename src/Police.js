@@ -1,28 +1,34 @@
-// ===== POLÍCIA: helicóptero patrulha o mapa procurando plantações. Se achar uma e o jogador não estiver
-// por perto pra defender, ela é confiscada (perdida) sem confronto. Se o jogador estiver perto, policiais
-// descem de rapel e começa a troca de tiro — o jogador atira de volta, e esconder-se num refúgio (algumas
-// casas marcadas com marquise vermelha) faz a polícia perder o rastro.
+// ===== POLÍCIA =====
+// Dois motivos pra a polícia descer, e a máquina de estados é a mesma pros dois:
+//   BATIDA  — o helicóptero avista uma muda FLORIDA em sobrevoo e vai confiscar (alvoPlanta ≠ null).
+//   CAÇADA  — o jogador está com ficha suja (procurado > 0) e o alvo é ELE (alvoPlanta = null,
+//             então não há o que confiscar e o desfecho é sempre o confronto).
+// `pontoAlvo` é o destino do helicóptero nos dois casos; quem os distingue é `alvoPlanta`.
+//
+// A ficha só desce dentro do esconderijo (casa da favela com a porta fechada, ver WorldGenerator):
+// fora dele nada limpa, nem fugir nem abater a guarnição inteira. Matar policial soma +1, e a ficha
+// dimensiona a próxima guarnição (2 a 6) — abater todos é o caminho mais rápido pra trazer mais.
 //
 // A máquina de estados é EXPLÍCITA (tabela `ESTADOS` + função `transitar`): antes eram seis `else if`
 // com as transições espalhadas por dentro dos corpos e nenhum ponto único de entrada/saída — o que já
 // tinha custado uma chamada `encerrarEncontro(false)` numa função sem parâmetro e três cópias da rotina
 // de limpeza do encontro.
 //
-//        muda FLORIDA avistada em sobrevoo (raio 20 m) ∧ ¬escondido
+//        muda florida em sobrevoo (BATIDA) ∨ procurado > 0 (CAÇADA), e ¬escondido
 //     ┌──────────┐ ──────────────────────────────────────────► ┌────────┐
 //     │ PATRULHA │ ◄─────────── cooldown 22 s ───┐              │  INDO  │
 //     └──────────┘                                │             └────────┘
-//                                            ┌──────────┐            │ d(heli,planta) < 3
-//          todos abatidos ∨ escondido 4,5 s  │ RECUANDO │            ▼
+//                                            ┌──────────┐            │ d(heli,pontoAlvo) < 3
+//          todos abatidos ∨ escondido 3 s    │ RECUANDO │            ▼
 //          ∨ jogador rendido ───────────────►└──────────┘       ┌──────────┐
 //                                                 ▲             │ PAIRANDO │ (t = 1,2 s)
 //                            ┌────────────────────┤             └──────────┘
 //                            │                    │                  │
 //                            │                    │                  ▼
 //                            │                    │              ┌────────┐
-//                            │                    │              │ RAPEL  │ (t = 1,5 s)
+//                            │                    │              │ RAPEL  │ (t = 1,5 s · 2 a 6 policiais)
 //                            │                    │              └────────┘
-//                            │                    │                  │
+//                            │                    │                  │ caçada → sempre COMBATE
 //                       ┌─────────┐   o jogador se aproxima   ┌──────────────┐
 //                       │ COMBATE │ ◄────────────────────────  │ CONFISCANDO  │ (t = 9 s → confisca)
 //                       └─────────┘                            └──────────────┘
@@ -55,15 +61,23 @@ const PLANTA_DETECTAVEL_ESTAGIO=2;
 const PATRULHA_VIES=.55,PATRULHA_RAIO_VIES=30;
 // Tempo que o heli fica estabilizado sobre a plantação antes de soltar as cordas.
 const PAIRANDO_DURACAO=1.2;
-const RAPEL_DURACAO=1.5,NUM_POLICIAIS=2;
+const RAPEL_DURACAO=1.5;
 const COMBATE_RAIO_ATIVACAO=16;
 const POLICIAL_HP=100,POLICIAL_VELOCIDADE=2,POLICIAL_ALCANCE_TIRO=13,POLICIAL_APROX_MIN=7;
 const POLICIAL_DANO_MIN=10,POLICIAL_DANO_MAX=18,POLICIAL_COOLDOWN_MIN=1.1,POLICIAL_COOLDOWN_MAX=2.1;
-// Esconder-se não é mais proximidade: é estar DENTRO de uma casa-refúgio com a PORTA FECHADA (ver
-// estaEscondido em WorldGenerator). O raio de 2,8 m de antes valia também na viela e na calçada — era
-// o "esconderijo em qualquer lugar". Aguentar escondido este tempo faz a polícia desistir da busca e
-// zera o nível de procurado.
-const ESCONDIDO_PARA_LIMPAR=16;
+// ===== PROCURADO =====
+// A barra SÓ desce dentro do esconderijo (casa da favela com a porta fechada). Fora dele não existe
+// decaimento nenhum: correr não limpa ficha, e é isso que dá função ao esconderijo.
+//   · matar policial              → +1
+//   · a abordagem avançar         → piso de 1 (indo), 2 (confisco) e 3 (combate)
+//   · escondido, a cada 6 s       → −1
+//   · escondido por 3 s           → a guarnição em campo perde o rastro e recua
+//   · saiu com a barra > 0        → a caçada recomeça, agora atrás do JOGADOR
+const PROCURADO_MAX=5;
+const ESCONDIDO_PARA_SUMIR=3,ESCONDIDO_POR_NIVEL=6,CACA_ATRASO=4;
+// Quanto mais alta a ficha, maior a guarnição. Teto de 6 por causa do celular: cada policial é uma
+// malha de 7 blocos, uma barra de vida com CanvasTexture e um A* próprio replanejando.
+function numPoliciaisPara(p){return Math.min(6,2+Math.max(0,p-1))}
 const JOGADOR_HP_MAX=100,JOGADOR_ARMADURA_MAX=100,JOGADOR_REGEN=3;
 // Cadência/dano/alcance agora vêm da ficha da arma equipada (Weapons.js). Sobrou só o custo da troca:
 // o cooldown é global (proximoTiroJogador), então sem ele dava pra escopeta→pistola→escopeta pra
@@ -161,11 +175,13 @@ function zonasDoPolicial(pol){
 }
 
 // ===== Estado da polícia e do jogador =====
-// `procurado` (0..3) é o nível de perseguição: sobe conforme a polícia avança na abordagem e zera
-// quando o jogador aguenta escondido o tempo todo. É o que dá ao esconderijo uma consequência
-// visível em vez de só "a polícia sumiu".
-const policia={estado:'patrulha',alvoPlanta:null,tempoEstado:0,cooldownAte:0,tempoEscondido:0,procurado:0};
-function elevarProcurado(n){if(n>policia.procurado)policia.procurado=Math.min(3,n)}
+// `pontoAlvo` é pra onde o helicóptero vai: a muda, numa batida de plantação, ou o JOGADOR, numa
+// caçada por ficha suja. `alvoPlanta` fica null na caçada — é o que distingue os dois casos, porque
+// só a batida termina em confisco.
+const policia={estado:'patrulha',alvoPlanta:null,pontoAlvo:{x:0,z:0},tempoEstado:0,cooldownAte:0,
+  tempoEscondido:0,tempoNivel:0,retomarCacaEm:0,procurado:0};
+function elevarProcurado(n){if(n>policia.procurado)policia.procurado=Math.min(PROCURADO_MAX,n)}
+function somarProcurado(n){policia.procurado=Math.min(PROCURADO_MAX,policia.procurado+n)}
 const policiais=[];
 const cordas=[];// rope visual durante o rapel
 let saudeJogador=JOGADOR_HP_MAX,armaduraJogador=0,jogadorRendido=false;
@@ -451,11 +467,32 @@ function atingirPolicial(pol,dano){
   pol.hp=Math.max(0,pol.hp-dano);
   pol.barra.definir(pol.hp/POLICIAL_HP);
   pol.barra.mostrar(pol.hp>0);
-  if(pol.hp<=0){pol.vivo=false;pol.caindo=true;pol.quedaT=0;pol.barra.mostrar(false)}
+  if(pol.hp<=0){
+    pol.vivo=false;pol.caindo=true;pol.quedaT=0;pol.barra.mostrar(false);
+    // Matar policial é o que mais suja a ficha — e a ficha é o que dimensiona a próxima guarnição.
+    // Sem esconderijo isso é uma escalada só de ida: cada baixa traz mais gente na volta.
+    somarProcurado(1);
+  }
   if(policiais.every(p=>!p.vivo)){
-    mostrarAviso('Você despistou a polícia! A plantação está a salvo.',3000);
+    mostrarAviso(policia.procurado>=PROCURADO_MAX
+      ?'Guarnição abatida — mas a sua ficha está no topo. Some num esconderijo.'
+      :'Guarnição abatida. Eles vão voltar em maior número — procure um esconderijo.',3400);
     transitar('recuando');
   }
+}
+
+// Para onde o helicóptero está indo. Numa BATIDA o ponto é a muda; numa CAÇADA (ficha suja, sem
+// planta) é o jogador — mas só enquanto ele estiver à vista: escondido, o heli segue pra ÚLTIMA
+// posição conhecida, que é o que faz o esconderijo despistar de verdade em vez de dar imunidade
+// instantânea. Devolve false quando o alvo deixou de existir (muda colhida/confiscada).
+function atualizarPontoAlvo(){
+  if(policia.alvoPlanta){
+    if(policia.alvoPlanta.colhida){transitar('recuando');return false}
+    policia.pontoAlvo.x=policia.alvoPlanta.x;policia.pontoAlvo.z=policia.alvoPlanta.z;
+  }else if(!jogadorEscondido()){
+    policia.pontoAlvo.x=player.position.x;policia.pontoAlvo.z=player.position.z;
+  }
+  return true;
 }
 
 // ===== MÁQUINA DE ESTADOS =====
@@ -472,9 +509,9 @@ const ESTADOS={
     aoEntrar(){
       policia.alvoPlanta=null;
       policia.cooldownAte=performance.now()/1000+COOLDOWN_ENTRE_BUSCAS;
-      // Fugir também esfria a barra, mas um nível de cada vez: esconder-se ZERA de uma vez, e é isso
-      // que faz valer a pena entrar na casa em vez de só correr até a polícia cansar.
-      policia.procurado=Math.max(0,policia.procurado-1);
+      // A ficha NÃO cai aqui. Abater a guarnição, fugir ou perder a muda encerram o encontro, não a
+      // procura: fora do esconderijo o nível só sobe. É o que impede "matar todo mundo" de virar a
+      // estratégia dominante e o que dá função ao esconderijo.
       heliAlvo=sortearWaypointPatrulha();
     },
     aoAtualizar(dt,agora){
@@ -487,8 +524,21 @@ const ESTADOS={
       if(d<3){heliAlvo=sortearWaypointPatrulha()}
       else{heli.position.x+=dx/d*HELI_VELOCIDADE*dt;heli.position.z+=dz/d*HELI_VELOCIDADE*dt;heli.rotation.z=THREE.MathUtils.clamp(-dz/d*.35,-.35,.35);heli.rotation.y=Math.atan2(dx,dz)}
       heli.position.y=THREE.MathUtils.lerp(heli.position.y,HELI_ALTURA,dt*2);
-      if(agora<policia.cooldownAte||jogadorEscondido())return;
-      // Achou por sobrevoo: só enxerga muda florida, e só dentro do raio de detecção.
+      if(jogadorEscondido())return;
+      // CAÇADA: com ficha suja, o alvo é o jogador, e o helicóptero vai direto atrás dele de onde
+      // quer que esteja — não depende de sobrevoo nem de plantação. É o "saiu do esconderijo com
+      // procurado > 0, a polícia volta a procurar". `retomarCacaEm` dá um respiro de alguns segundos
+      // ao sair, senão eles reapareceriam em cima do jogador no mesmo frame em que ele abre a porta.
+      if(policia.procurado>0){
+        if(agora<policia.retomarCacaEm)return;
+        policia.alvoPlanta=null;
+        policia.pontoAlvo.x=player.position.x;policia.pontoAlvo.z=player.position.z;
+        transitar('indo');
+        mostrarAviso('🚁 Sua ficha está suja — a polícia está te caçando.',3200);
+        return;
+      }
+      if(agora<policia.cooldownAte)return;
+      // BATIDA: achou por sobrevoo, só enxerga muda florida e só dentro do raio de detecção.
       for(const p of plantas){
         if(plantaDetectavel(p)&&distXZ(heli.position,p)<DETECCAO_RAIO){
           policia.alvoPlanta=p;
@@ -502,8 +552,8 @@ const ESTADOS={
   indo:{
     aoEntrar(){elevarProcurado(1)},
     aoAtualizar(dt){
-      const alvo=policia.alvoPlanta;
-      if(!alvo||alvo.colhida){transitar('recuando');return}
+      if(!atualizarPontoAlvo())return;
+      const alvo=policia.pontoAlvo;
       const dx=alvo.x-heli.position.x,dz=alvo.z-heli.position.z,d=Math.hypot(dx,dz);
       if(d<APROX_RAIO){transitar('pairando');return}
       heli.position.x+=dx/d*HELI_VELOCIDADE*1.3*dt;heli.position.z+=dz/d*HELI_VELOCIDADE*1.3*dt;
@@ -514,8 +564,8 @@ const ESTADOS={
   // cordas apareciam no mesmo frame — não dava pra ler que ele tinha achado alguma coisa.
   pairando:{
     aoAtualizar(dt){
-      const alvo=policia.alvoPlanta;
-      if(!alvo||alvo.colhida){transitar('recuando');return}
+      if(!atualizarPontoAlvo())return;
+      const alvo=policia.pontoAlvo;
       policia.tempoEstado+=dt;
       // estabiliza exatamente sobre a muda e desinclina, como um helicóptero pairando de verdade
       heli.position.x=THREE.MathUtils.lerp(heli.position.x,alvo.x,1-Math.exp(-4*dt));
@@ -526,10 +576,13 @@ const ESTADOS={
   },
   rapel:{
     aoEntrar(){
-      const alvo=policia.alvoPlanta;
-      for(let i=0;i<NUM_POLICIAIS;i++){
+      const alvo=policia.pontoAlvo;
+      // O tamanho da guarnição sai da ficha: 2 até 1 estrela, +1 por estrela até 6. É o "quanto mais
+      // mata, mais aparecem" — a escalada é consequência das baixas, não um número fixo.
+      const quantos=numPoliciaisPara(policia.procurado);
+      for(let i=0;i<quantos;i++){
         const pol=criarPolicial(i);
-        const ang=(i/NUM_POLICIAIS)*Math.PI*2,raio=2.4;
+        const ang=(i/quantos)*Math.PI*2,raio=2.4;
         // Vector3.set com DOIS argumentos jogava o z no y e deixava z=0: os policiais desciam sempre na
         // faixa z≈0, longe da plantação. É o que fazia a batida parecer que não existia.
         pol.pos.set(alvo.x+Math.cos(ang)*raio,0,alvo.z+Math.sin(ang)*raio);
@@ -548,7 +601,9 @@ const ESTADOS={
       }
       if(t<1)return;
       limparCordas();
-      const perto=distXZ(player.position,policia.alvoPlanta)<=COMBATE_RAIO_ATIVACAO&&!jogadorEscondido();
+      // Sem muda no alvo é CAÇADA: não há o que confiscar, então o desfecho é sempre o confronto.
+      const perto=distXZ(player.position,policia.pontoAlvo)<=COMBATE_RAIO_ATIVACAO&&!jogadorEscondido();
+      if(!policia.alvoPlanta){transitar(perto?'combate':'recuando');if(perto)mostrarAviso('A polícia te encontrou.',2800);return}
       transitar(perto?'combate':'confiscando');
       if(perto)mostrarAviso('A polícia achou sua plantação — defenda com o botão de atirar!',3200);
     }
@@ -557,6 +612,7 @@ const ESTADOS={
     aoEntrar(){elevarProcurado(2)},
     aoAtualizar(dt){
       policia.tempoEstado+=dt;
+      if(!policia.alvoPlanta){transitar('recuando');return}
       if(distXZ(player.position,policia.alvoPlanta)<=COMBATE_RAIO_ATIVACAO&&!jogadorEscondido()){
         transitar('combate');mostrarAviso('A polícia te viu — defenda a plantação!',2800);
       }else if(policia.tempoEstado>=CONFISCO_DURACAO){
@@ -595,20 +651,32 @@ export function atualizarPolicia(dt){
   rotorPrincipal.rotation.y+=dt*26;rotorCauda.rotation.x+=dt*40;
   const pisca=Math.floor(agora*3)%2===0;luzV.material.emissiveIntensity=pisca?1.6:.1;luzA.material.emissiveIntensity=pisca?.1:1.6;
 
-  // ===== CRONÔMETRO DO ESCONDERIJO =====
-  // UM cronômetro, válido em QUALQUER estado — antes a regra só existia dentro do combate, então
-  // esconder-se enquanto o helicóptero ainda estava a caminho não adiantava nada. Aguentar o tempo
-  // todo escondido faz a polícia desistir da busca e zera o nível de procurado.
+  // ===== ESCONDERIJO: o único lugar onde a ficha desce =====
+  // Dois relógios separados, e é a separação que faz a mecânica funcionar:
+  //   tempoEscondido → aos 3 s a guarnição em campo perde o rastro e recua;
+  //   tempoNivel     → a cada 6 s apaga UMA estrela.
+  // Sair antes de zerar deixa ficha, e com ficha a patrulha recomeça a caçada — é o "se ainda tiver
+  // nível de procurado, a polícia volta a procurar".
   const escondido=jogadorEscondido();
   if(escondido){
     policia.tempoEscondido+=dt;
-    if(policia.tempoEscondido>=ESCONDIDO_PARA_LIMPAR&&(policia.estado!=='patrulha'||policia.procurado>0)){
-      policia.tempoEscondido=0;policia.procurado=0;
-      if(policia.estado!=='patrulha'){policia.alvoPlanta=null;transitar('recuando')}
-      else policia.cooldownAte=Math.max(policia.cooldownAte,agora+COOLDOWN_ENTRE_BUSCAS);
-      mostrarAviso('A polícia desistiu da busca — você está limpo.',3000);
+    if(policia.tempoEscondido>=ESCONDIDO_PARA_SUMIR&&policia.estado!=='patrulha'&&policia.estado!=='recuando'){
+      policia.alvoPlanta=null;transitar('recuando');
+      mostrarAviso('Você sumiu — a polícia perdeu o rastro.',2800);
     }
-  }else policia.tempoEscondido=0;
+    if(policia.procurado>0){
+      policia.tempoNivel+=dt;
+      if(policia.tempoNivel>=ESCONDIDO_POR_NIVEL){
+        policia.tempoNivel=0;policia.procurado--;
+        if(policia.procurado===0)mostrarAviso('Ficha limpa. Dá pra sair.',2600);
+      }
+    }else policia.tempoNivel=0;
+  }else{
+    // Ao SAIR, o relógio zera e a caçada ganha alguns segundos de respiro: sem isso o helicóptero
+    // engataria a perseguição no mesmo frame em que a porta abre.
+    if(policia.tempoEscondido>0)policia.retomarCacaEm=agora+CACA_ATRASO;
+    policia.tempoEscondido=0;policia.tempoNivel=0;
+  }
 
   ESTADOS[policia.estado].aoAtualizar(dt,agora);
 
@@ -618,9 +686,11 @@ export function atualizarPolicia(dt){
   // Holofote: em patrulha varre o chão logo abaixo do heli; a partir do momento em que ele acha a
   // plantação, TRAVA na muda. É o sinal visual de "ele te achou" — de graça, já que o SpotLight e o
   // cone do feixe existem desde sempre.
-  const travado=policia.alvoPlanta&&(policia.estado==='indo'||policia.estado==='pairando'||policia.estado==='rapel');
-  const focoX=travado?policia.alvoPlanta.x:heli.position.x;
-  const focoZ=travado?policia.alvoPlanta.z:heli.position.z;
+  // Trava no PONTO ALVO, não na muda: numa caçada esse ponto é o jogador, então o facho passa a
+  // seguir quem está sendo procurado — é a leitura visual de "eles estão atrás de você".
+  const travado=policia.estado==='indo'||policia.estado==='pairando'||policia.estado==='rapel';
+  const focoX=travado?policia.pontoAlvo.x:heli.position.x;
+  const focoZ=travado?policia.pontoAlvo.z:heli.position.z;
   const chaoAbaixo=obterElevacao(focoX,focoZ);
   holofoteAlvo.position.set(focoX,chaoAbaixo,focoZ);
   const alturaFeixe=heli.position.y-chaoAbaixo;
@@ -633,11 +703,13 @@ export function atualizarPolicia(dt){
   const emAlerta=policia.estado!=='patrulha';
   // Nível de procurado em estrelas: o jogador precisa VER a barra subir pra entender que se esconder
   // serviu pra alguma coisa. Escrito só quando muda, pelo mesmo motivo do cache da munição.
-  const chaveAlerta=`${policia.procurado}|${emAlerta}`;
+  const chaveAlerta=`${policia.procurado}|${emAlerta}|${policiais.length}`;
   if(chaveAlerta!==alertaCache){
     alertaCache=chaveAlerta;
     alertaEl.style.display=(emAlerta||policia.procurado>0)?'block':'none';
-    alertaEl.textContent=`🚁 PROCURADO ${'★'.repeat(policia.procurado)}${'☆'.repeat(3-policia.procurado)}`;
+    const vivos=policiais.filter(p=>p.vivo).length;
+    alertaEl.textContent=`🚁 PROCURADO ${'★'.repeat(policia.procurado)}${'☆'.repeat(PROCURADO_MAX-policia.procurado)}`
+      +(vivos?` · 👮${vivos}`:'');
   }
   // O indicador conta a diferença entre "dentro da casa" e "escondido de verdade": dentro com a porta
   // ABERTA não esconde ninguém, e sem esse aviso o jogador acharia que o esconderijo está quebrado.
@@ -646,7 +718,11 @@ export function atualizarPolicia(dt){
   else{
     refugioEl.style.display='block';
     if(refugioAqui.aberta)refugioEl.textContent='🚪 FECHE A PORTA PRA SE ESCONDER';
-    else refugioEl.textContent=`🫥 ESCONDIDO · ${Math.max(0,Math.ceil(ESCONDIDO_PARA_LIMPAR-policia.tempoEscondido))}s`;
+    else if(policia.procurado>0)
+      // Mostra quanto falta pra PRÓXIMA estrela cair, não pra ficha inteira: é a informação que o
+      // jogador usa pra decidir se dá pra sair agora ou se compensa esperar mais um pouco.
+      refugioEl.textContent=`🫥 ESCONDIDO · ${'★'.repeat(policia.procurado)} cai em ${Math.max(0,Math.ceil(ESCONDIDO_POR_NIVEL-policia.tempoNivel))}s`;
+    else refugioEl.textContent='🫥 ESCONDIDO · ficha limpa';
   }
   const emCombate=policia.estado==='combate';
   const temArma=inventario.municao[idArmaEquipada()]>0;
