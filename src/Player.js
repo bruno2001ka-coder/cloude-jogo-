@@ -3,7 +3,7 @@ import*as THREE from'three';
 import{scene}from'./core.js';
 import{obterElevacao}from'./Terrain.js';
 import{obstaculos,superficiesAndaveis,caixaColideComObstaculos,buscarPosicaoLivre}from'./Physics.js';
-import{criarSombraContato}from'./Materials.js';
+import{criarSombraContato,coleteMat,coleteFaixaMat}from'./Materials.js';
 
 export const EYE_HEIGHT=0.8;
 export const PLAYER_HEIGHT=0.9;
@@ -12,6 +12,30 @@ export const PLAYER_SCALE=PLAYER_HEIGHT/3.31;
 export const player=new THREE.Group();
 const skin=new THREE.MeshStandardMaterial({color:0xc79067,roughness:.55}),shirt=new THREE.MeshStandardMaterial({color:0x202b27,roughness:.75}),pants=new THREE.MeshStandardMaterial({color:0x495744,roughness:.85});
 const body=new THREE.Mesh(new THREE.BoxGeometry(1.05,1.55,.62),shirt);body.position.y=1.65;body.castShadow=true;body.receiveShadow=true;player.add(body);const head=new THREE.Mesh(new THREE.BoxGeometry(.7,.7,.66),skin);head.position.y=2.8;head.castShadow=true;head.receiveShadow=true;player.add(head);const faceMat=new THREE.MeshStandardMaterial({color:0x171712,roughness:.8,flatShading:true});for(const x of [-.13,.13]){const eye=new THREE.Mesh(new THREE.BoxGeometry(.11,.12,.045),faceMat);eye.position.set(x,2.88,.345);eye.castShadow=true;eye.receiveShadow=true;player.add(eye)}const mouth=new THREE.Mesh(new THREE.BoxGeometry(.24,.055,.04),faceMat);mouth.position.set(0,2.68,.348);mouth.castShadow=true;mouth.receiveShadow=true;player.add(mouth);const hair=new THREE.Mesh(new THREE.BoxGeometry(.74,.18,.69),new THREE.MeshStandardMaterial({color:0x171712,roughness:.8,flatShading:true}));hair.position.y=3.22;hair.castShadow=true;hair.receiveShadow=true;player.add(hair);const legs=[],arms=[];for(const x of [-.27,.27]){const leg=new THREE.Mesh(new THREE.BoxGeometry(.25,1.05,.3),pants);leg.position.set(x,.55,0);leg.castShadow=true;leg.receiveShadow=true;player.add(leg);legs.push(leg)}for(const x of [-.7,.7]){const arm=new THREE.Mesh(new THREE.BoxGeometry(.25,1.1,.3),skin);arm.position.set(x,1.72,0);arm.castShadow=true;arm.receiveShadow=true;player.add(arm);arms.push(arm)}criarSombraContato(.85,player);player.scale.setScalar(PLAYER_SCALE);player.position.set(0,obterElevacao(0,8),8);scene.add(player);
+
+// ===== COLETE À PROVA DE BALAS (só visual) =====
+// Grupo próprio em vez de meshes soltas no player: a visibilidade liga/desliga num único .visible, e o
+// colete nunca se mistura com os membros animados (legs/arms) nem com a mão que segura a arma.
+// É PURAMENTE cosmético — não entra em ZONAS_JOGADOR nem na hitbox, que continuam derivadas das medidas
+// do corpo; o dano/armadura é contabilizado pelo combate, que só chama definirColeteVisivel().
+// Medidas em unidades CRUAS (antes do PLAYER_SCALE), como o resto do boneco: um bloco 1.10x.95x.70
+// (o corpo é 1.05x1.55x.62) centrado em y=1.95, ou seja, colado por FORA do tronco e terminando exatamente
+// na linha dos ombros (topo do corpo = 2.425) — sobra a barriga à mostra, que é como colete tático parece.
+const colete=new THREE.Group();colete.visible=false;
+{
+  const placa=new THREE.Mesh(new THREE.BoxGeometry(1.10,.95,.70),coleteMat);placa.position.y=1.95;colete.add(placa);
+  // Ombreiras: dois blocos atravessando o ombro. Puro sinal de leitura à distância — com a câmera no
+  // ombro o tronco escuro sobre camisa escura quase não muda de silhueta sem elas.
+  for(const x of [-.33,.33]){const om=new THREE.Mesh(new THREE.BoxGeometry(.24,.14,.76),coleteFaixaMat);om.position.set(x,2.44,0);colete.add(om)}
+  // Faixa frontal clara na altura do peito, levemente à frente da placa pra não brigar por z-fighting.
+  const faixa=new THREE.Mesh(new THREE.BoxGeometry(1.12,.13,.02),coleteFaixaMat);faixa.position.set(0,1.72,.36);colete.add(faixa);
+  for(const m of colete.children){m.castShadow=true;m.receiveShadow=true}
+}
+player.add(colete);
+// API mínima pro combate/save: quem decide se o jogador ESTÁ com colete é a economia (inventario.colete),
+// não este módulo — daí só expormos o liga/desliga em vez de ler estado de fora.
+export function definirColeteVisivel(v){colete.visible=!!v}
+export function coleteEstaVisivel(){return colete.visible}
 
 // ===== MÃO QUE SEGURA A ARMA =====
 // As armas (Weapons.js) são penduradas aqui pra acompanharem a animação de caminhada sem código

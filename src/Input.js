@@ -4,32 +4,45 @@ import{pularJogador}from'./Player.js';
 import{droneState,subirDrone,miraState}from'./Camera.js';
 import{alternarDebug}from'./UI.js';
 import{trocarArma,definirGatilho,definirMira}from'./Police.js';
+import{acaoPrimaria,alternarInventario}from'./Economy.js';
 import{ORDEM_ARMAS}from'./Weapons.js';
 
-export const inputState={yaw:0,targetYaw:0,pitch:.28,targetPitch:.28,joyX:0,joyY:0,joyActive:false,joyId:null};
+// ===== SENSIBILIDADE (mexa AQUI pra deixar a câmera mais rápida/lenta) =====
+// Positivo = comportamento NORMAL (não invertido). rad por pixel de movimento do mouse.
+export const SENSIBILIDADE_MOUSE=.0035;      // giro horizontal (yaw) com pointer lock
+export const SENSIBILIDADE_MOUSE_VERTICAL=.0025;// giro vertical (pitch) com pointer lock
+export const SENSIBILIDADE_TOQUE=.009,SENSIBILIDADE_TOQUE_VERTICAL=.006;// arraste de dedo/mouse sem lock
+
+export const inputState={yaw:0,targetYaw:0,pitch:.28,targetPitch:.28,joyX:0,joyY:0,joyActive:false,joyId:null,correndo:false};
 export const keys=Object.create(null);
 const keyMap={w:'KeyW',a:'KeyA',s:'KeyS',d:'KeyD',ArrowUp:'KeyW',ArrowLeft:'KeyA',ArrowDown:'KeyS',ArrowRight:'KeyD'};
 // Solta o gatilho junto com as teclas: trocar de aba com F pressionado deixaria o tiro preso ligado.
-const clearKeys=()=>{for(const k in keys)keys[k]=false;definirGatilho(false);definirMira(false)};
+// Solta também a corrida: se o Shift ficar "preso" ao trocar de aba, o jogador voltaria correndo sozinho.
+const clearKeys=()=>{for(const k in keys)keys[k]=false;inputState.correndo=false;definirGatilho(false);if(document.pointerLockElement)definirMira(false)};
 
 function pularOuSubir(){if(droneState.ativo){subirDrone()}else{pularJogador()}}
 
 addEventListener('keydown',e=>{
+  if(e.repeat&&(e.code==='KeyE'||e.code==='KeyQ'||e.code==='KeyX'||e.code==='Tab'))return;// autorrepeat abriria/fecharia o inventário em loop
   if(e.code==='Space'){pularOuSubir();e.preventDefault();return}
   if(e.code==='KeyV'){alternarDebug();return}
-  if(e.code==='KeyQ'){trocarArma();return}
+  // E = ação de mundo (colher planta, abrir/fechar porta). Não toca em mira nem gatilho: dá pra agir mirando.
+  if(e.code==='KeyE'){acaoPrimaria();e.preventDefault();return}
+  // Q = inventário (padrão de jogo moderno). A troca de arma foi pra Tab/X e pra rodinha do mouse.
+  if(e.code==='KeyQ'){alternarInventario();e.preventDefault();return}
+  if(e.code==='Tab'||e.code==='KeyX'){trocarArma();e.preventDefault();return}
   if(e.code.startsWith('Digit')){const n=+e.code.slice(5);if(n>=1&&n<=4){trocarArma(ORDEM_ARMAS[n-1]);return}}
   // F vira gatilho SEGURADO. O autorrepeat do teclado tem atraso e taxa próprios do sistema, que não
   // têm nada a ver com o cooldown da arma — quem controla a cadência é o loop, não o teclado.
   if(e.code==='KeyF'){definirGatilho(true);e.preventDefault();return}
-  // Mira SEGURADA no teclado (botão direito do mouse faz o mesmo): é o gesto que todo mundo já tem
-  // no dedo em jogo de tiro. No celular o botão 🎯 alterna, porque lá não dá pra segurar dois.
-  if(e.code==='ShiftLeft'||e.code==='ShiftRight'){definirMira(true);e.preventDefault();return}
+  // Shift = CORRER (estilo COD). A mira saiu daqui e ficou só no botão direito do mouse / botão 🎯,
+  // que é onde a mão já está — assim o Shift volta a ser sprint como em qualquer jogo de tiro.
+  if(e.code==='ShiftLeft'||e.code==='ShiftRight'){inputState.correndo=true;e.preventDefault();return}
   const k=keyMap[e.key]||e.code;if(k){keys[k]=true;e.preventDefault()}
 });
 addEventListener('keyup',e=>{
   if(e.code==='KeyF'){definirGatilho(false);return}
-  if(e.code==='ShiftLeft'||e.code==='ShiftRight'){definirMira(false);return}
+  if(e.code==='ShiftLeft'||e.code==='ShiftRight'){inputState.correndo=false;return}
   const k=keyMap[e.key]||e.code;if(k){keys[k]=false;e.preventDefault()}
 });
 addEventListener('blur',clearKeys);
@@ -72,7 +85,15 @@ export function initDragLook(rendererDomElement){
   // Mirando, o giro fica 45% mais lento: é o que transforma a mira em precisão de verdade em vez de
   // só um zoom — sem isso, o mesmo arraste de dedo joga a mira pra longe do alvo com o FOV fechado.
   const sens=()=>1-.45*miraState.fator;
-  rendererDomElement.addEventListener('pointermove',e=>{if(document.pointerLockElement===rendererDomElement){const s=sens();inputState.targetYaw-=e.movementX*.0035*s;inputState.targetPitch=limitarPitch(inputState.targetPitch-e.movementY*.0025*s)}else if(drag){const s=sens(),dx=e.clientX-lastX,dy=e.clientY-lastY;lastX=e.clientX;lastY=e.clientY;inputState.targetYaw-=dx*.009*s;inputState.targetPitch=limitarPitch(inputState.targetPitch-dy*.006*s)}});
+  // SINAIS (checados contra a matemática de Camera.js, não no chute):
+  // yaw: a câmera fica em (sin yaw,cos yaw)*dist atrás da cabeça, então o olhar é -(sin yaw,cos yaw) e
+  //   d(olhar)/d(yaw) aponta pra ESQUERDA — logo yaw DECRESCENTE vira pra direita: `-= movementX` está certo.
+  // pitch: camGoal.y = alvo.y + sin(pitch)*dist, ou seja pitch POSITIVO ergue a câmera e olha PRA BAIXO.
+  //   Mouse pra cima dá movementY NEGATIVO e tem que olhar pra cima, isto é, DIMINUIR o pitch →
+  //   o certo é `+= movementY`. O `-=` de antes era o eixo vertical invertido.
+  rendererDomElement.addEventListener('pointermove',e=>{if(document.pointerLockElement===rendererDomElement){const s=sens();inputState.targetYaw-=e.movementX*SENSIBILIDADE_MOUSE*s;inputState.targetPitch=limitarPitch(inputState.targetPitch+e.movementY*SENSIBILIDADE_MOUSE_VERTICAL*s)}else if(drag){const s=sens(),dx=e.clientX-lastX,dy=e.clientY-lastY;lastX=e.clientX;lastY=e.clientY;inputState.targetYaw-=dx*SENSIBILIDADE_TOQUE*s;inputState.targetPitch=limitarPitch(inputState.targetPitch+dy*SENSIBILIDADE_TOQUE_VERTICAL*s)}});
+  // Rodinha do mouse troca de arma: a mão direita nunca sai do mouse durante o tiroteio.
+  rendererDomElement.addEventListener('wheel',e=>{if(document.pointerLockElement===rendererDomElement){trocarArma();e.preventDefault()}},{passive:false});
   // Só o mouse solta o gatilho aqui: no celular o tiro é o botão 🔫 (com captura de ponteiro própria),
   // e soltar por qualquer pointerup do canvas cortaria a rajada quando o segundo dedo, o que gira a
   // câmera, saísse da tela.
@@ -81,7 +102,25 @@ export function initDragLook(rendererDomElement){
   rendererDomElement.addEventListener('pointercancel',soltar);
 }
 
+// A suavização existe pro modo normal (mouse/dedo em passos grandes ficam serrilhados sem ela), mas na
+// MIRA ela vira atraso: o cano segue a mão com meio frame de sobra e a cruz "puxa" em vez de parar no
+// alvo. Então a constante sobe de 12 pra 60 conforme a mira fecha — a 60 o lerp já converge dentro do
+// próprio frame, ou seja, na mira cheia o giro é 1:1 com o mouse, sem tremida.
+const SUAVIZACAO_NORMAL=12,SUAVIZACAO_MIRA=60;
 export function atualizarSuavizacaoInput(dt){
-  inputState.yaw=THREE.MathUtils.lerp(inputState.yaw,inputState.targetYaw,1-Math.exp(-12*dt));
-  inputState.pitch=THREE.MathUtils.lerp(inputState.pitch,inputState.targetPitch,1-Math.exp(-12*dt));
+  const k=SUAVIZACAO_NORMAL+(SUAVIZACAO_MIRA-SUAVIZACAO_NORMAL)*miraState.fator;
+  const a=1-Math.exp(-k*dt);
+  inputState.yaw=THREE.MathUtils.lerp(inputState.yaw,inputState.targetYaw,a);
+  inputState.pitch=THREE.MathUtils.lerp(inputState.pitch,inputState.targetPitch,a);
+  // Mira quase cheia: crava o valor. Sobra de lerp é o que faz a cruz "escorregar" depois que a mão parou.
+  if(miraState.fator>.92){inputState.yaw=inputState.targetYaw;inputState.pitch=inputState.targetPitch}
+}
+
+// Multiplicador de velocidade de andar. Exportado (em vez de calculado no main.js) porque quem sabe se o
+// Shift está segurado é o Input. Correr é desligado enquanto mira: ninguém corre de arma no olho.
+export const VEL_CORRIDA=1.7,VEL_MIRA=.45;
+export function fatorVelocidadeDesejado(){
+  const f=miraState.fator;
+  const base=inputState.correndo&&f<.15?VEL_CORRIDA:1;
+  return base+(VEL_MIRA-base)*f;
 }

@@ -23,9 +23,12 @@ const FOV_NORMAL=58,FOV_MIRA=38;
 
 const camGoal=new THREE.Vector3(),lookGoal=new THREE.Vector3(),alvoTemp=new THREE.Vector3(),ladoTemp=new THREE.Vector3();
 export function atualizarCameraSeguidora(dt,playerPos,yaw,pitch,eyeHeight){
-  const camSmooth=1-Math.exp(-7*dt);
   miraState.fator+=((miraState.ativo?1:0)-miraState.fator)*(1-Math.exp(-12*dt));
   const f=miraState.fator;
+  // Na mira a câmera para de "perseguir": o lerp de posição a 7/s é ótimo pra terceira pessoa solta,
+  // mas com o FOV em 38° ele vira aquele arrasto de meio segundo atrás do mouse. Subindo pra 45/s a
+  // câmera assenta dentro do frame — mira firme, sem tremer e sem puxar. Fora da mira nada muda.
+  const camSmooth=1-Math.exp(-(7+38*f)*dt);
   // Tudo dimensionado pela altura do olho, não em metros soltos: quando o personagem encolheu de
   // 1,4 m pra 0,9 m, a distância fixa de 5 m e o "+2" de altura viraram uma câmera de helicóptero —
   // é o enquadramento distante e de cima que aparece no print.

@@ -2,16 +2,17 @@
 // que roda como efeito colateral de topo de módulo, igual à IIFE original) e roda o loop principal.
 import*as THREE from'three';
 import{camera,renderer,composer}from'./core.js';
-import{EYE_HEIGHT,player,atualizarMovimentoJogador,vigiarTravamento,destravarJogador}from'./Player.js';
-import{droneState,alternarDrone,atualizarCameraDrone,atualizarCameraSeguidora,miraState}from'./Camera.js';
+import{EYE_HEIGHT,player,atualizarMovimentoJogador,vigiarTravamento,destravarJogador,definirColeteVisivel}from'./Player.js';
+import{droneState,alternarDrone,atualizarCameraDrone,atualizarCameraSeguidora}from'./Camera.js';
 import{atualizarAmbiente,obterBandaFase}from'./Environment.js';
 import{atualizarAnimais,atualizarRefugios}from'./WorldGenerator.js';
 import{atualizarNPCs}from'./NPCs.js';
 import{atualizarPlantas,atualizarMiraPlantio,isInventarioAberto,renderizarInventario,contextoAtual,chaveContexto,getUltimoContextoTipo,renderizarAcoes}from'./Economy.js';
 import{atualizarRadar,atualizarDebugNavMesh}from'./UI.js';
-import{atualizarPolicia,atualizarTiroContinuo}from'./Police.js';
-import{inputState,keys,initDragLook,atualizarSuavizacaoInput}from'./Input.js';
+import{atualizarPolicia,atualizarTiroContinuo,jogadorComColete}from'./Police.js';
+import{inputState,keys,initDragLook,atualizarSuavizacaoInput,fatorVelocidadeDesejado}from'./Input.js';
 import{atualizarSkyline}from'./Skyline.js';
+import{carregar,atualizarSave,instalarSalvamentoAoSair,saveDisponivel}from'./Save.js';
 
 camera.position.set(0,EYE_HEIGHT,16);
 initDragLook(renderer.domElement);
@@ -28,6 +29,14 @@ const startScreen=document.getElementById('startScreen'),playBtn=document.getEle
 // traz ele de volta sem precisar mexer no código.
 if(new URLSearchParams(location.search).has('debug'))document.body.classList.add('debug');
 
+// ===== CARGA DO SAVE =====
+// Depois de TODOS os imports: o mundo, a economia e as armas já existem neste ponto, e é neles que o
+// save escreve. Carregar antes seria escrever em cima de estado que o módulo ainda vai inicializar.
+// Sem save, `carregar()` devolve false e o jogo começa do zero — sem caso especial nenhum.
+if(carregar())console.info('Quintal 3D: progresso carregado.');
+else if(!saveDisponivel())console.info('Quintal 3D: sem armazenamento — o progresso não será salvo.');
+instalarSalvamentoAoSair();
+
 const clock=new THREE.Clock(),pos=document.getElementById('pos');
 const faseIcone=document.getElementById('faseIcone');let bandaAnteriorHud=null;const ICONES_FASE={noite:'🌙',nascer:'🌅',dia:'🌞',por:'🌇'};
 function tick(){
@@ -36,9 +45,9 @@ function tick(){
   if(droneState.ativo){
     atualizarCameraDrone(dt,keys,inputState.joyX,inputState.joyY,inputState.yaw,inputState.pitch);
   }else{
-    // Mirando, anda a 45% da velocidade: é o custo que faz a mira ser uma ESCOLHA (precisão x
-    // mobilidade) e não um bônus grátis que se deixa ligado o tempo todo.
-    atualizarMovimentoJogador(dt,keys,inputState.joyX,inputState.joyY,inputState.yaw,1-.55*miraState.fator);
+    // Correr (Shift) e mirar (botão direito) são os dois multiplicadores de velocidade, e quem sabe
+    // o estado das duas teclas é o Input — por isso o fator vem de lá pronto.
+    atualizarMovimentoJogador(dt,keys,inputState.joyX,inputState.joyY,inputState.yaw,fatorVelocidadeDesejado());
     // rede de segurança: só conta como "travado" se ele estiver de fato tentando andar
     const querendoAndar=!!(keys.KeyW||keys.KeyA||keys.KeyS||keys.KeyD)||Math.hypot(inputState.joyX,inputState.joyY)>.2;
     vigiarTravamento(dt,querendoAndar);
@@ -54,6 +63,11 @@ function tick(){
   if(isInventarioAberto()){atualizarMiraPlantio();renderizarInventario()}
   {const chave=chaveContexto(contextoAtual());if(chave!==getUltimoContextoTipo())renderizarAcoes()}
   pos.textContent=droneState.ativo?`🚁 x ${droneState.x.toFixed(1)} · z ${droneState.z.toFixed(1)} · alt ${droneState.y.toFixed(0)}m`:`x ${player.position.x.toFixed(1)} · z ${player.position.z.toFixed(1)}`;
+  // O colete acompanha o estado de combate (armadura equipada ou coletes no bolso). Escrever .visible
+  // por frame é barato; o que não pode é reconstruir a malha, que é justamente por que ela nasce
+  // pronta e escondida no Player.
+  definirColeteVisivel(jogadorComColete());
+  atualizarSave(dt);
   composer.render();
   requestAnimationFrame(tick);
 }
