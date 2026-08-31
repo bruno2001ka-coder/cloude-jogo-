@@ -39,12 +39,19 @@ python -m http.server 8000
 
 Depois abra `http://localhost:8000/`.
 
-## Publicar no GitHub Pages
+## Publicar
 
-```bash
-git remote add origin https://github.com/SEU_USUARIO/SEU_REPOSITORIO.git
-git branch -M main
-git push -u origin main
-```
+O jogo está no ar em **https://bruno2001ka-coder.github.io/cloude-jogo-/**, publicado pelo GitHub
+Pages a cada push na `main` — o workflow é o [`.github/workflows/static.yml`](.github/workflows/static.yml),
+que sobe o repositório inteiro como conteúdo estático. Não há build: o jogo é só HTML, módulos ES e
+um `.hdr`, e o Pages já serve tudo com o `Content-Type` correto (que é o que os módulos ES exigem).
 
-Depois, no GitHub: **Settings → Pages → Source: Deploy from a branch → Branch: main / (root)**. O jogo fica disponível em `https://SEU_USUARIO.github.io/SEU_REPOSITORIO/`.
+A origem do Pages precisa estar em **Settings → Pages → Source: GitHub Actions**. Se for trocada
+para "Deploy from a branch", o workflow para de publicar.
+
+### Fly.io (legado, fora de uso)
+
+O `Dockerfile`, o `fly.toml` e o `.dockerignore` são de uma tentativa anterior de hospedar no Fly.io
+e **não estão em uso** — o deploy vivo é o GitHub Pages. Para um site estático o container só
+acrescenta uma etapa de build que pode falhar, sem nenhum ganho. Os arquivos ficam aqui caso um dia
+o jogo passe a precisar de servidor.
