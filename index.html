@@ -241,7 +241,71 @@ function criarEscadariaViela(casaGrupo,alturaTotal,w=6,d=4.8,lado=1){
   return grupoEscada
 }
 const casasPos=[];// footprints pro radar mostrar o traçado das ruas, não só pontos soltos
-function casaBairro(x,z,w=6,d=6,h=3,cor=0xd87957,tipo=0,registrar=true,ladoEscada=0,corTelhado=0x888888){const g=new THREE.Group();const terrenoY=obterElevacao(x,z);g.position.set(x,terrenoY,z);g.rotation.y=z>0?Math.PI:0;g.userData={bairroCasa:true,cor,tipo};bairro.add(g);const fachada=bmat(cor);const paredeMesh=bloco(new THREE.BoxGeometry(w,h,d),fachada,0,h/2,0,g);const frente=new THREE.Mesh(new THREE.BoxGeometry(w*.7,.1,.04),concreto);frente.position.set(0,.08,d/2+.025);frente.castShadow=true;frente.receiveShadow=true;g.add(frente);const doorHeight=2.1;bloco(new THREE.BoxGeometry(.95,doorHeight,.08),porta,0,doorHeight/2,d/2+.07,g);for(const xx of [-w*.27,w*.27]){bloco(new THREE.BoxGeometry(1.22,1.02,.05),molduraJanela,xx,h*.56,d/2+.05,g);bloco(new THREE.BoxGeometry(1.05,.85,.06),Math.random()<.22?janelaAcesa:janela,xx,h*.56,d/2+.12,g);bloco(new THREE.BoxGeometry(1.18,.07,.08),concreto,xx,h*.56,d/2+.20,g)}const laje=bloco(new THREE.BoxGeometry(w+.12,.12,d+.12),bmat(corTelhado),0,h+.06,0,g);superficiesAndaveis.push(laje);const muretaY=h+.12+.25;const muretas=[bloco(new THREE.BoxGeometry(w+.12,.5,.12),bmat(corTelhado),0,muretaY,d/2,g),bloco(new THREE.BoxGeometry(w+.12,.5,.12),bmat(corTelhado),0,muretaY,-d/2,g)];if(ladoEscada!==1)muretas.push(bloco(new THREE.BoxGeometry(.12,.5,d+.12),bmat(corTelhado),w/2,muretaY,0,g));if(ladoEscada!==-1)muretas.push(bloco(new THREE.BoxGeometry(.12,.5,d+.12),bmat(corTelhado),-w/2,muretaY,0,g));g.userData.muretas=muretas;casasPos.push({x,z,w,d});if(tipo===2){const sacada=bloco(new THREE.BoxGeometry(w*.62,.12,.75),concreto,0,h*.62,d/2+.42,g);for(const xx of [-w*.3,-w*.1,w*.1,w*.3])bloco(new THREE.BoxGeometry(.05,.8,.05),posteMat,xx,h*.62+.38,d/2+.73,g)}if(tipo!==1){const tank=bloco(new THREE.CylinderGeometry(.38,.38,.62,10),agua,w*.22,h+.55,-d*.12,g);tank.castShadow=true}g.userData.paredeMesh=paredeMesh;if(registrar){registrarObstaculo(paredeMesh);muretas.forEach(registrarObstaculo)}return g}
+const portasAbertas=new Set(); // controle de portas abertas
+function casaBairro(x,z,w=6,d=6,h=3,cor=0xd87957,tipo=0,registrar=true,ladoEscada=0,corTelhado=0x888888){
+  const g=new THREE.Group();
+  const terrenoY=obterElevacao(x,z);
+  g.position.set(x,terrenoY,z);
+  g.rotation.y=z>0?Math.PI:0;
+  g.userData={bairroCasa:true,cor,tipo};
+  bairro.add(g);
+  
+  const fachada=bmat(cor);
+  const paredeMesh=bloco(new THREE.BoxGeometry(w,h,d),fachada,0,h/2,0,g);
+  const frente=new THREE.Mesh(new THREE.BoxGeometry(w*.7,.1,.04),concreto);
+  frente.position.set(0,.08,d/2+.025);
+  frente.castShadow=true;
+  frente.receiveShadow=true;
+  g.add(frente);
+  
+  // Porta com sistema de abertura
+  const doorHeight=2.1;
+  const portaGrupo = new THREE.Group();
+  portaGrupo.position.set(0,doorHeight/2,d/2+.07);
+  const portaMesh = bloco(new THREE.BoxGeometry(.95,doorHeight,.08),porta,0,0,0,portaGrupo);
+  portaMesh.userData.ehPorta = true;
+  portaGrupo.userData = {
+    ehPortaGrupo: true,
+    aberta: false,
+    anguloAtual: 0,
+    anguloAlvo: 0,
+    casaX: x,
+    casaZ: z
+  };
+  g.add(portaGrupo);
+  
+  // Adicionar maçaneta
+  const macaneta = bloco(new THREE.SphereGeometry(0.04, 8, 8), new THREE.MeshStandardMaterial({color: 0xffd700, metalness: 0.8, roughness: 0.2}), 0.35, 0, 0.04, portaGrupo);
+  
+  for(const xx of [-w*.27,w*.27]){
+    bloco(new THREE.BoxGeometry(1.22,1.02,.05),molduraJanela,xx,h*.56,d/2+.05,g);
+    bloco(new THREE.BoxGeometry(1.05,.85,.06),Math.random()<.22?janelaAcesa:janela,xx,h*.56,d/2+.12,g);
+    bloco(new THREE.BoxGeometry(1.18,.07,.08),concreto,xx,h*.56,d/2+.20,g)
+  }
+  
+  const laje=bloco(new THREE.BoxGeometry(w+.12,.12,d+.12),bmat(corTelhado),0,h+.06,0,g);
+  superficiesAndaveis.push(laje);
+  const muretaY=h+.12+.25;
+  const muretas=[bloco(new THREE.BoxGeometry(w+.12,.5,.12),bmat(corTelhado),0,muretaY,d/2,g),bloco(new THREE.BoxGeometry(w+.12,.5,.12),bmat(corTelhado),0,muretaY,-d/2,g)];
+  if(ladoEscada!==1)muretas.push(bloco(new THREE.BoxGeometry(.12,.5,d+.12),bmat(corTelhado),w/2,muretaY,0,g));
+  if(ladoEscada!==-1)muretas.push(bloco(new THREE.BoxGeometry(.12,.5,d+.12),bmat(corTelhado),-w/2,muretaY,0,g));
+  g.userData.muretas=muretas;
+  casasPos.push({x,z,w,d});
+  if(tipo===2){
+    const sacada=bloco(new THREE.BoxGeometry(w*.62,.12,.75),concreto,0,h*.62,d/2+.42,g);
+    for(const xx of [-w*.3,-w*.1,w*.1,w*.3])bloco(new THREE.BoxGeometry(.05,.8,.05),posteMat,xx,h*.62+.38,d/2+.73,g)
+  }
+  if(tipo!==1){
+    const tank=bloco(new THREE.CylinderGeometry(.38,.38,.62,10),agua,w*.22,h+.55,-d*.12,g);
+    tank.castShadow=true
+  }
+  g.userData.paredeMesh=paredeMesh;
+  if(registrar){
+    registrarObstaculo(paredeMesh);
+    muretas.forEach(registrarObstaculo)
+  }
+  return g
+}
 function sobrado(x,z,w,d,h,cor,ladoEscada=0,corTelhado=0x888888){const g=casaBairro(x,z,w,d,h,cor,2,true,ladoEscada,corTelhado);const up=casaBairro(x,z,w*.86,d*.82,h*.72,cor===tijolo.color?.getHex?.()?0xd87957:0xe8c45d,1,false,0,corTelhado);up.position.y=obterElevacao(x,z)+h+.18;registrarObstaculo(up.userData.paredeMesh);up.userData.muretas.forEach(registrarObstaculo);return g}
 function arvore(x,z,s=1){const g=new THREE.Group();g.position.set(x,0,z);bairro.add(g);bloco(new THREE.CylinderGeometry(.16*s,.22*s,1.5*s,6),posteMat,0,.75*s,0,g);
   const clusters=[[0,1.8,0],[-.45,1.55,0],[.45,1.55,0],[0,1.55,.45],[0,1.55,-.42]];
@@ -388,7 +452,26 @@ function criarNPC(corRoupa,corPele){
   const pernas=[-.14,.14].map(lx=>bloco(new THREE.BoxGeometry(.13,.55,.16),calcaNpc,lx,.29,0,g));
   const bracos=[-.37,.37].map(lx=>bloco(new THREE.BoxGeometry(.13,.58,.16),skinNpc,lx,.9,0,g));
   g.scale.setScalar(escalaEscolhida);
-  return{grupo:g,pernas,bracos,pos:new THREE.Vector3(),alvo:null,rota:[],corredorAtual:null,velocidade:1.4+Math.random()*.6,caminhando:Math.random()*10};
+  
+  // Barra de vida do NPC
+  const barraGrupo = new THREE.Group();
+  barraGrupo.position.y = 2.2;
+  const barraFundoGeo = new THREE.PlaneGeometry(0.6, 0.08);
+  const barraFundoMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.5 });
+  const barraFundo = new THREE.Mesh(barraFundoGeo, barraFundoMat);
+  barraFundo.rotation.x = -Math.PI / 2;
+  barraGrupo.add(barraFundo);
+  
+  const barraVidaGeo = new THREE.PlaneGeometry(0.56, 0.06);
+  const barraVidaMat = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+  const barraVida = new THREE.Mesh(barraVidaGeo, barraVidaMat);
+  barraVida.rotation.x = -Math.PI / 2;
+  barraVida.position.z = 0.001;
+  barraGrupo.add(barraVida);
+  
+  g.add(barraGrupo);
+  
+  return{grupo:g,pernas,bracos,pos:new THREE.Vector3(),alvo:null,rota:[],corredorAtual:null,velocidade:1.4+Math.random()*.6,caminhando:Math.random()*10,vida:100,maxVida:100,barraVida:barraVida,barraGrupo:barraGrupo};
 }
 for(let i=0;i<8;i++){const wp=waypointsVielas[Math.floor(Math.random()*waypointsVielas.length)];const npc=criarNPC(CORES_ROUPA_NPC[i%CORES_ROUPA_NPC.length],CORES_PELE_NPC[i%CORES_PELE_NPC.length]);npc.pos.set(wp.x,0,wp.z);npc.corredorAtual=corredorDoPonto(wp);npcs.push(npc)}
 function escolherProximoAlvo(npc){
@@ -466,6 +549,25 @@ function criarEsconderijo(x,z){
   const lampada=new THREE.PointLight(0xffb066,1.1,7);lampada.position.set(0,2,1.4);g.add(lampada);
   bloco(new THREE.SphereGeometry(.09,8,8),new THREE.MeshStandardMaterial({color:0xffcf8a,emissive:0xffb066,emissiveIntensity:1.4}),0,2,1.4,g);
   bloco(new THREE.CylinderGeometry(.28,.32,.5,8),bmat(0x4a4034),1.6,.25,1.2,g);
+  
+  // Adicionar porta ao esconderijo
+  const portaEsconderijoGrupo = new THREE.Group();
+  portaEsconderijoGrupo.position.set(0, 1.05, 1.25);
+  const portaEsconderijoMesh = bloco(new THREE.BoxGeometry(0.85, 2.0, 0.06), porta, 0, 0, 0, portaEsconderijoGrupo);
+  portaEsconderijoMesh.userData.ehPorta = true;
+  portaEsconderijoGrupo.userData = {
+    ehPortaGrupo: true,
+    aberta: false,
+    anguloAtual: 0,
+    anguloAlvo: 0,
+    casaX: x,
+    casaZ: z
+  };
+  g.add(portaEsconderijoGrupo);
+  
+  // Maçaneta da porta do esconderijo
+  bloco(new THREE.SphereGeometry(0.035, 8, 8), new THREE.MeshStandardMaterial({color: 0xffd700, metalness: 0.8, roughness: 0.2}), 0.3, 0, 0.03, portaEsconderijoGrupo);
+  
   criarSombraContato(2.2,g,0,.2);
   registrarObstaculo(parede);
   return g;
@@ -852,7 +954,7 @@ if(modoDrone){
   // Câmera e movimento já calculados acima - só atualizar a câmera aqui
   const target=new THREE.Vector3(player.position.x,player.position.y+EYE_HEIGHT,player.position.z);const dist=5;const cp=Math.cos(pitch);camGoal.set(target.x+Math.sin(yaw)*dist*cp,player.position.y+2+Math.sin(pitch)*dist,target.z+Math.cos(yaw)*dist*cp);const camGoalSeguro=cameraSemClipping(target,camGoal);camera.position.lerp(camGoalSeguro,camSmooth);lookGoal.lerp(target,camSmooth);camera.lookAt(lookGoal);
 }
-ceu.position.copy(camera.position);horizonte.position.set(camera.position.x,22,camera.position.z);for(const nv of nuvens){nv.position.x+=dt*.6;nv.position.z+=dt*.25;if(nv.position.x>200)nv.position.x-=400;if(nv.position.z>200)nv.position.z-=400}atualizarPlantas();atualizarRadar();atualizarNPCs(dt);atualizarAnimais(dt);if(inventarioAberto){atualizarMiraPlantio();renderizarInventario()}{const ctxA=contextoAtual(),chave=ctxA?ctxA.tipo+(ctxA.planta?ctxA.planta.estagio:''):null;if(chave!==ultimoContextoTipo)renderizarAcoes()}pos.textContent=modoDrone?`🚁 x ${droneX.toFixed(1)} · z ${droneZ.toFixed(1)} · alt ${droneY.toFixed(0)}m`:`x ${player.position.x.toFixed(1)} · z ${player.position.z.toFixed(1)}`;
+ceu.position.copy(camera.position);horizonte.position.set(camera.position.x,22,camera.position.z);for(const nv of nuvens){nv.position.x+=dt*.6;nv.position.z+=dt*.25;if(nv.position.x>200)nv.position.x-=400;if(nv.position.z>200)nv.position.z-=400}atualizarPlantas();atualizarRadar();atualizarNPCs(dt);atualizarAnimais(dt);atualizarPortas();if(inventarioAberto){atualizarMiraPlantio();renderizarInventario()}{const ctxA=contextoAtual(),chave=ctxA?ctxA.tipo+(ctxA.planta?ctxA.planta.estagio:''):null;if(chave!==ultimoContextoTipo)renderizarAcoes()}pos.textContent=modoDrone?`🚁 x ${droneX.toFixed(1)} · z ${droneZ.toFixed(1)} · alt ${droneY.toFixed(0)}m`:`x ${player.position.x.toFixed(1)} · z ${player.position.z.toFixed(1)}`;
 
 // Atualizar balas do jogador
 for(let i=balas.length-1;i>=0;i--){
@@ -869,15 +971,145 @@ for(let i=balas.length-1;i>=0;i--){
   
   // Colisão com NPCs (polícia)
   for(const npc of npcs){
-    if(npc.mesh.visible&&npc.mesh.position.distanceTo(bala.position)<0.8){
-      // NPC atingido - respawn em outro lugar
-      npc.mesh.position.set(50+Math.random()*30,0,50+Math.random()*30);
+    if(npc.grupo.visible && Math.hypot(npc.pos.x - bala.position.x, npc.pos.z - bala.position.z) < 0.8){
+      // NPC atingido - dano
+      npc.vida -= 25;
+      
+      // Atualizar barra de vida
+      const escalaVida = Math.max(0, npc.vida / npc.maxVida);
+      npc.barraVida.scale.x = escalaVida;
+      
+      // Mudar cor da barra baseado na vida
+      if(npc.vida > 50){
+        npc.barraVida.material.color.setHex(0x00ff00);
+      } else if(npc.vida > 25){
+        npc.barraVida.material.color.setHex(0xffff00);
+      } else {
+        npc.barraVida.material.color.setHex(0xff0000);
+      }
+      
+      // Se morreu, respawn em outro lugar
+      if(npc.vida <= 0){
+        npc.vida = npc.maxVida;
+        npc.barraVida.scale.x = 1;
+        npc.barraVida.material.color.setHex(0x00ff00);
+        npc.pos.set(50+Math.random()*30, 0, 50+Math.random()*30);
+      }
       break;
     }
   }
 }
 
 composer.render();requestAnimationFrame(tick)}
+
+// Sistema de portas - abrir quando jogador está perto
+function atualizarPortas(){
+  for(const casaObj of casasPos){
+    const distPlayer = Math.hypot(player.position.x - casaObj.x, player.position.z - (casaObj.z + 3));
+    if(distPlayer < 2.5){
+      // Jogador está perto da porta - abrir
+      const portaGrupo = bairro.children.find(c => 
+        c.userData?.bairroCasa && 
+        Math.abs(c.position.x - casaObj.x) < 0.1 && 
+        Math.abs(c.position.z - casaObj.z) < 0.1
+      )?.children?.find(c => c.userData?.ehPortaGrupo);
+      
+      if(portaGrupo && !portaGrupo.userData.aberta){
+        portaGrupo.userData.aberta = true;
+        portaGrupo.userData.anguloAlvo = -Math.PI / 3; // 60 graus aberto
+      }
+    } else {
+      // Jogador está longe - fechar suavemente
+      const portaGrupo = bairro.children.find(c => 
+        c.userData?.bairroCasa && 
+        Math.abs(c.position.x - casaObj.x) < 0.1 && 
+        Math.abs(c.position.z - casaObj.z) < 0.1
+      )?.children?.find(c => c.userData?.ehPortaGrupo);
+      
+      if(portaGrupo && portaGrupo.userData.aberta){
+        portaGrupo.userData.aberta = false;
+        portaGrupo.userData.anguloAlvo = 0;
+      }
+    }
+    
+    // Animar todas as portas
+    bairro.traverse(obj => {
+      if(obj.userData?.ehPortaGrupo){
+        const anguloAtual = obj.rotation.y;
+        const anguloAlvo = obj.userData.anguloAlvo;
+        const diff = anguloAlvo - anguloAtual;
+        obj.rotation.y += diff * 0.1; // Suavização
+      }
+    });
+  }
+}
+
+// Sistema de salvamento do jogo
+function salvarJogo(){
+  const saveData = {
+    playerPos: {x: player.position.x, y: player.position.y, z: player.position.z},
+    playerYaw: player.rotation.y,
+    inventario: inventario,
+    plantasColhidas: plantas.filter(p => p.colhida).map(p => ({x: p.x, z: p.z, estagio: p.estagio})),
+    progresso: {
+      dinheiro: dinheiro,
+      totalVendas: totalVendas
+    },
+    timestamp: Date.now()
+  };
+  localStorage.setItem('quintal3d_save', JSON.stringify(saveData));
+  console.log('Jogo salvo!');
+}
+
+function carregarJogo(){
+  const saved = localStorage.getItem('quintal3d_save');
+  if(saved){
+    try{
+      const data = JSON.parse(saved);
+      if(data.playerPos){
+        player.position.set(data.playerPos.x, data.playerPos.y, data.playerPos.z);
+      }
+      if(data.playerYaw !== undefined){
+        player.rotation.y = data.playerYaw;
+        yaw = data.playerYaw;
+        targetYaw = data.playerYaw;
+      }
+      if(data.inventario){
+        inventario = {...data.inventario};
+      }
+      if(data.progresso){
+        dinheiro = data.progresso.dinheiro || 0;
+        totalVendas = data.progresso.totalVendas || 0;
+      }
+      console.log('Jogo carregado!');
+      return true;
+    }catch(e){
+      console.error('Erro ao carregar jogo:', e);
+    }
+  }
+  return false;
+}
+
+// Adicionar botão de salvar no HUD
+const saveBtn = document.createElement('button');
+saveBtn.id = 'saveBtn';
+saveBtn.textContent = '💾 SALVAR';
+saveBtn.style.cssText = 'position:fixed;z-index:9;top:14px;left:220px;padding:8px 12px;border-radius:8px;border:1px solid #e7c568;background:rgba(231,197,104,.3);color:#e7c568;font-size:11px;font-weight:800;letter-spacing:.06em;cursor:pointer';
+saveBtn.addEventListener('click', salvarJogo);
+document.body.appendChild(saveBtn);
+
+// Auto-save a cada 30 segundos
+setInterval(() => {
+  if(gameStarted && !pauseMenuAberto){
+    salvarJogo();
+  }
+}, 30000);
+
+// Carregar jogo ao iniciar
+window.addEventListener('load', () => {
+  carregarJogo();
+});
+
 addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);composer.setSize(innerWidth,innerHeight)});tick();
 })();
 </script>
