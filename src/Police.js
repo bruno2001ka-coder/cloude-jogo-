@@ -38,7 +38,7 @@ import{colidePedestre}from'./NPCs.js';
 import{plantas,confiscarPlanta,aplicarMulta,inventario,atualizarStatusEconomia,isInventarioAberto}from'./Economy.js';
 import{dispararBala,atualizarBalas,limparBalas}from'./Bullets.js';
 import{aplicarDano,renderizarVidaJogador,criarBarraMundo}from'./HealthBar.js';
-import{droneState}from'./Camera.js';
+import{droneState,miraState}from'./Camera.js';
 
 const HELI_ALTURA=38,HELI_VELOCIDADE=12,MAPA_LIMITE=95;
 // Raio de detecção dimensionado pra funcionar em SOBREVOO, agora que o heli não vai mais direto na
@@ -59,7 +59,10 @@ const RAPEL_DURACAO=1.5,NUM_POLICIAIS=2;
 const COMBATE_RAIO_ATIVACAO=16;
 const POLICIAL_HP=100,POLICIAL_VELOCIDADE=2,POLICIAL_ALCANCE_TIRO=13,POLICIAL_APROX_MIN=7;
 const POLICIAL_DANO_MIN=10,POLICIAL_DANO_MAX=18,POLICIAL_COOLDOWN_MIN=1.1,POLICIAL_COOLDOWN_MAX=2.1;
-const REFUGIO_RAIO=3.2,REFUGIO_TEMPO=4.5;
+// O ponto de refúgio agora é o MIOLO da casa (ela é oca e tem porta — ver WorldGenerator), então o
+// raio cobre o interior e um passo à frente da porta, em vez dos 3,2 m de quando o ponto ficava na
+// calçada e bastava encostar na fachada pra "sumir".
+const REFUGIO_RAIO=2.8,REFUGIO_TEMPO=4.5;
 const JOGADOR_HP_MAX=100,JOGADOR_ARMADURA_MAX=100,JOGADOR_REGEN=3;
 // Cadência/dano/alcance agora vêm da ficha da arma equipada (Weapons.js). Sobrou só o custo da troca:
 // o cooldown é global (proximoTiroJogador), então sem ele dava pra escopeta→pistola→escopeta pra
@@ -169,7 +172,7 @@ const alertaEl=document.getElementById('alertaPolicia'),
   fireBtn=document.getElementById('fireBtn'),danoFlash=document.getElementById('danoFlash'),
   avisoPolicia=document.getElementById('avisoPolicia'),municaoEl=document.getElementById('municaoHud'),
   armaBtn=document.getElementById('armaBtn'),armaIconeEl=document.getElementById('armaIcone'),
-  armaMunicaoEl=document.getElementById('armaMunicao');
+  armaMunicaoEl=document.getElementById('armaMunicao'),miraBtn=document.getElementById('miraBtn');
 function atualizarHudSaude(){renderizarVidaJogador(saudeJogador,JOGADOR_HP_MAX,armaduraJogador,JOGADOR_ARMADURA_MAX)}
 // A munição também muda por COMPRA (na Economy, que não conhece este módulo). Em vez de acoplar os dois,
 // o HUD observa o valor e só redesenha quando ele muda de fato — nada de escrever no DOM por frame.
@@ -387,8 +390,11 @@ export function atirar(){
   encararDirecao(_dirCamera.x,_dirCamera.z);
   const boca=obterBocaDaArma();
   _dirTiro.copy(visado).sub(boca).normalize();
-  // Um cartucho, N chumbos: cada projétil sai do mesmo cano com desvio próprio dentro do cone.
-  for(let i=0;i<arma.projeteis;i++)dispararBala(boca,direcaoComDispersao(_dirTiro,arma.dispersao,_dirChumbo),true);
+  // Mirando, o cone fecha pra 30%: é a recompensa concreta de parar pra mirar em vez de sair
+  // atirando andando. A escopeta continua espalhando (30% de 5° ainda é 1,5°), só que muito mais
+  // fechada — o que a torna utilizável a média distância sem deixar de ser escopeta.
+  const cone=arma.dispersao*(1-.7*miraState.fator);
+  for(let i=0;i<arma.projeteis;i++)dispararBala(boca,direcaoComDispersao(_dirTiro,cone,_dirChumbo),true);
 }
 // ===== Gatilho segurado =====
 // Antes era um tiro por toque: com cooldown de 0,28 s (e 0,11 s da metralhadora) isso exigia martelar
@@ -621,11 +627,21 @@ export function atualizarPolicia(dt){
     // pontaria (mira vermelha grande em cima do corpo) que antes não existia.
     resolverPontoVisado(armaEquipada().alcance);
     miraCombateEl.classList.toggle('noAlvo',miraNoAlvo);
+    // Mira FECHADA no modo de mira: a cruz encolhe junto com o cone de dispersão, então o tamanho
+    // dela na tela conta a verdade sobre a precisão em vez de ser enfeite.
+    miraCombateEl.classList.toggle('fechada',miraState.ativo);
   }
   // O botão aparece quando há munição pra gastar OU polícia em campo: senão o jogador nunca via que
   // existe arma no jogo. Fora do combate ele fica esmaecido, indicando que não há em quem atirar.
   fireBtn.style.display=(emAlerta||temArma)?'flex':'none';
   fireBtn.style.opacity=emCombate&&temArma?'1':'.45';
+  // O botão de mira acompanha o de tiro: mirar sem ter em que atirar não faz sentido. Fica DEPOIS de
+  // fireBtn.style.display ser escrito, senão copiaria o valor do frame anterior.
+  if(miraBtn){
+    miraBtn.classList.toggle('on',miraState.ativo);
+    miraBtn.style.display=fireBtn.style.display;
+    if(!podeMirar&&miraState.ativo)miraState.ativo=false;// entrou no drone/inventário mirando
+  }
   // Com uma arma só, o botão de troca seria um no-op comendo espaço de polegar: só aparece com 2+.
   if(armaBtn){
     const temTroca=ORDEM_ARMAS.filter(id=>inventario.armas[id]).length>1;
@@ -643,5 +659,10 @@ fireBtn?.addEventListener('pointerdown',e=>{
 for(const ev of['pointerup','pointercancel','pointerleave','lostpointercapture'])fireBtn?.addEventListener(ev,()=>definirGatilho(false));
 addEventListener('blur',()=>definirGatilho(false));// alt-tab com o dedo/tecla presos
 armaBtn?.addEventListener('pointerdown',e=>{e.preventDefault();trocarArma()});
+// Mira no celular é ALTERNADOR, não "segurar": o polegar direito já está ocupado com o gatilho, e
+// segurar os dois ao mesmo tempo é o que não dá pra fazer numa tela. No teclado/mouse é segurar
+// (ver Input.js), que é o gesto esperado ali.
+miraBtn?.addEventListener('pointerdown',e=>{e.preventDefault();miraState.ativo=!miraState.ativo});
+export function definirMira(v){miraState.ativo=v}
 
 export{heli,policiais,policia};

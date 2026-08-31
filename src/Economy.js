@@ -204,13 +204,13 @@ export function renderizarAcoes(){
   const ctx=contextoAtual(),tipo=ctx?ctx.tipo:null;
   acaoPanel.innerHTML='';
   if(tipo==='loja'){
-    // Mercado de Sementes (centro do bairro): caro, porém seguro e no caminho de tudo.
-    botaoLoja(`Comprar Vaso (R$${PRECOS.mercadoVaso})`,PRECOS.mercadoVaso,()=>comprar('vaso',PRECOS.mercadoVaso));
-    botaoLoja(`Comprar Terra (R$${PRECOS.mercadoTerra})`,PRECOS.mercadoTerra,()=>comprar('terra',PRECOS.mercadoTerra));
+    // Mercado de Sementes: o ÚNICO ponto de semente do mapa. Vaso e terra saíram daqui de propósito —
+    // com os dois polos vendendo tudo, dava pra fechar o ciclo inteiro sem sair do centro e a
+    // travessia do bairro patrulhado, que é o miolo do risco do jogo, virava opcional.
     botaoLoja(`Comprar Semente (R$${PRECOS.mercadoSemente})`,PRECOS.mercadoSemente,()=>comprar('semente',PRECOS.mercadoSemente));
     acaoPanel.style.display='flex';
   }else if(tipo==='fazenda'){
-    // Depósito Rural (oeste, longe): o insumo na fonte, pelo menor preço do mapa.
+    // Depósito Rural (oeste, longe): a ÚNICA fonte de vaso e terra.
     botaoLoja(`Comprar Terra (R$${PRECOS.fazendaTerra})`,PRECOS.fazendaTerra,()=>comprar('terra',PRECOS.fazendaTerra));
     botaoLoja(`Comprar Vaso (R$${PRECOS.fazendaVaso})`,PRECOS.fazendaVaso,()=>comprar('vaso',PRECOS.fazendaVaso));
     acaoPanel.style.display='flex';
@@ -226,7 +226,8 @@ export function renderizarAcoes(){
     botaoLoja(`🛡 Colete (R$${PRECOS.armasColete})`,PRECOS.armasColete,()=>comprar('colete',PRECOS.armasColete));
     acaoPanel.style.display='flex';
   }else if(tipo==='receptador'){
-    botaoLoja(`Comprar Semente Rara (R$${PRECOS.receptadorSemente})`,PRECOS.receptadorSemente,()=>comprar('semente',PRECOS.receptadorSemente));
+    // Só ESCOAMENTO. A venda de semente saiu daqui pra semente ter um ponto único (o Mercado): com
+    // dois pontos vendendo, o receptador virava atalho e o trajeto até o centro deixava de existir.
     const b2=document.createElement('button');b2.textContent=`Vender ${inventario.pacote} pacote(s) (+R$${inventario.pacote*PRECOS.receptadorPacote})`;b2.disabled=inventario.pacote<=0;b2.onclick=venderPacotes;acaoPanel.appendChild(b2);
     acaoPanel.style.display='flex';
   }else if(tipo==='planta'){

@@ -2,9 +2,12 @@
 import*as THREE from'three';
 import{scene}from'./core.js';
 import{obterElevacao}from'./Terrain.js';
-import{registrarObstaculo,registrarObstaculoPedestre,superficiesAndaveis}from'./Physics.js';
+import{registrarObstaculo,superficiesAndaveis}from'./Physics.js';
 import{bmat,tijolo,concreto,janela,janelaAcesa,molduraJanela,porta,agua,posteMat,folhaMat,folhaClara,criarSombraContato}from'./Materials.js';
 import{POLOS}from'./Poles.js';
+// O degrau da escadaria é derivado do step-up do jogador: um número solto aqui viraria escada
+// intransponível na primeira vez que a altura do personagem mudasse.
+import{ALTURA_DEGRAU}from'./Player.js';
 
 export const bairro=new THREE.Group();scene.add(bairro);
 const coresBairro=[0xb5651d,0x8b4513,0xc77845,0x9b8068,0x6f7773,0xd09a58,0x7d5c46];
@@ -15,22 +18,37 @@ const ESCADA_LARGURA=1,ESCADA_MARGEM=.03;
 
 function bloco(geo,material,x,y,z,parent=bairro){const m=new THREE.Mesh(geo,material);m.position.set(x,y,z);m.castShadow=true;m.receiveShadow=true;parent.add(m);return m}
 
+// ===== ESCADARIA DE VIELA =====
 // Escada exterior colada na parede lateral (eixo X local da casa), filha do grupo da casa.
 // lado=+1 encosta no lado +X local, lado=-1 no lado -X local; a subida acompanha o eixo Z local.
+//
+// Cada degrau é UM bloco maciço, do subsolo até o próprio piso, e é registrado como obstáculo de
+// verdade. Isso só é possível porque o jogador tem step-up (ver ALTURA_DEGRAU em Player.js): sem
+// ele, uma AABB pura barraria o jogador no primeiro degrau, que é exatamente por que a versão
+// anterior deixava a escada inteira SEM colisor — e aí dava pra atravessar tudo.
+//
+// Três defeitos da versão anterior, todos corrigidos aqui:
+//   · degrau cujo topo caísse abaixo do terreno era PULADO (`continue`) — o buraco no meio da escada;
+//   · os "corrimãos" iam do subsolo até acima do telhado, ou seja, eram dois muros fechando a escada;
+//   · nenhum degrau entrava em `obstaculos`, então nada tinha colisão pro jogador.
 function criarEscadariaViela(casaGrupo,alturaTotal,w=6,d=4.8,lado=1){
-  const alturaDegrauNominal=.25,prof=.3,largura=ESCADA_LARGURA;// mais estreita que a viela, sobra folga pra passar sem esbarrar
+  const largura=ESCADA_LARGURA,prof=.17;
+  // O degrau é dimensionado a 65% do que o jogador consegue subir. A folga não é preciosismo: a
+  // subida real depende do desnível do TERRENO entre a base da escada e a casa, que empurra o degrau
+  // pra cima do alvo. Medido no mapa inteiro, o pior degrau fica em 75% do limite — com a folga
+  // menor de antes ele batia em 89%, a um tropeço de virar escada intransponível.
+  const alturaDegrauAlvo=ALTURA_DEGRAU*.65;
   casaGrupo.updateWorldMatrix(true,false);
   const casaMundo=new THREE.Vector3();casaGrupo.getWorldPosition(casaMundo);
   const rotY=casaGrupo.rotation.y,cosR=Math.cos(rotY),sinR=Math.sin(rotY);
   const localParaMundo=(lx,lz)=>({x:casaMundo.x+lx*cosR+lz*sinR,z:casaMundo.z-lx*sinR+lz*cosR});
-  const distanciaLateral=w/2+largura/2+ESCADA_MARGEM;// encosta na parede, com leve sobreposição pra não flutuar
-  const lx=lado*distanciaLateral;
+  const lx=lado*(w/2+largura/2+ESCADA_MARGEM);// encosta na parede, com leve sobreposição pra não flutuar
   const lajeY=casaMundo.y+alturaTotal;
-  // O comprimento nunca pode passar da profundidade da casa: senão a escada invade o canto/fachada da frente.
-  const margemPonta=.5,maxRun=Math.max(prof*4,d-2*margemPonta),maxDegraus=Math.max(3,Math.floor(maxRun/prof));
+  // O comprimento nunca pode passar da profundidade da casa: senão a escada invade a fachada da frente.
+  const margemPonta=.2,maxRun=Math.max(prof*4,d-2*margemPonta),maxDegraus=Math.max(3,Math.floor(maxRun/prof));
   const centroMundo=localParaMundo(lx,0),subidaAprox=lajeY-obterElevacao(centroMundo.x,centroMundo.z);
   if(subidaAprox<=0)return null;
-  const numDegraus=Math.min(Math.max(1,Math.round(subidaAprox/alturaDegrauNominal)),maxDegraus);
+  const numDegraus=Math.min(Math.max(3,Math.ceil(subidaAprox/alturaDegrauAlvo)),maxDegraus);
   const comprimentoAcesso=numDegraus*prof,lzInicio=-comprimentoAcesso/2;
   const inicio=localParaMundo(lx,lzInicio);
   const yBaseEscada=obterElevacao(inicio.x,inicio.z);
@@ -38,61 +56,64 @@ function criarEscadariaViela(casaGrupo,alturaTotal,w=6,d=4.8,lado=1){
   if(subidaTotal<=0)return null;
   const alturaDegrau=subidaTotal/numDegraus;// distribui a subida pra terminar exatamente nivelada com a laje
   const grupoEscada=new THREE.Group();grupoEscada.userData.escadariaViela=true;casaGrupo.add(grupoEscada);
-  const material=bmat(0x858585);
+  const material=bmat(0x9a9a95);
   for(let i=0;i<numDegraus;i++){
-    const lz=lzInicio+i*prof,mundo=localParaMundo(lx,lz),chaoAtual=obterElevacao(mundo.x,mundo.z),yTopoMundo=yBaseEscada+(i+1)*alturaDegrau;
-    if(yTopoMundo<=chaoAtual)continue;
-    const alturaBloco=yTopoMundo-chaoAtual,geometria=new THREE.BoxGeometry(largura,alturaBloco,prof);
-    geometria.translate(0,alturaBloco/2,0);
+    const lz=lzInicio+i*prof,mundo=localParaMundo(lx,lz);
+    const chaoAtual=obterElevacao(mundo.x,mundo.z),yTopoMundo=yBaseEscada+(i+1)*alturaDegrau;
+    // O bloco desce ENTERRADO abaixo do ponto mais baixo entre o terreno local e a base da escada.
+    // É o que garante degrau completo em terreno inclinado: a versão anterior media do chão daquele
+    // ponto pra cima e descartava o degrau quando a conta dava negativa, abrindo o vão.
+    const yFundo=Math.min(chaoAtual,yBaseEscada)-.4;
+    const alturaBloco=Math.max(.02,yTopoMundo-yFundo);
+    const geometria=new THREE.BoxGeometry(largura,alturaBloco,prof);
+    geometria.translate(0,-alturaBloco/2,0);// origem no TOPO do bloco: posiciono pelo piso do degrau
     const degrau=new THREE.Mesh(geometria,material);
-    degrau.position.set(lx,chaoAtual-casaMundo.y,lz);
+    degrau.position.set(lx,yTopoMundo-casaMundo.y,lz);
     degrau.castShadow=true;degrau.receiveShadow=true;degrau.userData.superficieEscada=true;
     grupoEscada.add(degrau);
-    superficiesAndaveis.push(degrau)
+    superficiesAndaveis.push(degrau);// pouso por raycast
+    registrarObstaculo(degrau);// colisão de verdade — o step-up do jogador é quem deixa subir
   }
-  // Patamar final: preenche do topo da escada até a borda da laje, garantindo conexão sem buraco
-  // mesmo se o jogador subir reto em vez de curvar na direção da casa.
+  // Patamar: liga o topo do último degrau à borda da laje. Fica NIVELADO com o telhado (topo em
+  // alturaTotal), então nunca vira degrau nem obstáculo — é só piso, e é o que impede o buraco
+  // entre a escada e a laje pra quem sobe reto em vez de curvar na direção da casa.
   const ultimoLz=lzInicio+(numDegraus-1)*prof,paredeLocalX=lado*(w/2+.06);
-  const patamarMinX=Math.min(lx-largura/2,paredeLocalX),patamarMaxX=Math.max(lx+largura/2,paredeLocalX),patamarLargura=patamarMaxX-patamarMinX;
-  const patamarGeo=new THREE.BoxGeometry(patamarLargura,.12,prof*1.4);
+  const patamarMinX=Math.min(lx-largura/2,paredeLocalX),patamarMaxX=Math.max(lx+largura/2,paredeLocalX);
+  const patamarGeo=new THREE.BoxGeometry(patamarMaxX-patamarMinX,.12,prof*1.6);
   const patamar=new THREE.Mesh(patamarGeo,material);
-  patamar.position.set((patamarMinX+patamarMaxX)/2,alturaTotal-.06,ultimoLz+prof*.7);
+  patamar.position.set((patamarMinX+patamarMaxX)/2,alturaTotal-.06,ultimoLz+prof*.8);
   patamar.castShadow=true;patamar.receiveShadow=true;patamar.userData.superficieEscada=true;
   grupoEscada.add(patamar);
   superficiesAndaveis.push(patamar);
-  // Corrimãos: bloco fino colado nas duas bordas da escadaria (do primeiro degrau até o fim do
-  // patamar), registrado como obstáculo DE VERDADE (também vale pro jogador, ao contrário dos
-  // degraus). Sem eles a lateral da escada não tinha colisão nenhuma pro jogador — dava pra
-  // escorregar de lado pra fora da faixa de subida em qualquer ponto do trajeto e atravessar pro
-  // outro lado da parede da casa. Topo igual ao das muretas do telhado (alturaTotal+.5): mesmo
-  // teto já aceito ali pro caso raro do raycast de pouso não achar a laje embaixo do corrimão.
-  const corrimaoZIni=lzInicio,corrimaoZFim=ultimoLz+prof*1.4,corrimaoComprimento=corrimaoZFim-corrimaoZIni;
-  const corrimaoTopo=alturaTotal+.5,corrimaoFundo=-1,corrimaoAltura=corrimaoTopo-corrimaoFundo,corrimaoY=(corrimaoTopo+corrimaoFundo)/2;
-  const corrimaoMat=bmat(0x5c5c5c);
-  for(const bordaX of[lx-largura/2,lx+largura/2]){
-    const corrimao=new THREE.Mesh(new THREE.BoxGeometry(.06,corrimaoAltura,corrimaoComprimento),corrimaoMat);
-    corrimao.position.set(bordaX,corrimaoY,(corrimaoZIni+corrimaoZFim)/2);
-    corrimao.castShadow=true;corrimao.receiveShadow=true;
-    grupoEscada.add(corrimao);
-    registrarObstaculo(corrimao);
-  }
   grupoEscada.updateMatrixWorld(true);
-  // Moradores e policiais não sabem subir escada: registrar os degraus como obstáculo de pedestre faz
-  // eles contornarem a escadaria em vez de atravessar os degraus como se não existissem. O jogador
-  // continua subindo normalmente porque os degraus em si não entram em `obstaculos` — só os corrimãos
-  // acima entram, e ficam nas bordas, fora da faixa central por onde ele sobe.
-  for(const degrau of grupoEscada.children)if(degrau.userData.superficieEscada)registrarObstaculoPedestre(degrau);
   return grupoEscada
 }
 export const casasPos=[];// footprints pro radar mostrar o traçado das ruas, não só pontos soltos
-function casaBairro(x,z,w=6,d=6,h=3,cor=0xd87957,tipo=0,registrar=true,ladoEscada=0,corTelhado=0x888888){const g=new THREE.Group();const terrenoY=obterElevacao(x,z);g.position.set(x,terrenoY,z);g.rotation.y=z>0?Math.PI:0;g.userData={bairroCasa:true,cor,tipo};bairro.add(g);const fachada=bmat(cor);const paredeMesh=bloco(new THREE.BoxGeometry(w,h,d),fachada,0,h/2,0,g);const frente=new THREE.Mesh(new THREE.BoxGeometry(w*.7,.1,.04),concreto);frente.position.set(0,.08,d/2+.025);frente.castShadow=true;frente.receiveShadow=true;g.add(frente);const doorHeight=2.1;bloco(new THREE.BoxGeometry(.95,doorHeight,.08),porta,0,doorHeight/2,d/2+.07,g);for(const xx of [-w*.27,w*.27]){bloco(new THREE.BoxGeometry(1.22,1.02,.05),molduraJanela,xx,h*.56,d/2+.05,g);bloco(new THREE.BoxGeometry(1.05,.85,.06),Math.random()<.22?janelaAcesa:janela,xx,h*.56,d/2+.12,g);bloco(new THREE.BoxGeometry(1.18,.07,.08),concreto,xx,h*.56,d/2+.20,g)}const laje=bloco(new THREE.BoxGeometry(w+.12,.12,d+.12),bmat(corTelhado),0,h+.06,0,g);superficiesAndaveis.push(laje);const muretaY=h+.12+.25;
+// ===== CASA-REFÚGIO: casca com vão de porta, em vez do bloco maciço =====
+// O esconderijo agora é DENTRO da casa, então a casa precisa ter dentro. Só as marcadas viram casca:
+// as outras seguem como um único bloco maciço, que é muito mais barato (1 malha e 1 colisor por casa
+// contra 6) — 96 casas ocas seria desperdício de draw call e de teste de colisão por frame.
+const ESP_PAREDE=.18,PORTA_ALTURA=2.1,VAO_PORTA=1.2;
+function construirCascaCasa(g,w,h,d,fachada){
+  const paredes=[],meia=ESP_PAREDE/2;
+  paredes.push(bloco(new THREE.BoxGeometry(w,h,ESP_PAREDE),fachada,0,h/2,-d/2+meia,g));
+  for(const s of[-1,1])paredes.push(bloco(new THREE.BoxGeometry(ESP_PAREDE,h,d-ESP_PAREDE*2),fachada,s*(w/2-meia),h/2,0,g));
+  // Frente: duas faixas ao lado do vão + verga por cima, deixando a porta ABERTA (sem a folha, que
+  // nas casas normais é uma placa colada na fachada e aqui tamparia justamente a entrada).
+  const ladoLarg=(w-VAO_PORTA)/2;
+  for(const s of[-1,1])paredes.push(bloco(new THREE.BoxGeometry(ladoLarg,h,ESP_PAREDE),fachada,s*(VAO_PORTA+ladoLarg)/2,h/2,d/2-meia,g));
+  const alturaVerga=h-PORTA_ALTURA;
+  if(alturaVerga>.05)paredes.push(bloco(new THREE.BoxGeometry(VAO_PORTA,alturaVerga,ESP_PAREDE),fachada,0,PORTA_ALTURA+alturaVerga/2,d/2-meia,g));
+  return paredes;
+}
+function casaBairro(x,z,w=6,d=6,h=3,cor=0xd87957,tipo=0,registrar=true,ladoEscada=0,corTelhado=0x888888,refugio=false){const g=new THREE.Group();const terrenoY=obterElevacao(x,z);g.position.set(x,terrenoY,z);g.rotation.y=z>0?Math.PI:0;g.userData={bairroCasa:true,cor,tipo};bairro.add(g);const fachada=bmat(cor);const casca=refugio?construirCascaCasa(g,w,h,d,fachada):null;const paredeMesh=casca?null:bloco(new THREE.BoxGeometry(w,h,d),fachada,0,h/2,0,g);const frente=new THREE.Mesh(new THREE.BoxGeometry(w*.7,.1,.04),concreto);frente.position.set(0,.08,d/2+.025);frente.castShadow=true;frente.receiveShadow=true;g.add(frente);const doorHeight=PORTA_ALTURA;if(!refugio)bloco(new THREE.BoxGeometry(.95,doorHeight,.08),porta,0,doorHeight/2,d/2+.07,g);for(const xx of [-w*.27,w*.27]){bloco(new THREE.BoxGeometry(1.22,1.02,.05),molduraJanela,xx,h*.56,d/2+.05,g);bloco(new THREE.BoxGeometry(1.05,.85,.06),Math.random()<.22?janelaAcesa:janela,xx,h*.56,d/2+.12,g);bloco(new THREE.BoxGeometry(1.18,.07,.08),concreto,xx,h*.56,d/2+.20,g)}const laje=bloco(new THREE.BoxGeometry(w+.12,.12,d+.12),bmat(corTelhado),0,h+.06,0,g);superficiesAndaveis.push(laje);const muretaY=h+.12+.25;
 // A escadaria (quando existe) fica FORA da largura w da casa (ver criarEscadariaViela). Sem estender a
 // mureta frontal/traseira até lá, sobra um canto sem parapeito bem onde a escadaria termina — o jogador
 // caminha por cima do telhado, passa reto por esse canto aberto e cai direto no vão entre as casas.
 const alcanceEscada=w/2+ESCADA_LARGURA+ESCADA_MARGEM;
 const muretaMinX=ladoEscada===-1?-alcanceEscada:-(w/2+.06),muretaMaxX=ladoEscada===1?alcanceEscada:(w/2+.06);
 const muretaLargura=muretaMaxX-muretaMinX,muretaCentroX=(muretaMaxX+muretaMinX)/2;
-const muretas=[bloco(new THREE.BoxGeometry(muretaLargura,.5,.12),bmat(corTelhado),muretaCentroX,muretaY,d/2,g),bloco(new THREE.BoxGeometry(muretaLargura,.5,.12),bmat(corTelhado),muretaCentroX,muretaY,-d/2,g)];if(ladoEscada!==1)muretas.push(bloco(new THREE.BoxGeometry(.12,.5,d+.12),bmat(corTelhado),w/2,muretaY,0,g));if(ladoEscada!==-1)muretas.push(bloco(new THREE.BoxGeometry(.12,.5,d+.12),bmat(corTelhado),-w/2,muretaY,0,g));g.userData.muretas=muretas;casasPos.push({x,z,w,d});if(tipo===2){const sacada=bloco(new THREE.BoxGeometry(w*.62,.12,.75),concreto,0,h*.62,d/2+.42,g);for(const xx of [-w*.3,-w*.1,w*.1,w*.3])bloco(new THREE.BoxGeometry(.05,.8,.05),posteMat,xx,h*.62+.38,d/2+.73,g)}if(tipo!==1){const tank=bloco(new THREE.CylinderGeometry(.38,.38,.62,10),agua,w*.22,h+.55,-d*.12,g);tank.castShadow=true}g.userData.paredeMesh=paredeMesh;if(registrar){registrarObstaculo(paredeMesh);muretas.forEach(registrarObstaculo)}return g}
+const muretas=[bloco(new THREE.BoxGeometry(muretaLargura,.5,.12),bmat(corTelhado),muretaCentroX,muretaY,d/2,g),bloco(new THREE.BoxGeometry(muretaLargura,.5,.12),bmat(corTelhado),muretaCentroX,muretaY,-d/2,g)];if(ladoEscada!==1)muretas.push(bloco(new THREE.BoxGeometry(.12,.5,d+.12),bmat(corTelhado),w/2,muretaY,0,g));if(ladoEscada!==-1)muretas.push(bloco(new THREE.BoxGeometry(.12,.5,d+.12),bmat(corTelhado),-w/2,muretaY,0,g));g.userData.muretas=muretas;casasPos.push({x,z,w,d});if(tipo===2){const sacada=bloco(new THREE.BoxGeometry(w*.62,.12,.75),concreto,0,h*.62,d/2+.42,g);for(const xx of [-w*.3,-w*.1,w*.1,w*.3])bloco(new THREE.BoxGeometry(.05,.8,.05),posteMat,xx,h*.62+.38,d/2+.73,g)}if(tipo!==1){const tank=bloco(new THREE.CylinderGeometry(.38,.38,.62,10),agua,w*.22,h+.55,-d*.12,g);tank.castShadow=true}g.userData.paredeMesh=paredeMesh;if(registrar){if(casca)casca.forEach(registrarObstaculo);else registrarObstaculo(paredeMesh);muretas.forEach(registrarObstaculo)}return g}
 function sobrado(x,z,w,d,h,cor,ladoEscada=0,corTelhado=0x888888){const g=casaBairro(x,z,w,d,h,cor,2,true,ladoEscada,corTelhado);const up=casaBairro(x,z,w*.86,d*.82,h*.72,cor===tijolo.color?.getHex?.()?0xd87957:0xe8c45d,1,false,0,corTelhado);up.position.y=obterElevacao(x,z)+h+.18;registrarObstaculo(up.userData.paredeMesh);up.userData.muretas.forEach(registrarObstaculo);return g}
 function arvore(x,z,s=1){const g=new THREE.Group();g.position.set(x,0,z);bairro.add(g);bloco(new THREE.CylinderGeometry(.16*s,.22*s,1.5*s,6),posteMat,0,.75*s,0,g);
   const clusters=[[0,1.8,0],[-.45,1.55,0],[.45,1.55,0],[0,1.55,.45],[0,1.55,-.42]];
@@ -115,9 +136,16 @@ const telhados=[0x8a8a82,0x9c958a,0x7f8a7d,0x8f7f6e,0x87877f,0x9a8f7c];
 for(let row=0;row<BLOCK_ROWS;row++){for(let col=0;col<BLOCK_COLS;col++){const i=casaIndex++;const x=-36+col*CELL_W+Math.floor(col/4)*BECO;const z=-42+row*CELL_D+Math.floor(row/3)*BECO;const h=i%7===0?3.6:i%3===0?3.2:2.8;const tipo=i%5===0?1:i%4===0?2:i%3;const cor=coresBairro[i%coresBairro.length];const corTelhado=telhados[i%telhados.length];
 // Escada só nasce onde existe viela real ao lado (limite de bloco de 4 casas), nunca encostada em outra casa.
 const ladoEscada=(col%4===0&&col>0&&Math.random()<.6)?-1:0;
-const grupoCasa=i%7===0?sobrado(x,z,CELL_W,CELL_D,h,cor,ladoEscada,corTelhado):casaBairro(x,z,CELL_W,CELL_D,h,cor,tipo,true,ladoEscada,corTelhado);
+// Refúgio só onde a PORTA dá pra ser alcançada: as fileiras são coladas fundo-com-frente, e só há
+// vão livre à frente no fim de cada bloco de 3 (row%3===2) ou na última fileira. Marcar uma casa
+// do meio faria um esconderijo com a entrada emparedada pela casa de trás. Sobrado fica de fora
+// (são duas casas empilhadas, a de cima não tem como ser oca sem retrabalho).
+const frenteLivre=(row%3===2||row===BLOCK_ROWS-1);
+const ehRefugio=frenteLivre&&col%4===2&&i%7!==0;
+const grupoCasa=i%7===0?sobrado(x,z,CELL_W,CELL_D,h,cor,ladoEscada,corTelhado):casaBairro(x,z,CELL_W,CELL_D,h,cor,tipo,true,ladoEscada,corTelhado,ehRefugio);
 if(ladoEscada)criarEscadariaViela(grupoCasa,h+.12,CELL_W,CELL_D,ladoEscada);
-if(i%17===5){marcarRefugio(grupoCasa,CELL_D);refugios.push({x,z:z+CELL_D/2+.6})}
+// O ponto de refúgio é o MIOLO da casa: esconder-se agora é entrar de verdade, não encostar na porta.
+if(ehRefugio){marcarRefugio(grupoCasa,CELL_D);refugios.push({x,z})}
 }}// Comércio de esquina e ponto de encontro visual.
 const mercado=casaBairro(0,-18,9,7,3.1,0xd98545,0);bloco(new THREE.BoxGeometry(7.2,1.1,.12),bmat(0xe9d16a),-0,2.15,3.56,mercado);bloco(new THREE.BoxGeometry(5.9,.5,.08),bmat(0x7b3f2b),0,2.15,3.65,mercado);
 [-35,35].forEach(x=>[-55,-28,14,56].forEach(z=>poste(x,z)));for(const a of [[-35,-55],[-35,-28],[-35,14],[-35,56],[35,-55],[35,-28],[35,14]])fio(a,[a[0],a[1]+12]);

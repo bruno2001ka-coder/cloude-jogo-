@@ -46,6 +46,26 @@ export function jogadorColideNaPosicao(x,z){
   preencherHitboxJogador(jogadorBoxTemp,x,z);
   return caixaColideComObstaculos(jogadorBoxTemp);
 }
+// ===== STEP-UP =====
+// Altura máxima que o jogador transpõe sozinho (degrau, meio-fio, borda de laje). Fração da altura
+// do corpo, e não um número solto: o personagem já mudou de tamanho uma vez, e um valor fixo
+// silenciosamente viraria "escada intransponível" ou "sobe em qualquer parede".
+export const ALTURA_DEGRAU=PLAYER_HEIGHT*.24;
+// A colisão horizontal ignora a faixa dos pés até ALTURA_DEGRAU — a técnica de "step offset" que
+// toda engine usa. O que estiver inteiramente abaixo dessa linha é DEGRAU, e quem resolve é a física
+// vertical, que já sobe ou desce o jogador pra superfície encontrada. O que passa dela é PAREDE.
+//
+// A primeira tentativa foi outra: testar o corpo inteiro e, quando barrado, empurrar pra cima do
+// topo do obstáculo. Isso funciona subindo e QUEBRA descendo — a hitbox tem 20 cm de profundidade e
+// o degrau tem 17, então o corpo sempre encosta também no degrau de TRÁS; ao descer, esse degrau de
+// trás barrava o passo e o empurrão pra cima devolvia o jogador pro degrau que ele acabara de
+// deixar. Na simulação da escada mais íngreme do mapa isso dava 71 frames travados na descida.
+// Ignorar a faixa baixa resolve os dois sentidos de uma vez, e sem caso especial.
+function jogadorColideAcimaDoDegrau(x,z,y){
+  jogadorBoxTemp.min.set(x-PLAYER_HITBOX_HALF_WIDTH,y+ALTURA_DEGRAU,z-PLAYER_HITBOX_HALF_DEPTH);
+  jogadorBoxTemp.max.set(x+PLAYER_HITBOX_HALF_WIDTH,y+PLAYER_HEIGHT,z+PLAYER_HITBOX_HALF_DEPTH);
+  return caixaColideComObstaculos(jogadorBoxTemp);
+}
 
 // ===== ZONAS DE ACERTO DO JOGADOR =====
 // Uma AABB única do corpo inteiro é grosseira demais pra um sistema de combate: um tiro no pé vale o
@@ -140,8 +160,39 @@ export function vigiarTravamento(dt,querendoAndar){
 }
 
 // Movimento horizontal relativo à câmera (yaw), com colisão resolvida por eixo, e animação de andar.
+// Velocidade proporcional à altura do corpo (4,6 alturas por segundo): com o número solto de antes,
+// encolher o personagem transformava a mesma caminhada numa corrida desproporcional.
+const VELOCIDADE=PLAYER_HEIGHT*4.6;
 let walk=0;const velocity=new THREE.Vector3(),desired=new THREE.Vector3();
-export function atualizarMovimentoJogador(dt,keys,joyX,joyY,yaw){
+const _frente=new THREE.Vector3(),_lado=new THREE.Vector3();
+export function atualizarMovimentoJogador(dt,keys,joyX,joyY,yaw,fatorVelocidade=1){
   const smooth=1-Math.exp(-18*dt);
-  let x=(keys.KeyD?1:0)-(keys.KeyA?1:0)+joyX,z=(keys.KeyS?1:0)-(keys.KeyW?1:0)+joyY,m=Math.hypot(x,z);desired.set(0,0,0);if(m){x/=m;z/=m;const f=new THREE.Vector3(-Math.sin(yaw),0,-Math.cos(yaw)),r=new THREE.Vector3(Math.cos(yaw),0,-Math.sin(yaw));desired.set((r.x*x-f.x*z)*5.8,0,(r.z*x-f.z*z)*5.8)}velocity.lerp(desired,smooth);const proximaX=player.position.x+velocity.x*dt;if(!jogadorColideNaPosicao(proximaX,player.position.z)){player.position.x=proximaX}else{velocity.x=0}const proximaZ=player.position.z+velocity.z*dt;if(!jogadorColideNaPosicao(player.position.x,proximaZ)){player.position.z=proximaZ}else{velocity.z=0}player.position.x=THREE.MathUtils.clamp(player.position.x,-100,92);player.position.z=THREE.MathUtils.clamp(player.position.z,-100,100);atualizarFisicaVertical(dt);preencherHitboxJogador(jogadorBoxDebugTemp,player.position.x,player.position.z);const speed=Math.hypot(velocity.x,velocity.z);if(speed>.08){const wanted=Math.atan2(velocity.x,velocity.z);let da=wanted-player.rotation.y;while(da>Math.PI)da-=Math.PI*2;while(da<-Math.PI)da+=Math.PI*2;player.rotation.y+=da*(1-Math.exp(-14*dt));walk+=dt*(6+speed*1.3);const swing=Math.sin(walk)*Math.min(.55,speed*.075);legs[0].rotation.x=swing;legs[1].rotation.x=-swing;arms[0].rotation.x=-swing*.45;arms[1].rotation.x=swing*.45}else{for(const limb of [...legs,...arms])limb.rotation.x*=Math.exp(-12*dt)}
+  let x=(keys.KeyD?1:0)-(keys.KeyA?1:0)+joyX,z=(keys.KeyS?1:0)-(keys.KeyW?1:0)+joyY;
+  const m=Math.hypot(x,z);
+  desired.set(0,0,0);
+  if(m){
+    // Normaliza só quando passa de 1: o joystick analógico tem que conseguir andar devagar, e
+    // dividir sempre pela magnitude transformava qualquer inclinação do dedo em velocidade máxima.
+    const escala=(m>1?1/m:1)*VELOCIDADE*fatorVelocidade;
+    _frente.set(-Math.sin(yaw),0,-Math.cos(yaw));_lado.set(Math.cos(yaw),0,-Math.sin(yaw));
+    desired.set((_lado.x*x-_frente.x*z)*escala,0,(_lado.z*x-_frente.z*z)*escala);
+  }
+  velocity.lerp(desired,smooth);
+  // Resolvido por eixo (escorrega na parede em vez de grudar), cada eixo com o step offset.
+  const py=player.position.y;
+  if(jogadorColideAcimaDoDegrau(player.position.x+velocity.x*dt,player.position.z,py))velocity.x=0;else player.position.x+=velocity.x*dt;
+  if(jogadorColideAcimaDoDegrau(player.position.x,player.position.z+velocity.z*dt,py))velocity.z=0;else player.position.z+=velocity.z*dt;
+  player.position.x=THREE.MathUtils.clamp(player.position.x,-100,92);
+  player.position.z=THREE.MathUtils.clamp(player.position.z,-100,100);
+  atualizarFisicaVertical(dt);
+  preencherHitboxJogador(jogadorBoxDebugTemp,player.position.x,player.position.z);
+  const speed=Math.hypot(velocity.x,velocity.z);
+  if(speed>.08){
+    const wanted=Math.atan2(velocity.x,velocity.z);
+    let da=wanted-player.rotation.y;while(da>Math.PI)da-=Math.PI*2;while(da<-Math.PI)da+=Math.PI*2;
+    player.rotation.y+=da*(1-Math.exp(-14*dt));
+    walk+=dt*(6+speed*1.3);
+    const swing=Math.sin(walk)*Math.min(.55,speed*.24);
+    legs[0].rotation.x=swing;legs[1].rotation.x=-swing;arms[0].rotation.x=-swing*.45;arms[1].rotation.x=swing*.45;
+  }else{for(const limb of [...legs,...arms])limb.rotation.x*=Math.exp(-12*dt)}
 }

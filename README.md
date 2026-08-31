@@ -20,10 +20,15 @@ Jogo 3D em Three.js — bairro brasileiro estilizado, com cultivo/economia, bots
   mão e a troca só alterna a visibilidade — nada de alocar geometria em pleno combate. Segurar o
   botão de tiro atira em rajada no ritmo da arma; o botão redondo ao lado cicla entre as que você tem
   (ou as teclas `Q` e `1`–`4`).
-- **4 polos econômicos** (`src/Poles.js`) — Fazenda (oeste, insumo barato), Mercado de Sementes
-  (centro), Loja de Armas (nordeste, as armas, a munição de cada uma e o colete) e Receptador
-  (sudeste, semente rara e venda), dispostos em quadrilátero pra obrigar a travessia do bairro
-  patrulhado.
+- **Mira e movimento** (`src/Camera.js`, `src/Player.js`) — câmera em órbita da cabeça com trava
+  contra parede e contra o chão, modo de mira (🎯 no celular, botão direito ou Shift no teclado) que
+  fecha o FOV, aproxima por cima do ombro, fecha o cone de dispersão a 30% e reduz giro e velocidade
+  — precisão custa mobilidade. O movimento tem **step offset**: a colisão horizontal ignora a faixa
+  dos pés até 24% da altura do corpo, então degrau é degrau e parede é parede, sem caso especial.
+- **4 polos econômicos** (`src/Poles.js`) — cada insumo tem UM ponto de venda, pra o ciclo obrigar a
+  travessia do bairro patrulhado: Fazenda (oeste) é a única fonte de vaso e terra, Mercado (centro) a
+  única de semente, Loja de Armas (nordeste) vende armas/munição/colete e o Receptador (sudeste) só
+  escoa os pacotes. Os refúgios ficam **dentro** de casas ocas, com porta — esconder-se é entrar.
 - **Cidade no fundo** (`src/Skyline.js`) — anel de 96 prédios em 1 draw call que acompanha a câmera
   como o céu, sem colisão e sem sombra.
 
