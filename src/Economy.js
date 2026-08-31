@@ -5,7 +5,7 @@ import{scene,camera}from'./core.js';
 import{ground}from'./Terrain.js';
 import{obstaculos,superficiesAndaveis}from'./Physics.js';
 import{criarSombraContato,folhaMat,folhaClara}from'./Materials.js';
-import{criarEsconderijo}from'./WorldGenerator.js';
+import{criarEsconderijo,refugioEmQueEsta,alternarPortaRefugio}from'./WorldGenerator.js';
 import{player}from'./Player.js';
 import{POLOS,PRECOS}from'./Poles.js';
 import{ARMAS,ORDEM_ARMAS,equiparArma}from'./Weapons.js';
@@ -93,6 +93,11 @@ export function atualizarMiraPlantio(){
 }
 export function contextoAtual(){
   const p=player.position;
+  // O refúgio vem PRIMEIRO: dentro da casa, a única ação que importa é a porta. `chave` inclui o
+  // estado dela porque o painel só se redesenha quando a chave muda — sem isso o botão continuaria
+  // escrito "Fechar" depois de fechar.
+  const refugio=refugioEmQueEsta(p);
+  if(refugio)return{tipo:'refugio',refugio,chave:'refugio'+(refugio.aberta?'A':'F')};
   if(distXZ(p,lojaPos)<POLOS.sementes.raio)return{tipo:'loja'};
   if(distXZ(p,receptadorPos)<POLOS.receptador.raio)return{tipo:'receptador'};
   if(distXZ(p,fazendaPos)<POLOS.fazenda.raio)return{tipo:'fazenda'};
@@ -195,6 +200,9 @@ export function confiscarPlanta(planta){
 // Multa aplicada pela polícia quando o jogador é rendido num confronto (ver Police.js).
 export function aplicarMulta(valor){dinheiro=Math.max(0,dinheiro-valor);atualizarStatusEconomia()}
 let ultimoContextoTipo=null;
+// Identidade do painel de ações: o loop só redesenha quando ela muda. Mora aqui, e não inline no
+// main, porque cada contexto sabe o que o faz mudar (o estágio da muda, o estado da porta).
+export function chaveContexto(ctx){return ctx?(ctx.chave??ctx.tipo+(ctx.planta?ctx.planta.estagio:'')):null}
 // Botão de compra: mesmo formato nos 4 polos, desabilitado quando falta dinheiro.
 function botaoLoja(rotulo,preco,aoClicar){
   const b=document.createElement('button');b.textContent=rotulo;b.disabled=dinheiro<preco;b.onclick=aoClicar;
@@ -203,7 +211,14 @@ function botaoLoja(rotulo,preco,aoClicar){
 export function renderizarAcoes(){
   const ctx=contextoAtual(),tipo=ctx?ctx.tipo:null;
   acaoPanel.innerHTML='';
-  if(tipo==='loja'){
+  if(tipo==='refugio'){
+    const r=ctx.refugio;
+    const b=document.createElement('button');
+    b.textContent=r.aberta?'🚪 Fechar a porta e se esconder':'🚪 Abrir a porta e sair';
+    b.onclick=()=>{alternarPortaRefugio(r);renderizarAcoes()};
+    acaoPanel.appendChild(b);
+    acaoPanel.style.display='flex';
+  }else if(tipo==='loja'){
     // Mercado de Sementes: o ÚNICO ponto de semente do mapa. Vaso e terra saíram daqui de propósito —
     // com os dois polos vendendo tudo, dava pra fechar o ciclo inteiro sem sair do centro e a
     // travessia do bairro patrulhado, que é o miolo do risco do jogo, virava opcional.
@@ -237,7 +252,7 @@ export function renderizarAcoes(){
   }else{
     acaoPanel.style.display='none';
   }
-  ultimoContextoTipo=tipo?tipo+(ctx.planta?ctx.planta.estagio:''):null;
+  ultimoContextoTipo=chaveContexto(ctx);
 }
 export function getUltimoContextoTipo(){return ultimoContextoTipo}
 atualizarStatusEconomia();

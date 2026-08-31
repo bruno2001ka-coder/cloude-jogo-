@@ -33,7 +33,7 @@ import{primeiroImpactoNoSegmento,intersectarSegmentoCaixa,buscarPosicaoLivre}fro
 import{encontrarCaminho,visaoHorizontalLivre}from'./NavMesh.js';
 import{player,zonasDeAcertoJogador,PLAYER_HEIGHT,encararDirecao}from'./Player.js';
 import{ORDEM_ARMAS,armaEquipada,idArmaEquipada,equiparArma,obterBocaDaArma,direcaoComDispersao}from'./Weapons.js';
-import{refugios}from'./WorldGenerator.js';
+import{estaEscondido,refugioEmQueEsta}from'./WorldGenerator.js';
 import{colidePedestre}from'./NPCs.js';
 import{plantas,confiscarPlanta,aplicarMulta,inventario,atualizarStatusEconomia,isInventarioAberto}from'./Economy.js';
 import{dispararBala,atualizarBalas,limparBalas}from'./Bullets.js';
@@ -59,10 +59,11 @@ const RAPEL_DURACAO=1.5,NUM_POLICIAIS=2;
 const COMBATE_RAIO_ATIVACAO=16;
 const POLICIAL_HP=100,POLICIAL_VELOCIDADE=2,POLICIAL_ALCANCE_TIRO=13,POLICIAL_APROX_MIN=7;
 const POLICIAL_DANO_MIN=10,POLICIAL_DANO_MAX=18,POLICIAL_COOLDOWN_MIN=1.1,POLICIAL_COOLDOWN_MAX=2.1;
-// O ponto de refúgio agora é o MIOLO da casa (ela é oca e tem porta — ver WorldGenerator), então o
-// raio cobre o interior e um passo à frente da porta, em vez dos 3,2 m de quando o ponto ficava na
-// calçada e bastava encostar na fachada pra "sumir".
-const REFUGIO_RAIO=2.8,REFUGIO_TEMPO=4.5;
+// Esconder-se não é mais proximidade: é estar DENTRO de uma casa-refúgio com a PORTA FECHADA (ver
+// estaEscondido em WorldGenerator). O raio de 2,8 m de antes valia também na viela e na calçada — era
+// o "esconderijo em qualquer lugar". Aguentar escondido este tempo faz a polícia desistir da busca e
+// zera o nível de procurado.
+const ESCONDIDO_PARA_LIMPAR=16;
 const JOGADOR_HP_MAX=100,JOGADOR_ARMADURA_MAX=100,JOGADOR_REGEN=3;
 // Cadência/dano/alcance agora vêm da ficha da arma equipada (Weapons.js). Sobrou só o custo da troca:
 // o cooldown é global (proximoTiroJogador), então sem ele dava pra escopeta→pistola→escopeta pra
@@ -160,7 +161,11 @@ function zonasDoPolicial(pol){
 }
 
 // ===== Estado da polícia e do jogador =====
-const policia={estado:'patrulha',alvoPlanta:null,tempoEstado:0,cooldownAte:0,tempoEscondidoAcumulado:0};
+// `procurado` (0..3) é o nível de perseguição: sobe conforme a polícia avança na abordagem e zera
+// quando o jogador aguenta escondido o tempo todo. É o que dá ao esconderijo uma consequência
+// visível em vez de só "a polícia sumiu".
+const policia={estado:'patrulha',alvoPlanta:null,tempoEstado:0,cooldownAte:0,tempoEscondido:0,procurado:0};
+function elevarProcurado(n){if(n>policia.procurado)policia.procurado=Math.min(3,n)}
 const policiais=[];
 const cordas=[];// rope visual durante o rapel
 let saudeJogador=JOGADOR_HP_MAX,armaduraJogador=0,jogadorRendido=false;
@@ -178,7 +183,7 @@ function atualizarHudSaude(){renderizarVidaJogador(saudeJogador,JOGADOR_HP_MAX,a
 // o HUD observa o valor e só redesenha quando ele muda de fato — nada de escrever no DOM por frame.
 // A chave é COMPOSTA de propósito: só o número não bastaria, porque rifle com 12 balas e pistola com
 // 12 balas dariam cache-hit e o ícone congelaria na arma anterior.
-let armaHudCache='';
+let armaHudCache='',alertaCache='';
 function atualizarHudMunicao(){
   const arma=armaEquipada(),n=inventario.municao[arma.id],donas=ORDEM_ARMAS.filter(id=>inventario.armas[id]).length;
   const chave=`${arma.id}:${n}:${donas}`;
@@ -193,7 +198,7 @@ function flashDano(){danoFlash.style.opacity='.55';clearTimeout(danoFlash._t);da
 atualizarHudSaude();atualizarHudMunicao();
 
 function distXZ(a,b){return Math.hypot(a.x-b.x,a.z-b.z)}
-function jogadorEscondido(){return refugios.some(r=>distXZ(player.position,r)<REFUGIO_RAIO)}
+function jogadorEscondido(){return estaEscondido(player.position)}
 
 // Uma muda só existe pros olhos da polícia depois de florescer.
 function plantaDetectavel(p){return !p.colhida&&p.estagio>=PLANTA_DETECTAVEL_ESTAGIO}
@@ -467,7 +472,9 @@ const ESTADOS={
     aoEntrar(){
       policia.alvoPlanta=null;
       policia.cooldownAte=performance.now()/1000+COOLDOWN_ENTRE_BUSCAS;
-      policia.tempoEscondidoAcumulado=0;
+      // Fugir também esfria a barra, mas um nível de cada vez: esconder-se ZERA de uma vez, e é isso
+      // que faz valer a pena entrar na casa em vez de só correr até a polícia cansar.
+      policia.procurado=Math.max(0,policia.procurado-1);
       heliAlvo=sortearWaypointPatrulha();
     },
     aoAtualizar(dt,agora){
@@ -493,6 +500,7 @@ const ESTADOS={
     }
   },
   indo:{
+    aoEntrar(){elevarProcurado(1)},
     aoAtualizar(dt){
       const alvo=policia.alvoPlanta;
       if(!alvo||alvo.colhida){transitar('recuando');return}
@@ -546,6 +554,7 @@ const ESTADOS={
     }
   },
   confiscando:{
+    aoEntrar(){elevarProcurado(2)},
     aoAtualizar(dt){
       policia.tempoEstado+=dt;
       if(distXZ(player.position,policia.alvoPlanta)<=COMBATE_RAIO_ATIVACAO&&!jogadorEscondido()){
@@ -557,16 +566,11 @@ const ESTADOS={
     }
   },
   combate:{
-    aoEntrar(){policia.tempoEscondidoAcumulado=0},
+    aoEntrar(){elevarProcurado(3)},
     aoAtualizar(dt,agora){
+      // Perder o rastro deixou de ser regra local do combate: agora existe UM cronômetro de
+      // esconderijo, válido em qualquer estado, em atualizarPolicia.
       for(const pol of policiais)atualizarPolicialCombate(pol,dt,agora);
-      if(jogadorEscondido()){
-        policia.tempoEscondidoAcumulado+=dt;
-        if(policia.tempoEscondidoAcumulado>=REFUGIO_TEMPO){
-          mostrarAviso('Você se escondeu a tempo — a polícia perdeu o rastro.',2800);
-          transitar('recuando');
-        }
-      }else policia.tempoEscondidoAcumulado=0;
     }
   },
   // Único ponto de limpeza do encontro do jogo inteiro: recolhe corda, policiais e balas.
@@ -591,6 +595,21 @@ export function atualizarPolicia(dt){
   rotorPrincipal.rotation.y+=dt*26;rotorCauda.rotation.x+=dt*40;
   const pisca=Math.floor(agora*3)%2===0;luzV.material.emissiveIntensity=pisca?1.6:.1;luzA.material.emissiveIntensity=pisca?.1:1.6;
 
+  // ===== CRONÔMETRO DO ESCONDERIJO =====
+  // UM cronômetro, válido em QUALQUER estado — antes a regra só existia dentro do combate, então
+  // esconder-se enquanto o helicóptero ainda estava a caminho não adiantava nada. Aguentar o tempo
+  // todo escondido faz a polícia desistir da busca e zera o nível de procurado.
+  const escondido=jogadorEscondido();
+  if(escondido){
+    policia.tempoEscondido+=dt;
+    if(policia.tempoEscondido>=ESCONDIDO_PARA_LIMPAR&&(policia.estado!=='patrulha'||policia.procurado>0)){
+      policia.tempoEscondido=0;policia.procurado=0;
+      if(policia.estado!=='patrulha'){policia.alvoPlanta=null;transitar('recuando')}
+      else policia.cooldownAte=Math.max(policia.cooldownAte,agora+COOLDOWN_ENTRE_BUSCAS);
+      mostrarAviso('A polícia desistiu da busca — você está limpo.',3000);
+    }
+  }else policia.tempoEscondido=0;
+
   ESTADOS[policia.estado].aoAtualizar(dt,agora);
 
   montarAlvosDoFrame();
@@ -612,8 +631,23 @@ export function atualizarPolicia(dt){
   avisarFloracao();conferirColete();atualizarHudMunicao();
   if(policia.estado==='patrulha'&&saudeJogador<JOGADOR_HP_MAX&&!jogadorRendido){saudeJogador=Math.min(JOGADOR_HP_MAX,saudeJogador+dt*JOGADOR_REGEN);atualizarHudSaude()}
   const emAlerta=policia.estado!=='patrulha';
-  alertaEl.style.display=emAlerta?'block':'none';
-  refugioEl.style.display=jogadorEscondido()?'block':'none';
+  // Nível de procurado em estrelas: o jogador precisa VER a barra subir pra entender que se esconder
+  // serviu pra alguma coisa. Escrito só quando muda, pelo mesmo motivo do cache da munição.
+  const chaveAlerta=`${policia.procurado}|${emAlerta}`;
+  if(chaveAlerta!==alertaCache){
+    alertaCache=chaveAlerta;
+    alertaEl.style.display=(emAlerta||policia.procurado>0)?'block':'none';
+    alertaEl.textContent=`🚁 PROCURADO ${'★'.repeat(policia.procurado)}${'☆'.repeat(3-policia.procurado)}`;
+  }
+  // O indicador conta a diferença entre "dentro da casa" e "escondido de verdade": dentro com a porta
+  // ABERTA não esconde ninguém, e sem esse aviso o jogador acharia que o esconderijo está quebrado.
+  const refugioAqui=refugioEmQueEsta(player.position);
+  if(!refugioAqui)refugioEl.style.display='none';
+  else{
+    refugioEl.style.display='block';
+    if(refugioAqui.aberta)refugioEl.textContent='🚪 FECHE A PORTA PRA SE ESCONDER';
+    else refugioEl.textContent=`🫥 ESCONDIDO · ${Math.max(0,Math.ceil(ESCONDIDO_PARA_LIMPAR-policia.tempoEscondido))}s`;
+  }
   const emCombate=policia.estado==='combate';
   const temArma=inventario.municao[idArmaEquipada()]>0;
   // A mira fica na tela SEMPRE que dá pra atirar — antes só aparecia no estado 'combate', que exige

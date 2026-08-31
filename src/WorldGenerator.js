@@ -2,7 +2,7 @@
 import*as THREE from'three';
 import{scene}from'./core.js';
 import{obterElevacao}from'./Terrain.js';
-import{registrarObstaculo,superficiesAndaveis}from'./Physics.js';
+import{registrarObstaculo,superficiesAndaveis,obstaculos}from'./Physics.js';
 import{bmat,tijolo,concreto,janela,janelaAcesa,molduraJanela,porta,agua,posteMat,folhaMat,folhaClara,criarSombraContato}from'./Materials.js';
 import{POLOS}from'./Poles.js';
 // O degrau da escadaria é derivado do step-up do jogador: um número solto aqui viraria escada
@@ -106,7 +106,20 @@ function construirCascaCasa(g,w,h,d,fachada){
   if(alturaVerga>.05)paredes.push(bloco(new THREE.BoxGeometry(VAO_PORTA,alturaVerga,ESP_PAREDE),fachada,0,PORTA_ALTURA+alturaVerga/2,d/2-meia,g));
   return paredes;
 }
-function casaBairro(x,z,w=6,d=6,h=3,cor=0xd87957,tipo=0,registrar=true,ladoEscada=0,corTelhado=0x888888,refugio=false){const g=new THREE.Group();const terrenoY=obterElevacao(x,z);g.position.set(x,terrenoY,z);g.rotation.y=z>0?Math.PI:0;g.userData={bairroCasa:true,cor,tipo};bairro.add(g);const fachada=bmat(cor);const casca=refugio?construirCascaCasa(g,w,h,d,fachada):null;const paredeMesh=casca?null:bloco(new THREE.BoxGeometry(w,h,d),fachada,0,h/2,0,g);const frente=new THREE.Mesh(new THREE.BoxGeometry(w*.7,.1,.04),concreto);frente.position.set(0,.08,d/2+.025);frente.castShadow=true;frente.receiveShadow=true;g.add(frente);const doorHeight=PORTA_ALTURA;if(!refugio)bloco(new THREE.BoxGeometry(.95,doorHeight,.08),porta,0,doorHeight/2,d/2+.07,g);for(const xx of [-w*.27,w*.27]){bloco(new THREE.BoxGeometry(1.22,1.02,.05),molduraJanela,xx,h*.56,d/2+.05,g);bloco(new THREE.BoxGeometry(1.05,.85,.06),Math.random()<.22?janelaAcesa:janela,xx,h*.56,d/2+.12,g);bloco(new THREE.BoxGeometry(1.18,.07,.08),concreto,xx,h*.56,d/2+.20,g)}const laje=bloco(new THREE.BoxGeometry(w+.12,.12,d+.12),bmat(corTelhado),0,h+.06,0,g);superficiesAndaveis.push(laje);const muretaY=h+.12+.25;
+// Folha de porta num pivô na borda do vão. É o coração do esconderijo: entrar não basta, o jogador
+// tem que FECHAR. Abre pra dentro (+1,9 rad ≈ 109°) porque pra fora ela bateria na casa de trás nas
+// fileiras coladas.
+const PORTA_ABERTA_RAD=1.9;
+function construirPortaRefugio(g,d){
+  const pivo=new THREE.Group();
+  pivo.position.set(-VAO_PORTA/2,0,d/2-ESP_PAREDE/2);
+  g.add(pivo);
+  const larg=VAO_PORTA-.04;
+  const folha=bloco(new THREE.BoxGeometry(larg,PORTA_ALTURA,.07),porta,larg/2,PORTA_ALTURA/2,0,pivo);
+  bloco(new THREE.SphereGeometry(.05,6,5),posteMat,larg-.14,PORTA_ALTURA*.5,.06,pivo);// maçaneta: lê como porta de longe
+  return{pivo,folha};
+}
+function casaBairro(x,z,w=6,d=6,h=3,cor=0xd87957,tipo=0,registrar=true,ladoEscada=0,corTelhado=0x888888,refugio=false){const g=new THREE.Group();const terrenoY=obterElevacao(x,z);g.position.set(x,terrenoY,z);g.rotation.y=z>0?Math.PI:0;g.userData={bairroCasa:true,cor,tipo};bairro.add(g);const fachada=bmat(cor);const casca=refugio?construirCascaCasa(g,w,h,d,fachada):null;if(refugio)g.userData.pecaPorta=construirPortaRefugio(g,d);const paredeMesh=casca?null:bloco(new THREE.BoxGeometry(w,h,d),fachada,0,h/2,0,g);const frente=new THREE.Mesh(new THREE.BoxGeometry(w*.7,.1,.04),concreto);frente.position.set(0,.08,d/2+.025);frente.castShadow=true;frente.receiveShadow=true;g.add(frente);const doorHeight=PORTA_ALTURA;if(!refugio)bloco(new THREE.BoxGeometry(.95,doorHeight,.08),porta,0,doorHeight/2,d/2+.07,g);for(const xx of [-w*.27,w*.27]){bloco(new THREE.BoxGeometry(1.22,1.02,.05),molduraJanela,xx,h*.56,d/2+.05,g);bloco(new THREE.BoxGeometry(1.05,.85,.06),Math.random()<.22?janelaAcesa:janela,xx,h*.56,d/2+.12,g);bloco(new THREE.BoxGeometry(1.18,.07,.08),concreto,xx,h*.56,d/2+.20,g)}const laje=bloco(new THREE.BoxGeometry(w+.12,.12,d+.12),bmat(corTelhado),0,h+.06,0,g);superficiesAndaveis.push(laje);const muretaY=h+.12+.25;
 // A escadaria (quando existe) fica FORA da largura w da casa (ver criarEscadariaViela). Sem estender a
 // mureta frontal/traseira até lá, sobra um canto sem parapeito bem onde a escadaria termina — o jogador
 // caminha por cima do telhado, passa reto por esse canto aberto e cai direto no vão entre as casas.
@@ -120,13 +133,58 @@ function arvore(x,z,s=1){const g=new THREE.Group();g.position.set(x,0,z);bairro.
   clusters.forEach((p,i)=>{const folha=bloco(new THREE.DodecahedronGeometry(.62*s*(.85+Math.random()*.3),0),i%2===0?folhaMat:folhaClara,p[0],p[1]*s,p[2],g);folha.rotation.set(Math.random()*Math.PI,Math.random()*Math.PI,Math.random()*Math.PI)});
   criarSombraContato(.85*s,g);
   return g}
-// Refúgio anti-polícia: casas marcadas com uma marquise vermelha sobre a porta — entrar perto da porta
-// quebra a perseguição/detecção da polícia (ver Police.js). Marca visual simples, sem interior modelado.
+// ===== REFÚGIO: casa comum da favela, oca, com porta que abre e fecha =====
+// A regra é ENTRAR e FECHAR: enquanto a porta estiver fechada e o jogador dentro, a polícia e o
+// helicóptero não acham ele (ver Police.js). Antes bastava chegar a 2,8 m da casa, o que fazia o
+// esconderijo valer também na viela e na calçada — "esconderijo em qualquer lugar".
 export const refugios=[];
 const refugioMat=new THREE.MeshStandardMaterial({color:0xb5342a,roughness:.7,emissive:0x5a1712,emissiveIntensity:.35});
 function marcarRefugio(g,d){
   bloco(new THREE.BoxGeometry(1.5,.12,.5),refugioMat,0,2.15,d/2+.32,g);
   for(const xx of[-.62,.62])bloco(new THREE.CylinderGeometry(.03,.03,.4,6),posteMat,xx,1.95,d/2+.5,g);
+}
+// A caixa da porta aberta não pode ser uma Box3 vazia: vazio em three é ±Infinity, e Infinity entra
+// na rasterização da NavMesh e no slab test das balas virando NaN. Uma caixa minúscula enterrada a
+// 10 km de profundidade é finita e nunca encosta em nada.
+function sumirCaixa(b){b.min.set(0,-9999,0);b.max.set(.01,-9998.99,.01)}
+function registrarRefugio(g,x,z,w,d,pecaPorta){
+  const{pivo,folha}=pecaPorta;
+  // A AABB fechada é medida UMA vez, com a folha na posição fechada. Medir na hora de fechar pegaria
+  // a folha no meio da animação e o colisor sairia torto.
+  pivo.rotation.y=0;folha.updateWorldMatrix(true,false);
+  const caixaFechada=new THREE.Box3().setFromObject(folha);
+  pivo.rotation.y=PORTA_ABERTA_RAD;// a casa nasce com a porta aberta
+  const caixa=new THREE.Box3();sumirCaixa(caixa);
+  obstaculos.push(caixa);// a MESMA Box3 fica na lista pra sempre; o que muda é o conteúdo dela
+  // O recuo precisa cobrir a parede MAIS a meia-largura do corpo (≈0,19 m): com o recuo justo da
+  // parede, um ponto do "interior" colado na lateral já deixava a hitbox dentro do tijolo, e fechar
+  // a porta ali prendia o jogador no próprio colisor. Medido: 42 pontos do interior davam colisão.
+  const recuo=ESP_PAREDE+.25;
+  const r={x,z,pivo,folha,caixa,caixaFechada,aberta:true,
+    // Interior em coordenadas de MUNDO. A casa só gira 0 ou π (ver casaBairro) e as duas rotações
+    // mapeiam a caixa nela mesma, então a AABB local serve como mundial sem transformar nada.
+    minX:x-(w/2-recuo),maxX:x+(w/2-recuo),minZ:z-(d/2-recuo),maxZ:z+(d/2-recuo)};
+  refugios.push(r);
+  return r;
+}
+export function alternarPortaRefugio(r){
+  r.aberta=!r.aberta;
+  if(r.aberta)sumirCaixa(r.caixa);else r.caixa.copy(r.caixaFechada);
+  return r.aberta;
+}
+// Em qual refúgio o ponto está (ou null). É o teste do INTERIOR, não de proximidade.
+export function refugioEmQueEsta(pos){
+  for(const r of refugios)if(pos.x>=r.minX&&pos.x<=r.maxX&&pos.z>=r.minZ&&pos.z<=r.maxZ)return r;
+  return null;
+}
+// Escondido = dentro da casa E com a porta fechada. As duas condições, sempre.
+export function estaEscondido(pos){const r=refugioEmQueEsta(pos);return !!r&&!r.aberta}
+export function atualizarRefugios(dt){
+  const k=1-Math.exp(-9*dt);
+  for(const r of refugios){
+    const alvo=r.aberta?PORTA_ABERTA_RAD:0;
+    if(Math.abs(r.pivo.rotation.y-alvo)>.001)r.pivo.rotation.y+=(alvo-r.pivo.rotation.y)*k;
+  }
 }
 function poste(x,z){const g=new THREE.Group();g.position.set(x,0,z);bairro.add(g);bloco(new THREE.CylinderGeometry(.09,.13,6.3,6),posteMat,0,3.15,0,g);bloco(new THREE.BoxGeometry(1.2,.08,.08),posteMat,0,6.1,0,g);registrarObstaculo(g)}
 function fio(a,b){const pts=[new THREE.Vector3(a[0],6.05,a[1]),new THREE.Vector3((a[0]+b[0])/2,5.35,(a[1]+b[1])/2),new THREE.Vector3(b[0],6.05,b[1])];const line=new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),new THREE.LineBasicMaterial({color:0x252321}));bairro.add(line)}
@@ -144,8 +202,7 @@ const frenteLivre=(row%3===2||row===BLOCK_ROWS-1);
 const ehRefugio=frenteLivre&&col%4===2&&i%7!==0;
 const grupoCasa=i%7===0?sobrado(x,z,CELL_W,CELL_D,h,cor,ladoEscada,corTelhado):casaBairro(x,z,CELL_W,CELL_D,h,cor,tipo,true,ladoEscada,corTelhado,ehRefugio);
 if(ladoEscada)criarEscadariaViela(grupoCasa,h+.12,CELL_W,CELL_D,ladoEscada);
-// O ponto de refúgio é o MIOLO da casa: esconder-se agora é entrar de verdade, não encostar na porta.
-if(ehRefugio){marcarRefugio(grupoCasa,CELL_D);refugios.push({x,z})}
+if(ehRefugio){marcarRefugio(grupoCasa,CELL_D);registrarRefugio(grupoCasa,x,z,CELL_W,CELL_D,grupoCasa.userData.pecaPorta)}
 }}// Comércio de esquina e ponto de encontro visual.
 const mercado=casaBairro(0,-18,9,7,3.1,0xd98545,0);bloco(new THREE.BoxGeometry(7.2,1.1,.12),bmat(0xe9d16a),-0,2.15,3.56,mercado);bloco(new THREE.BoxGeometry(5.9,.5,.08),bmat(0x7b3f2b),0,2.15,3.65,mercado);
 [-35,35].forEach(x=>[-55,-28,14,56].forEach(z=>poste(x,z)));for(const a of [[-35,-55],[-35,-28],[-35,14],[-35,56],[35,-55],[35,-28],[35,14]])fio(a,[a[0],a[1]+12]);

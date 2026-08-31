@@ -5,9 +5,9 @@ import{camera,renderer,composer}from'./core.js';
 import{EYE_HEIGHT,player,atualizarMovimentoJogador,vigiarTravamento,destravarJogador}from'./Player.js';
 import{droneState,alternarDrone,atualizarCameraDrone,atualizarCameraSeguidora,miraState}from'./Camera.js';
 import{atualizarAmbiente,obterBandaFase}from'./Environment.js';
-import{atualizarAnimais}from'./WorldGenerator.js';
+import{atualizarAnimais,atualizarRefugios}from'./WorldGenerator.js';
 import{atualizarNPCs}from'./NPCs.js';
-import{atualizarPlantas,atualizarMiraPlantio,isInventarioAberto,renderizarInventario,contextoAtual,getUltimoContextoTipo,renderizarAcoes}from'./Economy.js';
+import{atualizarPlantas,atualizarMiraPlantio,isInventarioAberto,renderizarInventario,contextoAtual,chaveContexto,getUltimoContextoTipo,renderizarAcoes}from'./Economy.js';
 import{atualizarRadar,atualizarDebugNavMesh}from'./UI.js';
 import{atualizarPolicia,atualizarTiroContinuo}from'./Police.js';
 import{inputState,keys,initDragLook,atualizarSuavizacaoInput}from'./Input.js';
@@ -50,9 +50,9 @@ function tick(){
   // atualizarBalas que roda lá dentro, com os alvos deste frame. Depois, ela ficaria um frame parada
   // no cano. Fica no loop principal, e não dentro da máquina de estados da polícia, porque é leitura
   // de input, não IA.
-  atualizarPlantas();atualizarRadar();atualizarNPCs(dt);atualizarAnimais(dt);atualizarTiroContinuo();atualizarPolicia(dt);atualizarDebugNavMesh();
+  atualizarPlantas();atualizarRadar();atualizarNPCs(dt);atualizarAnimais(dt);atualizarRefugios(dt);atualizarTiroContinuo();atualizarPolicia(dt);atualizarDebugNavMesh();
   if(isInventarioAberto()){atualizarMiraPlantio();renderizarInventario()}
-  {const ctxA=contextoAtual(),chave=ctxA?ctxA.tipo+(ctxA.planta?ctxA.planta.estagio:''):null;if(chave!==getUltimoContextoTipo())renderizarAcoes()}
+  {const chave=chaveContexto(contextoAtual());if(chave!==getUltimoContextoTipo())renderizarAcoes()}
   pos.textContent=droneState.ativo?`🚁 x ${droneState.x.toFixed(1)} · z ${droneState.z.toFixed(1)} · alt ${droneState.y.toFixed(0)}m`:`x ${player.position.x.toFixed(1)} · z ${player.position.z.toFixed(1)}`;
   composer.render();
   requestAnimationFrame(tick);
