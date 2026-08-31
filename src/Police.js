@@ -13,11 +13,11 @@ import{plantas,confiscarPlanta,aplicarMulta}from'./Economy.js';
 import{dispararBala,atualizarBalas,limparBalas}from'./Bullets.js';
 
 const HELI_ALTURA=38,HELI_VELOCIDADE=12,MAPA_LIMITE=95;
-const DETECCAO_RAIO=10,APROX_RAIO=3;
+const DETECCAO_RAIO=10,DETECCAO_RAIO_QT=DETECCAO_RAIO*DETECCAO_RAIO,APROX_RAIO=3;
 const RAPEL_DURACAO=1.5,NUM_POLICIAIS=2;
-const COMBATE_RAIO_ATIVACAO=16;
+const COMBATE_RAIO_ATIVACAO=16,COMBATE_RAIO_QT=COMBATE_RAIO_ATIVACAO*COMBATE_RAIO_ATIVACAO;
 const POLICIAL_HP=3,POLICIAL_VELOCIDADE=2,POLICIAL_ALCANCE_TIRO=13,POLICIAL_APROX_MIN=7;
-const POLICIAL_DANO_MIN=10,POLICIAL_DANO_MAX=18,POLICIAL_COOLDOWN_MIN=1.1,POLICIAL_COOLDOWN_MAX=2.1;
+const POLICIAL_DANO_MIN=10,POLICIAL_DAMO_MAX=18,POLICIAL_COOLDOWN_MIN=1.1,POLICIAL_COOLDOWN_MAX=2.1;
 const REFUGIO_RAIO=3.2,REFUGIO_TEMPO=4.5;
 const JOGADOR_HP_MAX=100,JOGADOR_REGEN=3;
 const TIRO_COOLDOWN=.28;
@@ -26,6 +26,16 @@ const TIRO_COOLDOWN=.28;
 const CONFISCO_DURACAO=9,RECUO_DURACAO=2;
 const COOLDOWN_ENTRE_BUSCAS=22,MULTA_RENDICAO=60;
 const SPAWN_X=0,SPAWN_Z=8;
+
+// Pool de vetores temporários para evitar alocação no game loop
+const _tempVec3Pool=[...Array(16)].map(()=>new THREE.Vector3());
+let _poolIdx=0;
+function getTempVec3(){const v=_tempVec3Pool[_poolIdx++%_tempVec3Pool.length];v.set(0,0,0);return v}
+
+// Cache de distância para evitar Math.hypot repetido
+function distXZ(a,b){const dx=a.x-b.x,dz=a.z-b.z;return dx*dx+dz*dz}
+const _distXZTemp={x:0,z:0};
+function distXZCache(ax,az,bx,bz){const dx=ax-bx,dz=az-bz;return dx*dx+dz*dz}
 
 // ===== Helicóptero: fuselagem em cápsula, cauda com rotor, rotor principal girando, luzes de alerta piscando.
 const heliMat=new THREE.MeshStandardMaterial({color:0x2b3a2e,roughness:.55,metalness:.35});
@@ -93,8 +103,10 @@ function mostrarAviso(texto,ms=2600){avisoPolicia.textContent=texto;avisoPolicia
 function flashDano(){danoFlash.style.opacity='.55';clearTimeout(danoFlash._t);danoFlash._t=setTimeout(()=>danoFlash.style.opacity='0',120)}
 atualizarHudSaude();
 
-function distXZ(a,b){return Math.hypot(a.x-b.x,a.z-b.z)}
-function jogadorEscondido(){return refugios.some(r=>distXZ(player.position,r)<REFUGIO_RAIO)}
+// distXZ agora usa distância quadrada pra performance (evita Math.hypot no game loop)
+// As comparações usam o quadrado do raio também
+const REFUGIO_RAIO_QT=REFUGIO_RAIO*REFUGIO_RAIO;
+function jogadorEscondido(){return refugios.some(r=>distXZ(player.position,r)<REFUGIO_RAIO_QT)}
 
 // (O efeito de tiro agora é projétil de verdade — ver Bullets.js.)
 
@@ -137,9 +149,9 @@ function atualizarPolicialCombate(pol,dt){
     if(pol.quedaT>1.1)pol.grupo.visible=false;
     return;
   }
-  const dist=distXZ(pol.pos,player.position);
-  if(dist>POLICIAL_APROX_MIN){
-    const dx=player.position.x-pol.pos.x,dz=player.position.z-pol.pos.z,d=Math.hypot(dx,dz),vx=dx/d*POLICIAL_VELOCIDADE,vz=dz/d*POLICIAL_VELOCIDADE;
+  const distSq=distXZ(pol.pos,player.position);
+  if(distSq>POLICIAL_APROX_MIN*POLICIAL_APROX_MIN){
+    const dx=player.position.x-pol.pos.x,dz=player.position.z-pol.pos.z,d=Math.sqrt(distSq),vx=dx/d*POLICIAL_VELOCIDADE,vz=dz/d*POLICIAL_VELOCIDADE;
     const nx=pol.pos.x+vx*dt,nz=pol.pos.z+vz*dt;let moveu=false;
     if(!colidePedestre(nx,pol.pos.z)){pol.pos.x=nx;moveu=true}
     if(!colidePedestre(pol.pos.x,nz)){pol.pos.z=nz;moveu=true}
@@ -239,13 +251,13 @@ export function atualizarPolicia(dt){
       }
       if(maisProxima){heliAlvo={x:maisProxima.x,z:maisProxima.z}}
     }
-    const dx=heliAlvo.x-heli.position.x,dz=heliAlvo.z-heli.position.z,d=Math.hypot(dx,dz);
-    if(d<3){heliAlvo={x:(Math.random()*2-1)*MAPA_LIMITE,z:(Math.random()*2-1)*MAPA_LIMITE}}
-    else{heli.position.x+=dx/d*HELI_VELOCIDADE*dt;heli.position.z+=dz/d*HELI_VELOCIDADE*dt;heli.rotation.z=THREE.MathUtils.clamp(-dz/d*.35,-.35,.35);heli.rotation.y=Math.atan2(dx,dz)}
+    const dx=heliAlvo.x-heli.position.x,dz=heliAlvo.z-heli.position.z,dSq=dx*dx+dz*dz;
+    if(dSq<9){heliAlvo={x:(Math.random()*2-1)*MAPA_LIMITE,z:(Math.random()*2-1)*MAPA_LIMITE}}
+    else{const d=Math.sqrt(dSq);heli.position.x+=dx/d*HELI_VELOCIDADE*dt;heli.position.z+=dz/d*HELI_VELOCIDADE*dt;heli.rotation.z=THREE.MathUtils.clamp(-dz/d*.35,-.35,.35);heli.rotation.y=Math.atan2(dx,dz)}
     heli.position.y=THREE.MathUtils.lerp(heli.position.y,HELI_ALTURA,dt*2);
     if(agora>=policia.cooldownAte){
       let alvoEncontrado=null;
-      for(const p of plantas){if(!p.colhida&&distXZ(heli.position,p)<DETECCAO_RAIO){alvoEncontrado=p;break}}
+      for(const p of plantas){if(!p.colhida&&distXZ(heli.position,p)<DETECCAO_RAIO_QT){alvoEncontrado=p;break}}
       if(alvoEncontrado&&!jogadorEscondido()){
         policia.estado='indo';policia.alvoPlanta=alvoEncontrado;
         mostrarAviso('🚁 A polícia achou sua plantação — corre pra defender!',3400);
@@ -253,8 +265,8 @@ export function atualizarPolicia(dt){
     }
   }else if(policia.estado==='indo'){
     const alvo=policia.alvoPlanta;
-    const dx=alvo.x-heli.position.x,dz=alvo.z-heli.position.z,d=Math.hypot(dx,dz);
-    if(d<APROX_RAIO){
+    const dx=alvo.x-heli.position.x,dz=alvo.z-heli.position.z,dSq=dx*dx+dz*dz;
+    if(dSq<APROX_RAIO*APROX_RAIO){
       policia.estado='rapel';policia.tempoEstado=0;
       for(let i=0;i<NUM_POLICIAIS;i++){
         const pol=criarPolicial();
@@ -267,7 +279,7 @@ export function atualizarPolicia(dt){
         const corda=new THREE.Line(new THREE.BufferGeometry().setFromPoints([heli.position.clone(),pol.grupo.position.clone()]),new THREE.LineBasicMaterial({color:0x333333}));
         scene.add(corda);cordas.push({linha:corda,pol});
       }
-    }else{heli.position.x+=dx/d*HELI_VELOCIDADE*1.3*dt;heli.position.z+=dz/d*HELI_VELOCIDADE*1.3*dt;heli.rotation.y=Math.atan2(dx,dz)}
+    }else{const d=Math.sqrt(dSq);heli.position.x+=dx/d*HELI_VELOCIDADE*1.3*dt;heli.position.z+=dz/d*HELI_VELOCIDADE*1.3*dt;heli.rotation.y=Math.atan2(dx,dz)}
   }else if(policia.estado==='rapel'){
     policia.tempoEstado+=dt;
     const t=Math.min(1,policia.tempoEstado/RAPEL_DURACAO);
@@ -279,13 +291,13 @@ export function atualizarPolicia(dt){
     if(t>=1){
       for(const c of cordas){scene.remove(c.linha);c.linha.geometry.dispose();c.linha.material.dispose()}
       cordas.length=0;
-      const perto=distXZ(player.position,policia.alvoPlanta)<=COMBATE_RAIO_ATIVACAO&&!jogadorEscondido();
+      const perto=distXZ(player.position,policia.alvoPlanta)<=COMBATE_RAIO_QT&&!jogadorEscondido();
       policia.estado=perto?'combate':'confiscando';policia.tempoEstado=0;
       if(policia.estado==='combate')mostrarAviso('A polícia achou sua plantação — defenda com o botão de atirar!',3200);
     }
   }else if(policia.estado==='confiscando'){
     policia.tempoEstado+=dt;
-    if(distXZ(player.position,policia.alvoPlanta)<=COMBATE_RAIO_ATIVACAO&&!jogadorEscondido()){
+    if(distXZ(player.position,policia.alvoPlanta)<=COMBATE_RAIO_QT&&!jogadorEscondido()){
       policia.estado='combate';mostrarAviso('A polícia te viu — defenda a plantação!',2800);
     }else if(policia.tempoEstado>=CONFISCO_DURACAO){
       if(policia.alvoPlanta&&!policia.alvoPlanta.colhida){confiscarPlanta(policia.alvoPlanta);mostrarAviso('A polícia confiscou sua plantação.',2600)}

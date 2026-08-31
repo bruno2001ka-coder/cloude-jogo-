@@ -15,11 +15,13 @@ const floraAcentoMat=new THREE.MeshStandardMaterial({color:0xf3e9b8,roughness:.6
 const caulePlantaMat=new THREE.MeshStandardMaterial({color:0x5a7a3c,roughness:.85});
 const TEMPO_ESTAGIO=22;// segundos por estágio (broto→vegetativa→flora): ritmo de jogo casual, não é guia real de cultivo
 export const plantas=[];
-function distXZ(a,b){return Math.hypot(a.x-b.x,a.z-b.z)}
+function distXZSq(a,b){const dx=a.x-b.x,dz=a.z-b.z;return dx*dx+dz*dz}
 function bloco(geo,material,x,y,z,parent){const m=new THREE.Mesh(geo,material);m.position.set(x,y,z);m.castShadow=true;m.receiveShadow=true;parent.add(m);return m}
 
-export const lojaPos=new THREE.Vector3(0,0,-18);// reaproveita o mercadinho já existente no bairro
+export const lojaPos=new THREE.Vector3(0,0,-18);
+const LOJA_RAIO_QT=4.5*4.5;
 export const receptadorPos=new THREE.Vector3(50,0,30);
+const RECEPTADOR_RAIO_QT=4.5*4.5;
 criarEsconderijo(receptadorPos.x,receptadorPos.z);
 
 // Planta em vaso, estilizada em 3 estágios (broto/vegetativa/flora), com a mesma técnica de aglomerados das árvores.
@@ -63,7 +65,7 @@ function calcularAlvoPlantio(){
   const meia=.22;
   const caixaVaso=new THREE.Box3(new THREE.Vector3(ponto.x-meia,ponto.y,ponto.z-meia),new THREE.Vector3(ponto.x+meia,ponto.y+.3,ponto.z+meia));
   const bloqueado=obstaculos.some(o=>o.intersectsBox(caixaVaso));
-  const pertoDemais=plantas.some(p=>!p.colhida&&Math.hypot(p.x-ponto.x,p.z-ponto.z)<1.6);
+  const pertoDemais=plantas.some(p=>!p.colhida&&distXZSq(p,ponto)<2.56);
   return{ponto,valido:!bloqueado&&!pertoDemais};
 }
 export function atualizarMiraPlantio(){
@@ -78,9 +80,9 @@ export function atualizarMiraPlantio(){
 }
 export function contextoAtual(){
   const p=player.position;
-  if(distXZ(p,lojaPos)<4.5)return{tipo:'loja'};
-  if(distXZ(p,receptadorPos)<4.5)return{tipo:'receptador'};
-  const plantaProxima=plantas.find(pl=>!pl.colhida&&Math.hypot(pl.x-p.x,pl.z-p.z)<1.6);
+  if(distXZSq(p,lojaPos)<LOJA_RAIO_QT)return{tipo:'loja'};
+  if(distXZSq(p,receptadorPos)<RECEPTADOR_RAIO_QT)return{tipo:'receptador'};
+  const plantaProxima=plantas.find(pl=>!pl.colhida&&distXZSq(pl,p)<2.56);
   if(plantaProxima)return{tipo:'planta',planta:plantaProxima};
   return null;
 }
