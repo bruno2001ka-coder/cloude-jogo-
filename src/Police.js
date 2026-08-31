@@ -31,7 +31,7 @@ import{scene,camera}from'./core.js';
 import{obterElevacao}from'./Terrain.js';
 import{primeiroImpactoNoSegmento,intersectarSegmentoCaixa,buscarPosicaoLivre}from'./Physics.js';
 import{encontrarCaminho,visaoHorizontalLivre}from'./NavMesh.js';
-import{player,obterBocaDaArma,zonasDeAcertoJogador}from'./Player.js';
+import{player,obterBocaDaArma,zonasDeAcertoJogador,PLAYER_HEIGHT}from'./Player.js';
 import{refugios}from'./WorldGenerator.js';
 import{colidePedestre}from'./NPCs.js';
 import{plantas,confiscarPlanta,aplicarMulta,inventario,atualizarStatusEconomia}from'./Economy.js';
@@ -105,12 +105,17 @@ const uniformeMat=new THREE.MeshStandardMaterial({color:0x232c3d,roughness:.7}),
   armaMat=new THREE.MeshStandardMaterial({color:0x2a2a2a,roughness:.4,metalness:.6});
 function blocoP(geo,mat,x,y,z,parent){const m=new THREE.Mesh(geo,mat);m.position.set(x,y,z);m.castShadow=true;m.receiveShadow=true;parent.add(m);return m}
 
+// A malha crua do policial mede 1,78 nesta escala — dividindo por PLAYER_HEIGHT dá a escala que
+// deixa o policial exatamente do mesmo tamanho do personagem principal.
+const ESCALA_POLICIAL=PLAYER_HEIGHT/1.78;
+
 // ===== ZONAS DE ACERTO DO POLICIAL =====
-// Redimensionado para ~1,15m altura (escala 0.64) mantendo proporções com jogador 0.9m.
+// Mesmas frações do corpo cru (cabeça 1,3–1,78 · tronco 0,62–1,3 · pernas 0–0,62), escaladas por
+// ESCALA_POLICIAL pra bater com o policial do tamanho do jogador (0,9 m).
 const ZONAS_POLICIAL=[
-  {nome:'cabeca',de:.83,ate:1.14,meia:.16,multiplicador:2},
-  {nome:'tronco',de:.40,ate:.83,meia:.22,multiplicador:1},
-  {nome:'pernas',de:0,ate:.40,meia:.14,multiplicador:.6},
+  {nome:'cabeca',de:.657,ate:.9,meia:.131,multiplicador:2},
+  {nome:'tronco',de:.313,ate:.657,meia:.172,multiplicador:1},
+  {nome:'pernas',de:0,ate:.313,meia:.111,multiplicador:.6},
 ];
 
 function criarPolicial(indice){
@@ -123,7 +128,7 @@ function criarPolicial(indice){
   const pernas=[-.14,.14].map(lx=>blocoP(new THREE.BoxGeometry(.13,.55,.16),uniformeMat,lx,.29,0,g));
   const bracos=[-.37,.37].map(lx=>blocoP(new THREE.BoxGeometry(.13,.58,.16),skinMat,lx,.9,0,g));
   const arma=blocoP(new THREE.BoxGeometry(.08,.1,.42),armaMat,.37,.68,.18,g);
-  g.scale.setScalar(.64);
+  g.scale.setScalar(ESCALA_POLICIAL);
   scene.add(g);
   return{
     grupo:g,pernas,bracos,arma,hp:POLICIAL_HP,vivo:true,caindo:false,quedaT:0,
@@ -133,7 +138,7 @@ function criarPolicial(indice){
     rota:null,indiceRota:0,destinoRota:null,proximoReplan:indice*.35,
     // As caixas de acerto são criadas UMA vez e só têm os valores reescritos por frame.
     caixas:ZONAS_POLICIAL.map(()=>new THREE.Box3()),
-    barra:criarBarraMundo(1.3,.64),
+    barra:criarBarraMundo(2.05*ESCALA_POLICIAL,ESCALA_POLICIAL),
   };
 }
 // Reescreve as caixas de acerto do policial na posição atual (sem alocar) e devolve a lista.

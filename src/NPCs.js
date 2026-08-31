@@ -4,11 +4,15 @@ import{obterElevacao}from'./Terrain.js';
 import{colidePedestreXZ,buscarPosicaoLivre}from'./Physics.js';
 import{distanciaLivreHorizontal}from'./NavMesh.js';
 import{bairro}from'./WorldGenerator.js';
+import{PLAYER_HEIGHT}from'./Player.js';
 
 function bloco(geo,material,x,y,z,parent){const m=new THREE.Mesh(geo,material);m.position.set(x,y,z);m.castShadow=true;m.receiveShadow=true;parent.add(m);return m}
 
-// Corpo com a largura REAL da silhueta (braços inclusos). Reduzido para ~1.0m (escala 0.625).
-export const PEDESTRE_MEIA_LARG=.45,PEDESTRE_MEIA_PROF=.22,PEDESTRE_ALTURA=1.0;
+// A malha crua do morador (mesmo bloco do policial) mede 1,75 nesta escala — dividindo por
+// PLAYER_HEIGHT dá a escala que deixa o morador do mesmo tamanho do personagem principal.
+const ESCALA_NPC=PLAYER_HEIGHT/1.75;
+// Largura/profundidade da hitbox e altura de colisão acompanham a mesma escala do corpo visual.
+export const PEDESTRE_MEIA_LARG=.45*ESCALA_NPC,PEDESTRE_MEIA_PROF=.22*ESCALA_NPC,PEDESTRE_ALTURA=PLAYER_HEIGHT;
 // Alcance do raycast horizontal de antecipação: pouco mais que um passo de 1 s na velocidade máxima.
 const LOOKAHEAD=2.2;
 
@@ -52,7 +56,7 @@ function criarNPC(corRoupa,corPele){
   for(const x of[-.07,.07])bloco(new THREE.BoxGeometry(.06,.06,.03),faceNpc,x,1.53,.175,g);
   bloco(new THREE.BoxGeometry(.13,.03,.02),faceNpc,0,1.4,.18,g);
   bloco(new THREE.BoxGeometry(.39,.1,.36),cabeloNpc,0,1.7,0,g);
-  const escalaEscolhida=.92+Math.random()*.16;
+  const escalaEscolhida=ESCALA_NPC*(.92+Math.random()*.16);
   const pernas=[-.14,.14].map(lx=>bloco(new THREE.BoxGeometry(.13,.55,.16),calcaNpc,lx,.29,0,g));
   const bracos=[-.37,.37].map(lx=>bloco(new THREE.BoxGeometry(.13,.58,.16),skinNpc,lx,.9,0,g));
   g.scale.setScalar(escalaEscolhida);
