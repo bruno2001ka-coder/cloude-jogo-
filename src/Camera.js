@@ -36,7 +36,7 @@ export function alternarDrone(playerPos,inputState){
 export function subirDrone(){droneState.y=Math.min(110,droneState.y+14)}
 
 export function atualizarCameraDrone(dt,keys,joyX,joyY,yaw,pitch){
-  let x=(keys.KeyD?1:0)-(keys.KeyA?1:0)+joyX,z=(keys.KeyS?1:0)-(keys.KeyW?1:0)-joyY,m=Math.hypot(x,z);
+  let x=(keys.KeyD?1:0)-(keys.KeyA?1:0)+joyX,z=(keys.KeyS?1:0)-(keys.KeyW?1:0)+joyY,m=Math.hypot(x,z);
   if(m){x/=m;z/=m;const f=new THREE.Vector3(-Math.sin(yaw),0,-Math.cos(yaw)),r=new THREE.Vector3(Math.cos(yaw),0,-Math.sin(yaw));droneState.x+=(r.x*x-f.x*z)*DRONE_VELOCIDADE*dt;droneState.z+=(r.z*x-f.z*z)*DRONE_VELOCIDADE*dt}
   droneState.y-=6*dt;droneState.y=THREE.MathUtils.clamp(droneState.y,10,110);droneState.x=THREE.MathUtils.clamp(droneState.x,-125,125);droneState.z=THREE.MathUtils.clamp(droneState.z,-125,125);
   const chaoDrone=obterElevacao(droneState.x,droneState.z);
