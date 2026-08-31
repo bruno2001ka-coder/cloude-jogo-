@@ -91,6 +91,16 @@ export function atualizarMiraPlantio(){
   potGhostMat.color.set(alvo.valido?0x33ff55:0xff3333);
   miraEl.style.borderColor=alvo.valido?'#33ff55':'#ff3333';
 }
+// Ação primária do contexto — o que a tecla E faz. Existe como função (e não como um `click()` no
+// botão do painel) porque o painel é reconstruído por mudança de contexto: disparar pelo DOM
+// dependeria de o botão certo estar montado naquele frame.
+export function acaoPrimaria(){
+  const ctx=contextoAtual();
+  if(!ctx)return null;
+  if(ctx.tipo==='refugio'){const aberta=alternarPortaRefugio(ctx.refugio);renderizarAcoes();return aberta?'porta-aberta':'porta-fechada'}
+  if(ctx.tipo==='planta'&&ctx.planta.estagio===2){colher(ctx.planta);return 'colheu'}
+  return null;
+}
 export function contextoAtual(){
   const p=player.position;
   // O refúgio vem PRIMEIRO: dentro da casa, a única ação que importa é a porta. `chave` inclui o
@@ -199,6 +209,27 @@ export function confiscarPlanta(planta){
 }
 // Multa aplicada pela polícia quando o jogador é rendido num confronto (ver Police.js).
 export function aplicarMulta(valor){dinheiro=Math.max(0,dinheiro-valor);atualizarStatusEconomia()}
+
+// ===== ACESSOS PRO SAVE (ver Save.js) =====
+// `dinheiro` é `export let`: quem importa enxerga o valor, mas não consegue escrever nele de fora.
+// O setter existe por isso, e sanitiza — um save corrompido com "abc" viraria NaN e contaminaria a
+// economia inteira de forma silenciosa (NaN sobrevive a toda aritmética seguinte).
+export function obterDinheiro(){return dinheiro}
+export function definirDinheiro(v){dinheiro=Math.max(0,Math.floor(Number(v)||0));atualizarStatusEconomia()}
+// Recria uma muda com a IDADE que ela tinha quando foi salva, e não recém-plantada: o estágio é
+// função do tempo desde o plantio, então plantar "do zero" no load faria a plantação inteira voltar
+// pra broto e o jogador perderia os 44 s de crescimento a cada vez que abrisse o jogo.
+export function restaurarPlanta(x,y,z,idade){
+  const p=criarPlanta(x,y,z);
+  const anos=Math.max(0,Number(idade)||0);
+  p.plantadoEm=performance.now()/1000-anos;
+  p.estagio=Math.min(2,Math.floor(anos/TEMPO_ESTAGIO));
+  atualizarEstagioPlanta(p);
+  plantas.push(p);
+  return p;
+}
+export function idadeDaPlanta(p){return performance.now()/1000-p.plantadoEm}
+export function limparPlantas(){for(const p of plantas)scene.remove(p.grupo);plantas.length=0}
 let ultimoContextoTipo=null;
 // Identidade do painel de ações: o loop só redesenha quando ela muda. Mora aqui, e não inline no
 // main, porque cada contexto sabe o que o faz mudar (o estágio da muda, o estado da porta).

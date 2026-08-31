@@ -14,6 +14,12 @@ export const agua=new THREE.MeshStandardMaterial({color:0x2f7fae,roughness:.3,me
 export const posteMat=new THREE.MeshStandardMaterial({color:0x3a302a,roughness:.5,metalness:.55});
 export const folhaMat=new THREE.MeshStandardMaterial({color:0x4f8e4c,roughness:.9});
 export const folhaClara=new THREE.MeshStandardMaterial({color:0x75ad58,roughness:.9});
+// Colete balístico: mesma cor/aspereza do colete dos policiais (Police.js) de propósito — o jogador e a
+// polícia usam o mesmo equipamento, e repetir a cor solta em dois arquivos garantia divergência na
+// primeira vez que alguém ajustasse o tom. Fica aqui (e não em Player.js) por ser material compartilhável.
+export const coleteMat=new THREE.MeshStandardMaterial({color:0x14181f,roughness:.75});
+// Faixa/ombreira um tico mais clara: sem ela o colete vira um bloco preto chapado contra a camisa escura.
+export const coleteFaixaMat=new THREE.MeshStandardMaterial({color:0x2b323d,roughness:.7});
 
 // Sombra de contato falsa (blob radial suave): ajuda a "grudar" objetos no chão sem custo de mais uma luz/sombra real.
 function criarTexturaSombra(){const s=128,cv=document.createElement('canvas');cv.width=cv.height=s;const ctx=cv.getContext('2d');const grad=ctx.createRadialGradient(s/2,s/2,0,s/2,s/2,s/2);grad.addColorStop(0,'rgba(0,0,0,.45)');grad.addColorStop(.7,'rgba(0,0,0,.16)');grad.addColorStop(1,'rgba(0,0,0,0)');ctx.fillStyle=grad;ctx.fillRect(0,0,s,s);return new THREE.CanvasTexture(cv)}

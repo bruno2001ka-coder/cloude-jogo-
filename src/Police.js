@@ -39,8 +39,8 @@ import{primeiroImpactoNoSegmento,intersectarSegmentoCaixa,buscarPosicaoLivre}fro
 import{encontrarCaminho,visaoHorizontalLivre}from'./NavMesh.js';
 import{player,zonasDeAcertoJogador,PLAYER_HEIGHT,encararDirecao}from'./Player.js';
 import{ORDEM_ARMAS,armaEquipada,idArmaEquipada,equiparArma,obterBocaDaArma,direcaoComDispersao}from'./Weapons.js';
-import{estaEscondido,refugioEmQueEsta}from'./WorldGenerator.js';
-import{colidePedestre}from'./NPCs.js';
+import{estaEscondido,refugioEmQueEsta,refugios}from'./WorldGenerator.js';
+import{colidePedestre,waypointsVielas}from'./NPCs.js';
 import{plantas,confiscarPlanta,aplicarMulta,inventario,atualizarStatusEconomia,isInventarioAberto}from'./Economy.js';
 import{dispararBala,atualizarBalas,limparBalas}from'./Bullets.js';
 import{aplicarDano,renderizarVidaJogador,criarBarraMundo}from'./HealthBar.js';
@@ -74,7 +74,47 @@ const POLICIAL_DANO_MIN=10,POLICIAL_DANO_MAX=18,POLICIAL_COOLDOWN_MIN=1.1,POLICI
 //   · escondido por 3 s           → a guarnição em campo perde o rastro e recua
 //   · saiu com a barra > 0        → a caçada recomeça, agora atrás do JOGADOR
 const PROCURADO_MAX=5;
-const ESCONDIDO_PARA_SUMIR=3,ESCONDIDO_POR_NIVEL=6,CACA_ATRASO=4;
+// 18 s por estrela (faixa pedida: 15–25). Com 6 s o esconderijo zerava uma ficha 5 em meio minuto e
+// a escalada nunca chegava a doer; 18 s obriga a planejar a fuga (ficha 5 = 1min30 dentro da casa).
+const ESCONDIDO_PARA_SUMIR=3,ESCONDIDO_POR_NIVEL=18,CACA_ATRASO=4;
+// ===== O HELICÓPTERO NÃO É PERMANENTE =====
+// Antes ele sobrevoava a favela 24 h por dia, e isso matava duas coisas ao mesmo tempo: a favela nunca
+// ficava tranquila e a chegada dele deixava de significar alguma coisa. Agora existem dois regimes:
+//   procurado < PROCURADO_HELI_ATIVO → RONDA DISTANTE: voa alto, colado nas bordas do mapa, e só
+//     enxerga muda florida com raio reduzido (o loop econômico da batida continua existindo, mas raro);
+//     caçada AO JOGADOR por rapel não acontece — quem persegue nessa faixa é a polícia de rua.
+//   procurado ≥ PROCURADO_HELI_ATIVO → ele entra pra valer: altitude normal, patrulha por cima da
+//     favela, raio de detecção cheio e caçada ao jogador.
+const PROCURADO_HELI_ATIVO=3;
+const HELI_ALTURA_LONGE=62,HELI_BORDA=88,DETECCAO_RAIO_LONGE=8,COOLDOWN_LONGE=55;
+// ===== VISÃO (cone + linha de visão) =====
+// Meia-abertura do cone em radianos: 0,95 rad ≈ 54°, cone total ≈ 109° — perto do campo útil humano.
+// Sobe 0,07 rad por estrela (na ficha 5 vai a 1,30 rad ≈ 74°, cone de ~149°): com ficha alta eles estão
+// alertas, olhando pros lados, e é muito mais difícil passar de raspão.
+const CONE_MEIA_BASE=.95,CONE_MEIA_POR_ESTRELA=.07;
+const VISAO_ALCANCE_BASE=18,VISAO_ALCANCE_POR_ESTRELA=1.8;
+// ===== CUSTO POR FRAME DO SISTEMA DE VISÃO =====
+// Cada policial só reavalia a visão a cada VISAO_INTERVALO, com a fase defasada por índice (i·0,07 s)
+// pra os testes se espalharem pelos frames em vez de estourarem todos juntos. Teto real de policiais em
+// campo = 6 (guarnição) + 4 (2 duplas de rua) = 10.
+//   10 policiais ÷ 0,3 s ÷ 60 fps ≈ 0,55 avaliação de visão por frame.
+// E avaliação ≠ raycast: distância e ângulo são testes aritméticos que descartam a maioria dos casos
+// ANTES do raycast — só quem já está dentro do cone e no alcance chega a chamar
+// primeiroImpactoNoSegmento. Pior caso absoluto (todos dentro do cone o tempo todo): ~0,55 raycast por
+// frame, contra os 10/frame que uma checagem ingênua custaria. Some-se 1 raycast/frame do
+// resolverPontoVisado do jogador e ~1 por bala em voo, que já existiam.
+const VISAO_INTERVALO=.3,VISAO_DEFASAGEM=.07;
+// Quanto tempo a última posição avistada continua valendo como destino depois que o jogador some.
+// Curto demais e eles desistem na primeira quina; longo demais e viram teleguiados.
+const MEMORIA_ALVO=9;
+// ===== POLÍCIA DE RUA =====
+// Duplas que nascem numa borda, rondam as vielas e vão embora. Nunca permanentes: com procurado 0 a
+// janela entre surtos é longa de propósito, senão a favela nunca respira. RUA_INTERVALO é sorteado em
+// [min,max] e ENCOLHE com a ficha (÷(1+procurado·0,45)), então é a ficha suja que enche a rua de fardado.
+const RUA_INTERVALO_MIN=70,RUA_INTERVALO_MAX=140,RUA_DUPLA_VIDA=75,RUA_MAX_DUPLAS=2;
+const RUA_VELOCIDADE=1.7,RUA_CHEGADA=1.6,RUA_VASCULHAR_RAIO=3.2;
+// Agressividade por estrela: velocidade, cadência e distância em que param de avançar pra trocar tiro.
+const AGRESSAO_VEL_POR_ESTRELA=.16,AGRESSAO_CADENCIA_POR_ESTRELA=.11,AGRESSAO_APROX_POR_ESTRELA=.55;
 // Quanto mais alta a ficha, maior a guarnição. Teto de 6 por causa do celular: cada policial é uma
 // malha de 7 blocos, uma barra de vida com CanvasTexture e um A* próprio replanejando.
 function numPoliciaisPara(p){return Math.min(6,2+Math.max(0,p-1))}
@@ -140,7 +180,7 @@ const ZONAS_POLICIAL=[
   {nome:'pernas',de:0,ate:.313,meia:.111,multiplicador:.6},
 ];
 
-function criarPolicial(indice){
+function criarPolicial(indice,tipo='rapel'){
   const g=new THREE.Group();
   const skinMat=new THREE.MeshStandardMaterial({color:skinPolicial[Math.floor(Math.random()*skinPolicial.length)],roughness:.55});
   blocoP(new THREE.BoxGeometry(.55,.82,.33),uniformeMat,0,.87,0,g);
@@ -153,8 +193,16 @@ function criarPolicial(indice){
   g.scale.setScalar(ESCALA_POLICIAL);
   scene.add(g);
   return{
-    grupo:g,pernas,bracos,arma,hp:POLICIAL_HP,vivo:true,caindo:false,quedaT:0,
+    grupo:g,pernas,bracos,arma,hp:POLICIAL_HP,vivo:true,caindo:false,quedaT:0,tipo,
     pos:new THREE.Vector3(),proximoTiro:0,caminhando:0,
+    // Percepção: `proximaVisao` defasa a checagem entre policiais (ver comentário do custo por frame);
+    // `viu` é o resultado da última avaliação, reaproveitado pelos frames intermediários.
+    proximaVisao:indice*VISAO_DEFASAGEM,viu:false,olharY:0,
+    // Altura renderizada, interpolada: é o que deixa o policial subir junto pra laje (o A* é 2D).
+    alturaAtual:null,
+    // Vida útil e destino da ronda — só a polícia de RUA usa. `modo` distingue ronda · vasculhando ·
+    // caçando · saindo; a guarnição de rapel continua toda no estado 'combate' da máquina do heli.
+    modo:'ronda',destino:null,expiraEm:0,refugioAlvo:null,
     // Perseguição: rota do A*, waypoint atual e o relógio de replanejamento — defasado por policial
     // (i·0,35 s) pra os dois não recalcularem no mesmo frame e dobrarem o custo num pico só.
     rota:null,indiceRota:0,destinoRota:null,proximoReplan:indice*.35,
@@ -287,28 +335,139 @@ function temLinhaDeVisao(ax,ay,az,bx,by,bz){
   return primeiroImpactoNoSegmento(ax,ay,az,bx,by,bz)===null;
 }
 
+// ===== CONE DE VISÃO — matemática pura, sem three e sem estado global =====
+// Fica isolada de propósito: é a regra que decide se o jogador foi visto, e uma regra dessas precisa
+// ser testável fora do jogo (ver o teste do cone). `olharY` usa a MESMA convenção de grupo.rotation.y
+// do three: ângulo medido com atan2(x,z), 0 apontando pro +Z.
+export function dentroDoCone(ox,oz,olharY,ax,az,meiaAbertura){
+  const dx=ax-ox,dz=az-oz;
+  if(dx===0&&dz===0)return true;// em cima do policial: não existe direção, considera visto
+  let d=Math.atan2(dx,dz)-olharY;
+  // Normaliza pra (-π,π]: sem isso, olhar pra 3,1 rad e o alvo a -3,1 rad daria 6,2 rad de diferença
+  // (fora de qualquer cone) sendo que são 0,08 rad de distância angular de verdade.
+  while(d>Math.PI)d-=Math.PI*2;
+  while(d<-Math.PI)d+=Math.PI*2;
+  return Math.abs(d)<=meiaAbertura;
+}
+// As DUAS condições do pedido, nesta ordem por causa do custo: alcance (aritmética), cone (um atan2),
+// e só então a parede. `semParede` é injetado pra esta função continuar pura e testável — no jogo é
+// sempre `temLinhaDeVisao`, que é quem chama o raycast de verdade.
+export function veAlvo(ox,oy,oz,olharY,ax,ay,az,meiaAbertura,alcance,semParede){
+  const dx=ax-ox,dz=az-oz;
+  if(dx*dx+dz*dz>alcance*alcance)return false;
+  if(!dentroDoCone(ox,oz,olharY,ax,az,meiaAbertura))return false;
+  return semParede(ox,oy,oz,ax,ay,az);
+}
+export function meiaAberturaCone(procurado){return CONE_MEIA_BASE+CONE_MEIA_POR_ESTRELA*Math.max(0,procurado||0)}
+export function alcanceVisao(procurado){return VISAO_ALCANCE_BASE+VISAO_ALCANCE_POR_ESTRELA*Math.max(0,procurado||0)}
+
+// ===== RÁDIO: um viu, todos sabem =====
+// Guarda só a ÚLTIMA posição avistada, com validade. É o suficiente pra os outros convergirem sem
+// virarem teleguiados: ninguém recebe a posição atual do jogador, recebe onde ele estava.
+const rastro={ativo:false,x:0,z:0,ate:0,avisadoEm:-99};
+function compartilharAvistamento(x,z,agora){
+  const novo=!rastro.ativo;
+  rastro.ativo=true;rastro.x=x;rastro.z=z;rastro.ate=agora+MEMORIA_ALVO;
+  // O aviso é limitado no tempo porque o rastro é reescrito a cada avistamento — sem a trava, um
+  // policial de olho no jogador cuspiria a mesma frase a cada 0,3 s.
+  if(novo&&agora-rastro.avisadoEm>12){rastro.avisadoEm=agora;mostrarAviso('👮 Te viram — estão chamando reforço no rádio.',2800)}
+}
+function rastroValido(agora){if(rastro.ativo&&agora>rastro.ate)rastro.ativo=false;return rastro.ativo}
+
+// Avaliação de visão de UM policial, escalonada no tempo. Devolve o resultado memorizado nos frames
+// em que não é a vez dele — é isso que segura o custo por frame (ver bloco de constantes).
+function perceber(pol,agora){
+  if(agora<pol.proximaVisao)return pol.viu;
+  pol.proximaVisao=agora+VISAO_INTERVALO;
+  // Escondido de verdade (dentro da casa E porta fechada) é invisível por definição, sem gastar raycast.
+  if(jogadorEscondido()||jogadorRendido){pol.viu=false;return false}
+  const ox=pol.pos.x,oy=pol.grupo.position.y+1.55,oz=pol.pos.z;// olho, não peito
+  pol.viu=veAlvo(ox,oy,oz,pol.olharY,player.position.x,player.position.y+1.1,player.position.z,
+    meiaAberturaCone(policia.procurado),alcanceVisao(policia.procurado),temLinhaDeVisao);
+  if(pol.viu)compartilharAvistamento(player.position.x,player.position.z,agora);
+  return pol.viu;
+}
+
 // Perseguição híbrida: reta quando a visão horizontal está limpa (custo zero), A* quando não está.
 // Sem isso o policial anda contra a quina da casa até o desencravador cuspir ele pra fora.
-function alvoDeMovimento(pol,agora){
+function alvoDeMovimento(pol,agora,destX,destZ){
   const alturaPeito=pol.grupo.position.y+1.1;
-  if(visaoHorizontalLivre(pol.pos.x,pol.pos.z,player.position.x,player.position.z,alturaPeito)){
+  if(visaoHorizontalLivre(pol.pos.x,pol.pos.z,destX,destZ,alturaPeito)){
     pol.rota=null;pol.destinoRota=null;
-    return{x:player.position.x,z:player.position.z};
+    return{x:destX,z:destZ};
   }
   const rotaInvalida=!pol.rota||pol.indiceRota>=pol.rota.length
-    ||!pol.destinoRota||distXZ(pol.destinoRota,player.position)>REPLANEJAR_DESVIO;
+    ||!pol.destinoRota||Math.hypot(pol.destinoRota.x-destX,pol.destinoRota.z-destZ)>REPLANEJAR_DESVIO;
   if(rotaInvalida||agora>=pol.proximoReplan){
     pol.proximoReplan=agora+REPLANEJAR_INTERVALO;
     if(rotaInvalida){
-      const caminho=encontrarCaminho(pol.pos.x,pol.pos.z,player.position.x,player.position.z);
-      if(caminho&&caminho.length){pol.rota=caminho;pol.indiceRota=0;pol.destinoRota={x:player.position.x,z:player.position.z}}
+      const caminho=encontrarCaminho(pol.pos.x,pol.pos.z,destX,destZ);
+      if(caminho&&caminho.length){pol.rota=caminho;pol.indiceRota=0;pol.destinoRota={x:destX,z:destZ}}
       else{pol.rota=null;pol.destinoRota=null}
     }
   }
-  if(!pol.rota)return{x:player.position.x,z:player.position.z};// sem rota: tenta a reta, o desencravador cobre
+  if(!pol.rota)return{x:destX,z:destZ};// sem rota: tenta a reta, o desencravador cobre
   let wp=pol.rota[pol.indiceRota];
   while(wp&&Math.hypot(wp.x-pol.pos.x,wp.z-pol.pos.z)<CHEGADA_WAYPOINT){wp=pol.rota[++pol.indiceRota]}
-  return wp||{x:player.position.x,z:player.position.z};
+  return wp||{x:destX,z:destZ};
+}
+
+// Um passo de caminhada com colisão por eixo + animação de perna. Devolve se andou. `olharY` só é
+// reescrito quando o corpo se move: parado, o policial mantém a direção do olhar, que é justamente o
+// que o cone de visão consulta.
+function passoPolicial(pol,dt,alvoX,alvoZ,velocidade){
+  const dx=alvoX-pol.pos.x,dz=alvoZ-pol.pos.z,d=Math.hypot(dx,dz)||1;
+  const vx=dx/d*velocidade,vz=dz/d*velocidade;
+  const nx=pol.pos.x+vx*dt,nz=pol.pos.z+vz*dt;let moveu=false;
+  if(!colidePedestre(nx,pol.pos.z)){pol.pos.x=nx;moveu=true}
+  if(!colidePedestre(pol.pos.x,nz)){pol.pos.z=nz;moveu=true}
+  if(!moveu){pol.rota=null;pol.destinoRota=null;pol.proximoReplan=0}
+  else{
+    pol.olharY=Math.atan2(vx,vz);pol.grupo.rotation.y=pol.olharY;
+    pol.caminhando+=dt*7;const balanco=Math.sin(pol.caminhando)*.4;
+    pol.pernas[0].rotation.x=balanco;pol.pernas[1].rotation.x=-balanco;
+  }
+  return moveu;
+}
+function encararPonto(pol,x,z){pol.olharY=Math.atan2(x-pol.pos.x,z-pol.pos.z);pol.grupo.rotation.y=pol.olharY}
+
+// Assenta o corpo no chão — e sobe na laje quando o jogador está lá em cima. O A* é 2D e não conhece
+// escadaria, então a regra mais simples que funciona é esta: chegando embaixo do jogador elevado
+// (≤2,5 m no plano), o policial ganha altura até a altura dele, como se tivesse subido a escada. Custa
+// zero raycast, e visualmente resolve o caso que importa — fugir pra laje deixar de ser imunidade.
+function assentarPolicial(pol,dt,perseguindo){
+  const chao=obterElevacao(pol.pos.x,pol.pos.z);
+  let alvoY=chao;
+  if(perseguindo&&player.position.y>chao+1.2&&distXZ(pol.pos,player.position)<2.5)alvoY=player.position.y;
+  if(pol.alturaAtual===null)pol.alturaAtual=alvoY;
+  const passo=2.4*dt;// velocidade de subida/descida, em metros por segundo
+  pol.alturaAtual+=THREE.MathUtils.clamp(alvoY-pol.alturaAtual,-passo,passo);
+  pol.grupo.position.set(pol.pos.x,pol.alturaAtual,pol.pos.z);
+}
+
+// Agressividade em função da ficha: mais rápido, mais cadenciado e chegando mais perto.
+function velocidadePolicial(base){return base*(1+AGRESSAO_VEL_POR_ESTRELA*policia.procurado)}
+function cooldownTiro(){
+  const fator=Math.max(.35,1-AGRESSAO_CADENCIA_POR_ESTRELA*policia.procurado);
+  return (POLICIAL_COOLDOWN_MIN+Math.random()*(POLICIAL_COOLDOWN_MAX-POLICIAL_COOLDOWN_MIN))*fator;
+}
+function aproxMinima(){return Math.max(3,POLICIAL_APROX_MIN-AGRESSAO_APROX_POR_ESTRELA*policia.procurado)}
+
+// Tiro: só sai quando o policial ENXERGA o jogador de fato — o mesmo `viu` do cone, não um teste
+// separado. Antes bastava distância + parede livre, então ele acertava alvo que estava nas costas dele.
+function tentarAtirar(pol,agora,viu){
+  if(!viu||agora<pol.proximoTiro)return;
+  const dist=distXZ(pol.pos,player.position);
+  if(dist>POLICIAL_ALCANCE_TIRO)return;
+  const ox=pol.pos.x,oy=pol.grupo.position.y+1.15,oz=pol.pos.z;
+  const ax=player.position.x,ay=player.position.y+1.1,az=player.position.z;
+  pol.proximoTiro=agora+cooldownTiro();
+  const espalhamento=THREE.MathUtils.clamp(dist/POLICIAL_ALCANCE_TIRO,.05,1)*.13;
+  const dir=new THREE.Vector3(ax-ox,ay-oy,az-oz).normalize();
+  dir.x+=(Math.random()*2-1)*espalhamento;
+  dir.y+=(Math.random()*2-1)*espalhamento*.5;
+  dir.z+=(Math.random()*2-1)*espalhamento;
+  dispararBala(new THREE.Vector3(ox,oy,oz),dir,false);
 }
 
 function atualizarPolicialCombate(pol,dt,agora){
@@ -320,32 +479,45 @@ function atualizarPolicialCombate(pol,dt,agora){
     pol.barra.mostrar(false);
     return;
   }
+  // ===== PERCEPÇÃO ANTES DE TUDO =====
+  // O policial não sabe mais onde o jogador está por decreto: ou ele VÊ (cone + linha de visão), ou
+  // trabalha com o rastro do rádio — a última posição avistada por alguém da equipe. Sem nenhum dos
+  // dois ele fica no lugar, olhando em volta. É o que separa "IA que persegue pelas coordenadas" de
+  // "IA que procura".
+  const vendo=perceber(pol,agora);
   const dist=distXZ(pol.pos,player.position);
-  if(dist>POLICIAL_APROX_MIN){
-    const alvo=alvoDeMovimento(pol,agora);
-    const dx=alvo.x-pol.pos.x,dz=alvo.z-pol.pos.z,d=Math.hypot(dx,dz)||1;
-    const vx=dx/d*POLICIAL_VELOCIDADE,vz=dz/d*POLICIAL_VELOCIDADE;
-    const nx=pol.pos.x+vx*dt,nz=pol.pos.z+vz*dt;let moveu=false;
-    if(!colidePedestre(nx,pol.pos.z)){pol.pos.x=nx;moveu=true}
-    if(!colidePedestre(pol.pos.x,nz)){pol.pos.z=nz;moveu=true}
-    // Bateu no waypoint sem conseguir andar: a rota envelheceu, força replanejamento no próximo frame.
-    if(!moveu){pol.rota=null;pol.destinoRota=null;pol.proximoReplan=0}
-    if(moveu){pol.grupo.rotation.y=Math.atan2(vx,vz);pol.caminhando+=dt*7;const balanco=Math.sin(pol.caminhando)*.4;pol.pernas[0].rotation.x=balanco;pol.pernas[1].rotation.x=-balanco}
-  }else{pol.grupo.rotation.y=Math.atan2(player.position.x-pol.pos.x,player.position.z-pol.pos.z)}
+  let destino=null;
+  if(vendo)destino={x:player.position.x,z:player.position.z};
+  else if(rastroValido(agora))destino={x:rastro.x,z:rastro.z};
+  const aproxMin=aproxMinima();
+  if(destino&&(vendo?dist>aproxMin:distXZ(pol.pos,destino)>RUA_CHEGADA)){
+    const alvo=alvoDeMovimento(pol,agora,destino.x,destino.z);
+    passoPolicial(pol,dt,alvo.x,alvo.z,velocidadePolicial(POLICIAL_VELOCIDADE));
+  }else if(vendo){
+    encararPonto(pol,player.position.x,player.position.z);
+  }else{
+    // Perdeu o rastro: varre o olhar devagar em vez de congelar encarando o nada — e é esse giro que
+    // dá ao jogador a chance de contornar por trás, que é o ponto do cone de visão existir.
+    pol.olharY+=dt*.7;pol.grupo.rotation.y=pol.olharY;
+  }
   // Desencrava se acabou dentro de uma parede.
   if(colidePedestre(pol.pos.x,pol.pos.z)){
     const livre=buscarPosicaoLivre(pol.pos.x,pol.pos.z,colidePedestre);
     if(livre){pol.pos.x=livre.x;pol.pos.z=livre.z;pol.rota=null;pol.destinoRota=null}
   }
-  pol.grupo.position.set(pol.pos.x,obterElevacao(pol.pos.x,pol.pos.z),pol.pos.z);
+  // Acompanha o jogador pra cima da laje quando ele sobe e o policial está colado: sem isso ele fica
+  // preso no chão atirando na sola do pé de quem está no telhado.
+  assentarPolicial(pol,dt,vendo);
   pol.barra.posicionar(pol.pos.x,pol.grupo.position.y,pol.pos.z);
   pol.barra.mostrar(pol.hp<POLICIAL_HP);
-  if(dist<=POLICIAL_ALCANCE_TIRO&&agora>=pol.proximoTiro&&!jogadorEscondido()){
+  // Só atira em quem ESTÁ VENDO. Antes bastava distância + linha de visão, então levava tiro de
+  // policial que estava de costas.
+  if(vendo&&dist<=POLICIAL_ALCANCE_TIRO&&agora>=pol.proximoTiro&&!jogadorEscondido()){
     const ox=pol.pos.x,oy=pol.grupo.position.y+1.15,oz=pol.pos.z;
     const ax=player.position.x,ay=player.position.y+1.1,az=player.position.z;
     // só atira se realmente enxerga o jogador — nada de tiro atravessando casa
     if(temLinhaDeVisao(ox,oy,oz,ax,ay,az)){
-      pol.proximoTiro=agora+POLICIAL_COOLDOWN_MIN+Math.random()*(POLICIAL_COOLDOWN_MAX-POLICIAL_COOLDOWN_MIN);
+      pol.proximoTiro=agora+cooldownTiro();
       // erro de pontaria cresce com a distância: a bala sai torta, e é a física dela que decide o acerto
       const espalhamento=THREE.MathUtils.clamp(dist/POLICIAL_ALCANCE_TIRO,.05,1)*.13;
       const dir=new THREE.Vector3(ax-ox,ay-oy,az-oz).normalize();
@@ -445,7 +617,9 @@ export function trocarArma(destino){
 let alvosJogador=[],alvosPolicia=[];
 function montarAlvosDoFrame(){
   alvosJogador.length=0;alvosPolicia.length=0;
-  for(const pol of policiais){
+  // Guarnição de rapel E polícia de rua: sem juntar as duas listas, o policial de rua seria
+  // invulnerável — as balas do jogador atravessariam ele.
+  for(const pol of policiaisAtingiveis()){
     if(!pol.vivo||pol.caindo)continue;
     for(const zona of zonasDoPolicial(pol)){
       // `armaEquipada()` é lido DENTRO da arrow de propósito: esta lista é montada por frame, mas a
@@ -472,8 +646,13 @@ function atingirPolicial(pol,dano){
     // Matar policial é o que mais suja a ficha — e a ficha é o que dimensiona a próxima guarnição.
     // Sem esconderijo isso é uma escalada só de ida: cada baixa traz mais gente na volta.
     somarProcurado(1);
+    // Matar em plena rua é avistamento na certa: o rádio espalha a posição na hora. É o que impede
+    // "limpar a ronda um por um sem ninguém notar".
+    compartilharAvistamento(player.position.x,player.position.z,performance.now()/1000);
   }
-  if(policiais.every(p=>!p.vivo)){
+  // Só a guarnição de rapel encerra o ENCONTRO ao ser abatida — a polícia de rua não está num
+  // encontro, e sem esta guarda matar uma dupla de ronda cancelaria a batida em andamento.
+  if(pol.tipo!=='rua'&&policiais.length&&policiais.every(p=>!p.vivo)){
     mostrarAviso(policia.procurado>=PROCURADO_MAX
       ?'Guarnição abatida — mas a sua ficha está no topo. Some num esconderijo.'
       :'Guarnição abatida. Eles vão voltar em maior número — procure um esconderijo.',3400);
@@ -520,10 +699,16 @@ const ESTADOS={
       // usado, e o helicóptero virava um míssil teleguiado que saía atrás da planta no segundo em que
       // ela nascia. Agora o destino só é sorteado ao CHEGAR no waypoint anterior, e o sorteio no
       // máximo puxa pra região da muda (ver sortearWaypointPatrulha), nunca pro ponto dela.
+      // ===== O AVIÃO SÓ ENTRA COM FICHA ALTA =====
+      // Abaixo do limiar ele fica em RONDA DISTANTE: alto, colado nas bordas do mapa e com raio de
+      // detecção curto. Continua existindo no céu (some por completo daria a impressão de que o
+      // sistema quebrou), mas não é uma ameaça — a favela fica pro jogo de rua.
+      const heliAtivo=policia.procurado>=PROCURADO_HELI_ATIVO;
+      const alturaVoo=heliAtivo?HELI_ALTURA:HELI_ALTURA_LONGE;
       const dx=heliAlvo.x-heli.position.x,dz=heliAlvo.z-heli.position.z,d=Math.hypot(dx,dz);
-      if(d<3){heliAlvo=sortearWaypointPatrulha()}
+      if(d<3){heliAlvo=sortearWaypointPatrulha();if(!heliAtivo){heliAlvo.x=Math.sign(heliAlvo.x||1)*HELI_BORDA;heliAlvo.z=Math.sign(heliAlvo.z||1)*HELI_BORDA}}
       else{heli.position.x+=dx/d*HELI_VELOCIDADE*dt;heli.position.z+=dz/d*HELI_VELOCIDADE*dt;heli.rotation.z=THREE.MathUtils.clamp(-dz/d*.35,-.35,.35);heli.rotation.y=Math.atan2(dx,dz)}
-      heli.position.y=THREE.MathUtils.lerp(heli.position.y,HELI_ALTURA,dt*2);
+      heli.position.y=THREE.MathUtils.lerp(heli.position.y,alturaVoo,dt*2);
       if(jogadorEscondido())return;
       // CAÇADA: com ficha suja, o alvo é o jogador, e o helicóptero vai direto atrás dele de onde
       // quer que esteja — não depende de sobrevoo nem de plantação. É o "saiu do esconderijo com
@@ -537,10 +722,13 @@ const ESTADOS={
         mostrarAviso('🚁 Sua ficha está suja — a polícia está te caçando.',3200);
         return;
       }
-      if(agora<policia.cooldownAte)return;
+      // Em ronda distante a batida por sobrevoo fica muito mais rara (cooldown longo e raio curto):
+      // é o que faz a plantação valer a pena antes de a ficha subir.
+      if(agora<policia.cooldownAte+(heliAtivo?0:COOLDOWN_LONGE))return;
+      const raio=heliAtivo?DETECCAO_RAIO:DETECCAO_RAIO_LONGE;
       // BATIDA: achou por sobrevoo, só enxerga muda florida e só dentro do raio de detecção.
       for(const p of plantas){
-        if(plantaDetectavel(p)&&distXZ(heli.position,p)<DETECCAO_RAIO){
+        if(plantaDetectavel(p)&&distXZ(heli.position,p)<raio){
           policia.alvoPlanta=p;
           transitar('indo');
           mostrarAviso('🚁 O helicóptero achou sua plantação — corre pra defender!',3400);
@@ -645,6 +833,108 @@ const ESTADOS={
 };
 
 // ===== Atualização principal, chamada a cada frame pelo main.js =====
+// ===== POLÍCIA DE RUA: ronda intermitente, a pé, sem helicóptero =====
+// A favela precisa RESPIRAR: a guarnição de rapel só existe em encontro, e sem uma presença de rua o
+// bairro ficava vazio de polícia entre um encontro e outro. Mas 24 h de patrulha também não — por
+// isso as duplas têm VIDA ÚTIL: nascem, rondam, e vão embora sozinhas.
+const policiaisRua=[];
+let proximaDupla=RUA_INTERVALO_MIN;
+function pontoDeRonda(){
+  // Com ficha suja eles vasculham os ESCONDERIJOS (é onde o jogador se enfia); limpos, andam pelas
+  // vielas como qualquer ronda. É o "quando o jogador está procurado, vasculham os esconderijos".
+  if(policia.procurado>0&&refugios.length&&Math.random()<.6){
+    const r=refugios[Math.floor(Math.random()*refugios.length)];
+    return{x:r.x+(Math.random()*2-1)*RUA_VASCULHAR_RAIO,z:r.z+RUA_VASCULHAR_RAIO};// na frente da porta
+  }
+  const wp=waypointsVielas[Math.floor(Math.random()*waypointsVielas.length)];
+  return{x:wp.x,z:wp.z};
+}
+function nascerDupla(agora){
+  const base=pontoDeRonda();
+  for(let i=0;i<2;i++){
+    const pol=criarPolicial(policiaisRua.length+i,'rua');
+    pol.pos.set(base.x+(i?1.2:-1.2),0,base.z);
+    pol.alturaAtual=obterElevacao(pol.pos.x,pol.pos.z);
+    pol.grupo.position.set(pol.pos.x,pol.alturaAtual,pol.pos.z);
+    pol.expiraEm=agora+RUA_DUPLA_VIDA;pol.destinoRonda=pontoDeRonda();
+    policiaisRua.push(pol);
+  }
+}
+function removerRua(i){const pol=policiaisRua[i];scene.remove(pol.grupo);pol.barra.descartar();policiaisRua.splice(i,1)}
+function atualizarPoliciaDeRua(dt,agora){
+  // Durante um encontro de rapel a rua não recebe reforço novo: seriam duas equipes disputando o
+  // mesmo alvo, e no celular isso é o dobro de A* por frame sem ganho nenhum de jogo.
+  const emEncontro=policia.estado!=='patrulha'&&policia.estado!=='recuando';
+  proximaDupla-=dt;
+  if(proximaDupla<=0&&!emEncontro&&policiaisRua.length<RUA_MAX_DUPLAS*2){
+    nascerDupla(agora);
+    proximaDupla=RUA_INTERVALO_MIN+Math.random()*(RUA_INTERVALO_MAX-RUA_INTERVALO_MIN);
+  }
+  for(let i=policiaisRua.length-1;i>=0;i--){
+    const pol=policiaisRua[i];
+    if(!pol.vivo){
+      pol.quedaT+=dt;pol.grupo.rotation.x=Math.min(Math.PI/2,pol.quedaT*4);
+      pol.barra.mostrar(false);
+      if(pol.quedaT>2.5)removerRua(i);
+      continue;
+    }
+    const vendo=perceber(pol,agora);
+    // Expira e vai embora — mas nunca no meio de uma perseguição, que seria a polícia evaporando na
+    // cara do jogador. Com rastro ativo eles ficam até o rastro esfriar.
+    if(agora>pol.expiraEm&&!vendo&&!rastroValido(agora)){removerRua(i);continue}
+    let destino=null;
+    if(vendo)destino={x:player.position.x,z:player.position.z};
+    else if(rastroValido(agora))destino={x:rastro.x,z:rastro.z};
+    else{
+      destino=pol.destinoRonda;
+      if(distXZ(pol.pos,destino)<RUA_CHEGADA)pol.destinoRonda=pontoDeRonda();
+    }
+    const perto=vendo&&distXZ(pol.pos,player.position)<=aproxMinima();
+    if(perto)encararPonto(pol,player.position.x,player.position.z);
+    else{
+      const alvo=alvoDeMovimento(pol,agora,destino.x,destino.z);
+      passoPolicial(pol,dt,alvo.x,alvo.z,velocidadePolicial(RUA_VELOCIDADE));
+    }
+    if(colidePedestre(pol.pos.x,pol.pos.z)){
+      const livre=buscarPosicaoLivre(pol.pos.x,pol.pos.z,colidePedestre);
+      if(livre){pol.pos.x=livre.x;pol.pos.z=livre.z;pol.rota=null;pol.destinoRota=null}
+    }
+    assentarPolicial(pol,dt,vendo);
+    pol.barra.posicionar(pol.pos.x,pol.grupo.position.y,pol.pos.z);
+    pol.barra.mostrar(pol.hp<POLICIAL_HP);
+    // Polícia de rua só abre fogo com ficha suja: patrulha de rotina não fuzila quem passa na rua.
+    const dist=distXZ(pol.pos,player.position);
+    if(vendo&&policia.procurado>0&&dist<=POLICIAL_ALCANCE_TIRO&&agora>=pol.proximoTiro&&!jogadorEscondido()){
+      const ox=pol.pos.x,oy=pol.grupo.position.y+1.15,oz=pol.pos.z;
+      const ax=player.position.x,ay=player.position.y+1.1,az=player.position.z;
+      if(temLinhaDeVisao(ox,oy,oz,ax,ay,az)){
+        pol.proximoTiro=agora+cooldownTiro();
+        const esp=THREE.MathUtils.clamp(dist/POLICIAL_ALCANCE_TIRO,.05,1)*.13;
+        const dir=new THREE.Vector3(ax-ox,ay-oy,az-oz).normalize();
+        dir.x+=(Math.random()*2-1)*esp;dir.y+=(Math.random()*2-1)*esp*.5;dir.z+=(Math.random()*2-1)*esp;
+        dispararBala(new THREE.Vector3(ox,oy,oz),dir,false);
+      }
+    }
+  }
+}
+// Alvos das balas do jogador incluem a polícia de rua — sem isso ela seria invulnerável.
+export function policiaisAtingiveis(){return policiais.concat(policiaisRua)}
+
+// ===== ESTADO PRO SAVE =====
+// Tolerante a lixo por contrato: um save antigo, adulterado ou com campo faltando não pode lançar —
+// quem chama é o carregamento, e uma exceção aqui deixaria o jogador com tela preta.
+// O colete VISÍVEL segue a armadura equipada mais os coletes em estoque: vestido enquanto houver
+// proteção, some quando a última acaba (ou quando o jogador é rendido). Quem desenha é o Player;
+// aqui só se expõe a condição, que é estado de combate.
+export function jogadorComColete(){return !jogadorRendido&&(armaduraJogador>0||inventario.colete>0)}
+export function estadoPoliciaParaSave(){return{procurado:policia.procurado}}
+export function aplicarEstadoPoliciaDoSave(s){
+  try{
+    const n=Math.floor(Number(s&&s.procurado));
+    policia.procurado=Number.isFinite(n)?Math.min(PROCURADO_MAX,Math.max(0,n)):0;
+  }catch(e){policia.procurado=0}
+}
+
 export function atualizarPolicia(dt){
   const agora=performance.now()/1000;
   // Rotor sempre girando e luzes piscando, em qualquer estado — o helicóptero nunca "desliga".
@@ -679,6 +969,7 @@ export function atualizarPolicia(dt){
   }
 
   ESTADOS[policia.estado].aoAtualizar(dt,agora);
+  atualizarPoliciaDeRua(dt,agora);
 
   montarAlvosDoFrame();
   atualizarBalas(dt,alvosDaBala);

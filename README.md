@@ -20,8 +20,15 @@ Jogo 3D em Three.js — bairro brasileiro estilizado, com cultivo/economia, bots
   mão e a troca só alterna a visibilidade — nada de alocar geometria em pleno combate. Segurar o
   botão de tiro atira em rajada no ritmo da arma; o botão redondo ao lado cicla entre as que você tem
   (ou as teclas `Q` e `1`–`4`).
+- **Controles de PC** (`src/Input.js`) — padrão de jogo de tiro: botão esquerdo atira, botão direito
+  mira, mouse gira a câmera **sem inversão** em nenhum eixo (Pointer Lock), `Shift` corre, `Espaço`
+  pula, `E` colhe e abre/fecha porta **sem largar a mira**, `Q` abre o inventário, `Tab`/`X`/rodinha
+  trocam de arma e `1`–`4` vão direto numa. Mirando, a suavização do giro sobe de 12 pra 60 e a
+  câmera de 7 pra 45 por segundo — o lerp passa a convergir dentro do próprio frame, que é o que tira
+  a tremida e o "puxão" da cruz depois que a mão já parou.
 - **Mira e movimento** (`src/Camera.js`, `src/Player.js`) — câmera em órbita da cabeça com trava
-  contra parede e contra o chão, modo de mira (🎯 no celular, botão direito ou Shift no teclado) que
+  contra parede e contra o chão, modo de mira (🎯 no celular, botão direito no PC — o Shift virou
+  corrida, como em qualquer jogo de tiro) que
   fecha o FOV, aproxima por cima do ombro, fecha o cone de dispersão a 30% e reduz giro e velocidade
   — precisão custa mobilidade. O movimento tem **step offset**: a colisão horizontal ignora a faixa
   dos pés até 24% da altura do corpo, então degrau é degrau e parede é parede, sem caso especial.
@@ -34,9 +41,32 @@ Jogo 3D em Three.js — bairro brasileiro estilizado, com cultivo/economia, bots
   guarnição: 2 policiais com a ficha limpa, até 6 no topo. Abater todos é o caminho mais rápido pra
   trazer mais gente. **Fora do esconderijo nada limpa a ficha** — nem fugir, nem vencer o tiroteio.
   Esconder-se são 8 casas comuns da favela, ocas e com porta que abre e fecha: **entrar e fechar**,
-  as duas condições juntas. Aos 3 s escondido a guarnição perde o rastro e recua; a cada 6 s cai uma
+  as duas condições juntas. Aos 3 s escondido a guarnição perde o rastro e recua; a cada 18 s cai uma
   estrela. Sair antes de zerar deixa ficha, e com ficha a polícia recomeça — agora numa **caçada**
-  atrás do jogador (sem plantação envolvida), com o holofote seguindo ele.
+  atrás do jogador (sem plantação envolvida), com o holofote seguindo ele. O helicóptero **só entra
+  a partir de 3★**: com a ficha baixa o céu fica limpo.
+- **Polícia de rua** (`src/Police.js`) — duplas que aparecem de tempos em tempos (a cada 70–140 s, no
+  máximo 2 ao mesmo tempo, 75 s de ronda cada) e vão embora sozinhas. Não é vigilância 24 h: com a
+  ficha limpa elas rondam pontos aleatórios do bairro, e com ficha aberta 60% das rondas passam a
+  mirar os **esconderijos** — é a polícia batendo nas casas onde você costuma se enfiar.
+- **Visão da polícia** (`src/Police.js`) — cada policial só enxerga dentro de um **cone à frente**
+  (±54° e 18 m com a ficha limpa, abrindo até ±74° e 27 m no topo) **e** com linha de visão livre:
+  atrás de parede, dentro de casa com a porta fechada ou pelas costas, ele não vê. Quem avista
+  compartilha a última posição pelo **rádio** e os outros convergem pra lá — recebem onde você
+  *estava*, não onde você está, então dá pra despistar. A percepção é escalonada entre os policiais
+  (uma checagem a cada 0,3 s, defasada) pra não estourar o orçamento de raycast do celular. As
+  funções do cone são puras e testadas fora do jogo.
+- **Save automático** (`src/Save.js`) — grava dinheiro, inventário, armas compradas, munição por arma,
+  plantações (pela **idade** de cada muda, não pelo instante, que reinicia junto com a página),
+  procurado e posição; carrega sozinho ao abrir, e sem save o jogo começa do zero. Contra corrupção:
+  **dois slots alternados** com número de sequência (a gravação vai sempre no mais velho, então uma
+  aba morta no meio da escrita não leva o save junto), **checksum** por slot, versão de formato e
+  validação campo a campo — save adulterado degrada pro padrão em vez de espalhar `NaN` pela economia.
+  Salva também no `visibilitychange`, que no celular é o último momento garantido antes do navegador
+  matar a aba.
+- **Colete visível** (`src/Player.js`) — a armadura aparece no corpo (placa, ombreiras e correia
+  low-poly, filhas do tronco) enquanto houver colete equipado ou no bolso, e some ao acabar ou na
+  morte. Nasce pronta e escondida: o jogo só alterna `.visible`, nunca constrói malha em combate.
 - **Cidade no fundo** (`src/Skyline.js`) — anel de 96 prédios em 1 draw call que acompanha a câmera
   como o céu, sem colisão e sem sombra.
 
