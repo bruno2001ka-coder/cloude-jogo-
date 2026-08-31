@@ -13,9 +13,17 @@ Jogo 3D em Three.js — bairro brasileiro estilizado, com cultivo/economia, bots
   trajetória real, zonas de acerto por parte do corpo (cabeça ×2, tronco ×1, pernas ×0,6) e barra de
   vida com armadura. O helicóptero patrulha o mapa e acha a plantação **por sobrevoo** — só enxerga
   a muda florida, para em cima dela e aí desce os policiais de rapel.
+- **Arsenal** (`src/Weapons.js`) — quatro armas com dano, cadência, alcance e dispersão próprios:
+  Pistola (a inicial, 121 DPS), Rifle (2 tiros de tronco matam, maior alcance), Escopeta (6 chumbos
+  num cone de 5°, arrasa de perto e não faz nada de longe) e Metralhadora (maior DPS do jogo, queima
+  9 balas por segundo). Munição é **por arma**, comprada separado. As quatro malhas nascem juntas na
+  mão e a troca só alterna a visibilidade — nada de alocar geometria em pleno combate. Segurar o
+  botão de tiro atira em rajada no ritmo da arma; o botão redondo ao lado cicla entre as que você tem
+  (ou as teclas `Q` e `1`–`4`).
 - **4 polos econômicos** (`src/Poles.js`) — Fazenda (oeste, insumo barato), Mercado de Sementes
-  (centro), Loja de Armas (nordeste, munição e colete) e Receptador (sudeste, semente rara e venda),
-  dispostos em quadrilátero pra obrigar a travessia do bairro patrulhado.
+  (centro), Loja de Armas (nordeste, as armas, a munição de cada uma e o colete) e Receptador
+  (sudeste, semente rara e venda), dispostos em quadrilátero pra obrigar a travessia do bairro
+  patrulhado.
 - **Cidade no fundo** (`src/Skyline.js`) — anel de 96 prédios em 1 draw call que acompanha a câmera
   como o céu, sem colisão e sem sombra.
 

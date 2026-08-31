@@ -30,12 +30,25 @@
 @keyframes piscaAlerta{0%,100%{opacity:1}50%{opacity:.45}}
 #refugioIndicador{display:none;position:fixed;z-index:9;top:56px;left:50%;transform:translateX(-50%);padding:6px 14px;border-radius:16px;background:rgba(20,30,50,.85);border:1px solid #6ba0ff;color:#c6dcff;font-size:11px;font-weight:800;letter-spacing:.06em}
 #avisoPolicia{display:none;position:fixed;z-index:11;top:96px;left:50%;transform:translateX(-50%);max-width:88vw;text-align:center;padding:10px 16px;border-radius:12px;background:rgba(10,14,10,.92);border:1px solid #e7c568;color:#f4f0da;font-size:12px;font-weight:600;line-height:1.4;box-shadow:0 8px 24px rgba(0,0,0,.4);transition:opacity .3s}
-#miraCombate{display:none;position:fixed;z-index:6;top:50%;left:50%;transform:translate(-50%,-50%);width:26px;height:26px;pointer-events:none}
-#miraCombate::before,#miraCombate::after{content:'';position:absolute;background:rgba(255,70,70,.9);box-shadow:0 0 4px rgba(0,0,0,.6)}
+#miraCombate{display:none;position:fixed;z-index:6;top:50%;left:50%;transform:translate(-50%,-50%);width:26px;height:26px;pointer-events:none;transition:width .1s,height .1s}
+#miraCombate::before,#miraCombate::after{content:'';position:absolute;background:rgba(255,255,255,.92);box-shadow:0 0 4px rgba(0,0,0,.8)}
 #miraCombate::before{left:50%;top:0;width:2px;height:100%;transform:translateX(-50%)}
 #miraCombate::after{top:50%;left:0;height:2px;width:100%;transform:translateY(-50%)}
+/* Mira em cima de um corpo: fica vermelha e abre. É a confirmação de pontaria antes de gastar a bala. */
+#miraCombate.noAlvo{width:34px;height:34px}
+#miraCombate.noAlvo::before,#miraCombate.noAlvo::after{background:rgba(255,60,60,1);box-shadow:0 0 7px rgba(255,0,0,.9)}
 #fireBtn{display:none;align-items:center;justify-content:center;position:fixed;z-index:8;right:22px;bottom:152px;width:80px;height:80px;border-radius:50%;border:2px solid #ff8f6b;background:rgba(200,60,30,.88);color:#fff2ea;font-weight:900;font-size:22px;box-shadow:0 8px 24px rgba(0,0,0,.35);touch-action:none;-webkit-tap-highlight-color:transparent;cursor:pointer;user-select:none}
 #fireBtn:active{transform:scale(.92);background:rgba(220,70,35,1)}
+/* Troca de arma: empilhado acima do botão de tiro, na coluna do polegar direito.
+   jumpBtn bottom:36 (96px) → fireBtn bottom:152 (80px) → armaBtn bottom:244 (64px), sem sobreposição. */
+#armaBtn{display:none;flex-direction:column;align-items:center;justify-content:center;gap:1px;position:fixed;z-index:8;right:30px;bottom:244px;width:64px;height:64px;border-radius:50%;border:2px solid #f1d178;background:rgba(45,38,12,.88);color:#f1d178;box-shadow:0 6px 18px rgba(0,0,0,.35);touch-action:none;-webkit-tap-highlight-color:transparent;cursor:pointer;user-select:none}
+#armaBtn:active{transform:scale(.92);background:rgba(231,197,104,.95);color:#1b2417}
+#armaIcone{font-size:22px;line-height:1}
+#armaMunicao{font-size:11px;font-weight:800;letter-spacing:.04em}
+/* DEBUG é ferramenta de desenvolvimento: fica fora da tela do jogador, salvo com ?debug=1 na URL.
+   A tecla V continua ligando as caixas de colisão pra quem está desenvolvendo. */
+#debugBtn{display:none}
+body.debug #debugBtn{display:block}
 #destravarBtn{position:fixed;z-index:9;top:228px;right:14px;padding:8px 12px;border-radius:8px;border:1px solid #f1d178;background:rgba(45,38,12,.82);color:#f1d178;font-size:11px;font-weight:800;letter-spacing:.06em;cursor:pointer;touch-action:manipulation}
 #destravarBtn:active{background:rgba(231,197,104,.9);color:#1b2417}
 /* BARRA DE VIDA: trilho + fatia de saúde (matiz calculada em HealthBar.js) + fatia de armadura por cima. */
@@ -48,7 +61,7 @@
 </head>
 <body>
 <div id="startScreen"><div class="brandMark">Q3D</div><div class="startKicker">BAIRRO · CASA · HISTÓRIAS</div><h1>QUINTAL <span>3D</span></h1><p>Construa seu lar em um bairro brasileiro cheio de cor.</p><button id="playBtn">JOGAR AGORA</button><small>gráficos web · progresso salvo neste dispositivo</small></div>
-<div id="hud"><strong>QUINTAL 3D</strong> <span id="faseIcone">🌞</span><br>gráficos web · mapa vazio<br><span id="pos">x 0.0 · z 0.0</span><br><span id="statusEconomia"></span> · <span id="municaoHud">🔫 24</span><div id="barraVidaTrilho"><div id="barraVida"></div><div id="barraArmadura"></div><div id="textoVida">100 ❤</div></div><span style="font-size:10px;opacity:.85">🔵 sementes · 🟠 armas · 🟡 fazenda · 🔴 receptador · 🟢 sua muda · 🟥 refúgio</span></div>
+<div id="hud"><span id="faseIcone">🌞</span> <span id="statusEconomia"></span> · <span id="municaoHud">🔫 24</span><div id="barraVidaTrilho"><div id="barraVida"></div><div id="barraArmadura"></div><div id="textoVida">100 ❤</div></div><span id="pos" style="font-size:10px;opacity:.7">x 0.0 · z 0.0</span></div>
 <div id="acaoPanel"></div>
 <button id="invBtn" aria-label="Inventário">🎒</button>
 <div id="invPanel"></div>
@@ -57,7 +70,7 @@
 <canvas id="radar" aria-label="Radar"></canvas>
 <button id="droneBtn" aria-label="Modo drone">🚁</button>
 <button id="destravarBtn" aria-label="Destravar personagem">DESTRAVAR</button>
-<div id="hint">Joystick para andar · arraste para olhar · PULAR para saltar · F ou 🔫 para atirar · chegue perto de um ponto de interesse pra ver as ações</div>
+<div id="hint">Joystick para andar · arraste para olhar · segure 🔫 pra rajada · toque na arma pra trocar · chegue perto de um ponto de interesse pra ver as ações<br><span style="opacity:.8">🔵 sementes · 🟠 armas · 🟡 fazenda · 🔴 receptador · 🟢 sua muda · 🟥 refúgio</span></div>
 <div id="alertaPolicia">🚁 ALERTA POLICIAL</div>
 <div id="refugioIndicador">🫥 ESCONDIDO</div>
 <div id="avisoPolicia"></div>
@@ -66,6 +79,7 @@
 <div id="touch" aria-label="Joystick de movimento"><div id="stickBase"><div id="stick"></div></div></div>
 <button id="jumpBtn" aria-label="Pular">PULAR</button>
 <button id="fireBtn" aria-label="Atirar">🔫</button>
+<button id="armaBtn" aria-label="Trocar de arma"><span id="armaIcone">🔫</span><span id="armaMunicao">24</span></button>
 <div id="vinheta"></div>
 <div id="danoFlash"></div>
 <script type="module" src="./src/main.js"></script>

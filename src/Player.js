@@ -13,26 +13,21 @@ export const player=new THREE.Group();
 const skin=new THREE.MeshStandardMaterial({color:0xc79067,roughness:.55}),shirt=new THREE.MeshStandardMaterial({color:0x202b27,roughness:.75}),pants=new THREE.MeshStandardMaterial({color:0x495744,roughness:.85});
 const body=new THREE.Mesh(new THREE.BoxGeometry(1.05,1.55,.62),shirt);body.position.y=1.65;body.castShadow=true;body.receiveShadow=true;player.add(body);const head=new THREE.Mesh(new THREE.BoxGeometry(.7,.7,.66),skin);head.position.y=2.8;head.castShadow=true;head.receiveShadow=true;player.add(head);const faceMat=new THREE.MeshStandardMaterial({color:0x171712,roughness:.8,flatShading:true});for(const x of [-.13,.13]){const eye=new THREE.Mesh(new THREE.BoxGeometry(.11,.12,.045),faceMat);eye.position.set(x,2.88,.345);eye.castShadow=true;eye.receiveShadow=true;player.add(eye)}const mouth=new THREE.Mesh(new THREE.BoxGeometry(.24,.055,.04),faceMat);mouth.position.set(0,2.68,.348);mouth.castShadow=true;mouth.receiveShadow=true;player.add(mouth);const hair=new THREE.Mesh(new THREE.BoxGeometry(.74,.18,.69),new THREE.MeshStandardMaterial({color:0x171712,roughness:.8,flatShading:true}));hair.position.y=3.22;hair.castShadow=true;hair.receiveShadow=true;player.add(hair);const legs=[],arms=[];for(const x of [-.27,.27]){const leg=new THREE.Mesh(new THREE.BoxGeometry(.25,1.05,.3),pants);leg.position.set(x,.55,0);leg.castShadow=true;leg.receiveShadow=true;player.add(leg);legs.push(leg)}for(const x of [-.7,.7]){const arm=new THREE.Mesh(new THREE.BoxGeometry(.25,1.1,.3),skin);arm.position.set(x,1.72,0);arm.castShadow=true;arm.receiveShadow=true;player.add(arm);arms.push(arm)}criarSombraContato(.85,player);player.scale.setScalar(PLAYER_SCALE);player.position.set(0,obterElevacao(0,8),8);scene.add(player);
 
-// ===== ARMA NA MÃO: pendurada no braço direito, no mesmo estilo low-poly da arma dos policiais.
-// Fica filha do braço pra acompanhar a animação de caminhada sem código extra.
-const bracoDireito=arms[1];
-const armaMat=new THREE.MeshStandardMaterial({color:0x2a2a2a,roughness:.4,metalness:.6});
-const armaMadeira=new THREE.MeshStandardMaterial({color:0x4a3327,roughness:.75});
-export const armaJogador=new THREE.Group();
-// posição relativa ao braço: na altura da mão (ponta de baixo do braço), levemente à frente
-armaJogador.position.set(0,-.52,.16);
-bracoDireito.add(armaJogador);
-{
-  const corpo=new THREE.Mesh(new THREE.BoxGeometry(.1,.13,.34),armaMat);corpo.position.set(0,0,.05);corpo.castShadow=true;armaJogador.add(corpo);
-  const cano=new THREE.Mesh(new THREE.CylinderGeometry(.028,.028,.3,6),armaMat);cano.rotation.x=Math.PI/2;cano.position.set(0,.03,.32);cano.castShadow=true;armaJogador.add(cano);
-  const cabo=new THREE.Mesh(new THREE.BoxGeometry(.085,.17,.1),armaMadeira);cabo.position.set(0,-.12,-.04);cabo.rotation.x=-.22;cabo.castShadow=true;armaJogador.add(cabo);
-  const mira=new THREE.Mesh(new THREE.BoxGeometry(.02,.035,.02),armaMat);mira.position.set(0,.1,.2);armaJogador.add(mira);
-}
-// Ponta do cano em coordenadas de mundo — é daqui que a bala do jogador nasce.
-const _pontaTemp=new THREE.Vector3();
-export function obterBocaDaArma(){
-  armaJogador.updateWorldMatrix(true,false);
-  return _pontaTemp.set(0,.03,.48).applyMatrix4(armaJogador.matrixWorld).clone();
+// ===== MÃO QUE SEGURA A ARMA =====
+// As armas (Weapons.js) são penduradas aqui pra acompanharem a animação de caminhada sem código
+// extra. O catálogo mora lá e não aqui pra este módulo não depender de economia/combate.
+export const maoDireita=arms[1];
+
+// Vira o boneco pra uma direção horizontal (a da câmera, na hora do tiro). Sem isso, atirar parado ou
+// andando pra trás dispara com o personagem virado pro outro lado e a bala sai de lado — a rotação só
+// seguia a direção do MOVIMENTO (ver atualizarMovimentoJogador), então quem estava parado nunca
+// encarava o alvo. Recebe a direção crua (e não o yaw) porque quem chama é o combate, que já tem o
+// vetor da câmera em mãos — pedir o yaw obrigaria a importar o Input, e Input já importa o combate.
+export function encararDirecao(dirX,dirZ){
+  if(!dirX&&!dirZ)return;
+  let da=Math.atan2(dirX,dirZ)-player.rotation.y;
+  while(da>Math.PI)da-=Math.PI*2;while(da<-Math.PI)da+=Math.PI*2;
+  player.rotation.y+=da*.55;
 }
 
 // Hitbox alinhada à malha visual, sem margens artificiais e sem excesso.

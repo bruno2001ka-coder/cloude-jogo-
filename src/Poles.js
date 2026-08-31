@@ -26,9 +26,18 @@ export const POLOS={
 };
 
 // Tabela de preços num lugar só, pra Economy e para o painel de ações não divergirem.
+// O preço mora aqui e o balanceamento de combate mora em Weapons.js: a loja (Economy) e o catálogo
+// (Weapons) precisam do mesmo número, e Poles é o único módulo que os dois importam sem fechar ciclo.
+// `qtd` é o tamanho do pacote de munição — cartucho de escopeta vale mais que bala de pistola.
 export const PRECOS={
   fazendaTerra:6,fazendaVaso:8,
   mercadoVaso:10,mercadoTerra:8,mercadoSemente:34,
-  armasMunicao:35,armasMunicaoQtd:12,armasColete:70,
+  armas:{
+    pistola:{arma:0,municao:35,qtd:12},// arma:0 — já vem com o jogador, nunca aparece à venda
+    rifle:{arma:420,municao:60,qtd:15},
+    escopeta:{arma:520,municao:70,qtd:8},
+    metralhadora:{arma:780,municao:95,qtd:40},
+  },
+  armasColete:70,
   receptadorSemente:25,receptadorPacote:40,
 };

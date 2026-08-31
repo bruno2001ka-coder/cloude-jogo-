@@ -8,11 +8,16 @@ import{criarSombraContato,folhaMat,folhaClara}from'./Materials.js';
 import{criarEsconderijo}from'./WorldGenerator.js';
 import{player}from'./Player.js';
 import{POLOS,PRECOS}from'./Poles.js';
+import{ARMAS,ORDEM_ARMAS,equiparArma}from'./Weapons.js';
 
 export let dinheiro=300;
 // `municao` e `colete` são consumidos pelo sistema de combate (Police.js). Ficam no inventário, e não
 // dentro do Police, porque Economy → Police seria dependência circular: o Police já importa a Economy.
-export const inventario={vaso:0,terra:0,semente:0,pacote:0,municao:24,colete:0};
+// `armas` (o que o jogador POSSUI) e `municao` (estoque POR ARMA) seguem a mesma regra: o Weapons.js
+// só sabe qual está equipada; quem tem e quanto tem é economia.
+export const inventario={vaso:0,terra:0,semente:0,pacote:0,colete:0,
+  armas:{pistola:true,rifle:false,escopeta:false,metralhadora:false},
+  municao:{pistola:24,rifle:0,escopeta:0,metralhadora:0}};
 const potMat=new THREE.MeshStandardMaterial({color:0x8a5a3a,roughness:.85});
 const floraMat=new THREE.MeshStandardMaterial({color:0x9fc75c,roughness:.8});
 const floraAcentoMat=new THREE.MeshStandardMaterial({color:0xf3e9b8,roughness:.6,emissive:0xc9b878,emissiveIntensity:.15});
@@ -97,8 +102,26 @@ export function contextoAtual(){
   return null;
 }
 const acaoPanel=document.getElementById('acaoPanel'),statusEconomia=document.getElementById('statusEconomia');
-export function atualizarStatusEconomia(){statusEconomia.textContent=`R$${dinheiro} · 🪴${inventario.vaso} 🌱${inventario.terra} 🌾${inventario.semente} 📦${inventario.pacote} 🔫${inventario.municao} 🛡${inventario.colete}`}
+// A munição saiu daqui: ela agora é por arma e já aparece no botão de troca e no contador do HUD —
+// repetir na mesma linha só gastava espaço de tela no celular.
+export function atualizarStatusEconomia(){statusEconomia.textContent=`R$${dinheiro} · 🪴${inventario.vaso} 🌱${inventario.terra} 🌾${inventario.semente} 📦${inventario.pacote} 🛡${inventario.colete}`}
+// Serve os itens SIMPLES (vaso/terra/semente/colete). Não serve munição: com `municao` sendo um objeto
+// por arma, `inventario['municao']+=12` viraria a string "[object Object]12" — silenciosamente, sem erro.
 export function comprar(item,preco,quantidade=1){if(dinheiro>=preco){dinheiro-=preco;inventario[item]+=quantidade;atualizarStatusEconomia();renderizarAcoes();renderizarInventario()}}
+// Arma sem bala é compra morta: o jogador sai da loja, aperta o gatilho, não sai tiro e acha que
+// quebrou. Por isso a compra já vem com um pacote de munição e equipa a arma na hora.
+export function comprarArma(id){
+  const p=PRECOS.armas[id];
+  if(!p||inventario.armas[id]||dinheiro<p.arma)return;
+  dinheiro-=p.arma;inventario.armas[id]=true;inventario.municao[id]+=p.qtd;equiparArma(id);
+  atualizarStatusEconomia();renderizarAcoes();renderizarInventario();
+}
+export function comprarMunicao(id){
+  const p=PRECOS.armas[id];
+  if(!p||!inventario.armas[id]||dinheiro<p.municao)return;
+  dinheiro-=p.municao;inventario.municao[id]+=p.qtd;
+  atualizarStatusEconomia();renderizarAcoes();renderizarInventario();
+}
 export function venderPacotes(){if(inventario.pacote>0){dinheiro+=inventario.pacote*PRECOS.receptadorPacote;inventario.pacote=0;atualizarStatusEconomia();renderizarAcoes();renderizarInventario()}}
 export function plantarAqui(){
   const alvo=calcularAlvoPlantio();
@@ -131,7 +154,9 @@ function garantirEstruturaInventario(){
   return invEstrutura;
 }
 export function renderizarInventario(){
-  if(!inventarioAberto){invPanel.style.display='none';potGhost.visible=false;invEstrutura=null;return}
+  // A mira de plantio precisa sumir JUNTO com o painel: antes só o potGhost era escondido aqui, e
+  // fechar o inventário com ela visível deixava o círculo preso no centro da tela pra sempre.
+  if(!inventarioAberto){invPanel.style.display='none';potGhost.visible=false;miraEl.style.display='none';invEstrutura=null;return}
   const el=garantirEstruturaInventario();
   const temIngredientes=inventario.vaso>0&&inventario.terra>0&&inventario.semente>0;
   const alvo=temIngredientes?calcularAlvoPlantio():null;
@@ -190,9 +215,15 @@ export function renderizarAcoes(){
     botaoLoja(`Comprar Vaso (R$${PRECOS.fazendaVaso})`,PRECOS.fazendaVaso,()=>comprar('vaso',PRECOS.fazendaVaso));
     acaoPanel.style.display='flex';
   }else if(tipo==='armas'){
-    // Loja de Armas (nordeste): é o polo que sustenta o sistema de combate — sem munição não há defesa.
-    botaoLoja(`Comprar ${PRECOS.armasMunicaoQtd} balas (R$${PRECOS.armasMunicao})`,PRECOS.armasMunicao,()=>comprar('municao',PRECOS.armasMunicao,PRECOS.armasMunicaoQtd));
-    botaoLoja(`Comprar Colete (R$${PRECOS.armasColete})`,PRECOS.armasColete,()=>comprar('colete',PRECOS.armasColete));
+    // Loja de Armas (nordeste): é o polo que sustenta o combate — sem munição não há defesa.
+    // Uma linha por arma: compra a arma se ainda não tem, munição DELA se já tem. Rótulo curto porque
+    // o acaoPanel é flex-wrap de 94vw — 5 botões de texto longo viram parede de texto no celular.
+    for(const id of ORDEM_ARMAS){
+      const a=ARMAS[id],p=PRECOS.armas[id];
+      if(!inventario.armas[id])botaoLoja(`${a.icone} ${a.nome} (R$${p.arma})`,p.arma,()=>comprarArma(id));
+      else botaoLoja(`${a.icone} ${p.qtd} balas (R$${p.municao})`,p.municao,()=>comprarMunicao(id));
+    }
+    botaoLoja(`🛡 Colete (R$${PRECOS.armasColete})`,PRECOS.armasColete,()=>comprar('colete',PRECOS.armasColete));
     acaoPanel.style.display='flex';
   }else if(tipo==='receptador'){
     botaoLoja(`Comprar Semente Rara (R$${PRECOS.receptadorSemente})`,PRECOS.receptadorSemente,()=>comprar('semente',PRECOS.receptadorSemente));
