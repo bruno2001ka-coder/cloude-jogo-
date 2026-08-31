@@ -29,7 +29,7 @@
 </head>
 <body>
 <div id="startScreen"><div class="brandMark">Q3D</div><div class="startKicker">BAIRRO · CASA · HISTÓRIAS</div><h1>QUINTAL <span>3D</span></h1><p>Construa seu lar em um bairro brasileiro cheio de cor.</p><button id="playBtn">JOGAR AGORA</button><small>gráficos web · progresso salvo neste dispositivo</small></div>
-<div id="hud"><strong>QUINTAL 3D</strong><br>gráficos web · mapa vazio<br><span id="pos">x 0.0 · z 0.0</span><br><span id="statusEconomia"></span><br><span style="font-size:10px;opacity:.85">🔵 mercado (vaso/terra) · 🔴 esconderijo (semente/venda) · 🟢 sua muda</span></div>
+<div id="hud"><strong>QUINTAL 3D</strong><br><span style="color:#ff5555;font-weight:900">❤️ <span id="vidaPlayer">100</span>%</span><br><span id="pos">x 0.0 · z 0.0</span><br><span id="statusEconomia"></span><br><span style="font-size:10px;opacity:.85">🔵 mercado (vaso/terra) · 🔴 esconderijo (semente/venda) · 🟢 sua muda</span></div>
 <div id="acaoPanel"></div>
 <button id="invBtn" aria-label="Inventário">🎒</button>
 <div id="invPanel"></div>
@@ -52,7 +52,7 @@ import{RGBELoader}from'three/addons/loaders/RGBELoader.js';
 (()=>{
 'use strict';
 const scene=new THREE.Scene();const SKY_COLOR=0x87ceeb;const HORIZONTE_COLOR=0xcfe3ea;scene.fog=new THREE.FogExp2(HORIZONTE_COLOR,.013);
-const EYE_HEIGHT=1.27;const PLAYER_HEIGHT=1.4;const camera=new THREE.PerspectiveCamera(58,innerWidth/innerHeight,.1,260);camera.position.set(0,EYE_HEIGHT,16);
+const EYE_HEIGHT=1.27;const PLAYER_HEIGHT=1.4;const camera=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,.1,260);camera.position.set(0,EYE_HEIGHT,16);
 const renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});renderer.setPixelRatio(Math.min(devicePixelRatio||1,1.35));renderer.setSize(innerWidth,innerHeight);renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.05;renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;document.body.appendChild(renderer.domElement);
 // Mapa de ambiente real (HDRI, CC0/Poly Haven) só pra reflexo/iluminação indireta dos materiais — o céu visível
 // continua sendo o domo pintado do jogo (scene.background), não a HDRI (scene.environment fica separado).
@@ -361,6 +361,43 @@ function criarNPC(corRoupa,corPele){
   return{grupo:g,pernas,bracos,pos:new THREE.Vector3(),alvo:null,rota:[],corredorAtual:null,velocidade:1.4+Math.random()*.6,caminhando:Math.random()*10};
 }
 for(let i=0;i<8;i++){const wp=waypointsVielas[Math.floor(Math.random()*waypointsVielas.length)];const npc=criarNPC(CORES_ROUPA_NPC[i%CORES_ROUPA_NPC.length],CORES_PELE_NPC[i%CORES_PELE_NPC.length]);npc.pos.set(wp.x,0,wp.z);npc.corredorAtual=corredorDoPonto(wp);npcs.push(npc)}
+
+// ===== POLICIAIS: NPCs hostis que perseguem o jogador =====
+const policiais=[];
+const policialMat=new THREE.MeshStandardMaterial({color:0x1a3a5c,roughness:.7});
+const policialPeleMat=new THREE.MeshStandardMaterial({color:0xc79067,roughness:.55});
+const policialCalcaMat=new THREE.MeshStandardMaterial({color:0x2a2a34,roughness:.85});
+const policialCapaceteMat=new THREE.MeshStandardMaterial({color:0x0f0f14,roughness:.6});
+
+function criarPolicial(x,z){
+  const g=new THREE.Group();bairro.add(g);
+  // corpo
+  bloco(new THREE.BoxGeometry(.6,.9,.35),policialMat,0,.9,0,g);
+  // cabeça
+  const head=bloco(new THREE.BoxGeometry(.38,.38,.36),policialPeleMat,0,1.52,0,g);
+  // capacete
+  bloco(new THREE.BoxGeometry(.42,.15,.38),policialCapaceteMat,0,1.72,0,g);
+  // pernas
+  const pernas=[-.15,.15].map(lx=>bloco(new THREE.BoxGeometry(.14,.6,.17),policialCalcaMat,lx,.3,0,g));
+  // braços
+  const bracos=[-.38,.38].map(lx=>bloco(new THREE.BoxGeometry(.14,.62,.17),policialMat,lx,.92,0,g));
+  g.scale.setScalar(1.05);
+  g.position.set(x,obterElevacao(x,z),z);
+  
+  // barra de vida
+  const barGroup=new THREE.Group();barGroup.position.set(0,2.2,0);barGroup.visible=false;g.add(barGroup);
+  const bgMat=new THREE.MeshBasicMaterial({color:0x333333});
+  const hpMat=new THREE.MeshBasicMaterial({color:0xff3333});
+  const bg=bloco(new THREE.BoxGeometry(.8,.08,.05),bgMat,0,0,0,barGroup);
+  const hpBar=bloco(new THREE.BoxGeometry(.76,.06,.06),hpMat,0,0,.02,barGroup);
+  
+  return{grupo:g,pernas,bracos,pos:new THREE.Vector3(x,0,z),vida:100,vidaMax:100,estado:'patrulha',alvoPerseguicao:null,tempoPatrulha:0,pontoPatrulha:new THREE.Vector3(x,0,z),barraVida:barGroup,hpBar,barrasVisible:false};
+}
+
+// Criar 3 policiais em pontos estratégicos
+for(const pos of[{x:-13.8,z:-28.8},{x:12.6,z:-12},{x:0,z:50}]){
+  policiais.push(criarPolicial(pos.x,pos.z));
+}
 function escolherProximoAlvo(npc){
   if(npc.rota.length){npc.alvo=npc.rota.shift();return}
   const destino=waypointsVielas[Math.floor(Math.random()*waypointsVielas.length)];
@@ -382,6 +419,116 @@ function atualizarNPCs(dt){
     }
     npc.grupo.position.set(npc.pos.x,obterElevacao(npc.pos.x,npc.pos.z),npc.pos.z);
     if(moveu){npc.caminhando+=dt*7;const balanco=Math.sin(npc.caminhando)*.5;npc.pernas[0].rotation.x=balanco;npc.pernas[1].rotation.x=-balanco;npc.bracos[0].rotation.x=-balanco*.7;npc.bracos[1].rotation.x=balanco*.7}else{npc.pernas[0].rotation.x*=.9;npc.pernas[1].rotation.x*=.9;npc.bracos[0].rotation.x*=.9;npc.bracos[1].rotation.x*=.9}
+  }
+}
+
+// ===== Atualizar Policiais: IA de perseguição + barra de vida =====
+const DISTANCIA_DETENCAO=35;
+const DISTANCIA_TIRO=18;
+const VELOCIDADE_POLICIAL=4.2;
+const DANO_TIRO_POLICIAL=15;
+let vidaJogador=100;
+const vidaJogadorMax=100;
+
+function atualizarPolicias(dt){
+  const jogadorPos=player.position;
+  
+  for(const pol of policiais){
+    if(pol.vida<=0){
+      // Policial morto - esconder barra e não mover
+      pol.barraVida.visible=false;
+      continue;
+    }
+    
+    const distParaJogador=Math.hypot(jogadorPos.x-pol.pos.x,jogadorPos.z-pol.pos.z);
+    
+    // Mostrar barra de vida quando visível ou próximo
+    pol.barraVida.visible=distParaJogador<DISTANCIA_DETENCAO*1.3;
+    
+    // Atualizar visual da barra de vida
+    const hpPercent=pol.vida/pol.vidaMax;
+    pol.hpBar.scale.x=hpPercent;
+    pol.hpBar.position.x=(hpPercent-1)*0.38;
+    pol.hpBar.material.color.setHex(hpPercent>0.5?0x33ff33:hpPercent>0.25?0xffff33:0xff3333);
+    
+    // Máquina de estados simples
+    if(distParaJogador<DISTANCIA_DETENCAO){
+      // Entrar em modo perseguição
+      pol.estado='perseguicao';
+      
+      if(distParaJogador>DISTANCIA_TIRO){
+        // Perseguir jogador
+        const dx=jogadorPos.x-pol.pos.x,dz=jogadorPos.z-pol.pos.z;
+        const d=Math.hypot(dx,dz);
+        if(d>0.5){
+          const vx=dx/d*VELOCIDADE_POLICIAL,vz=dz/d*VELOCIDADE_POLICIAL;
+          const nx=pol.pos.x+vx*dt,nz=pol.pos.z+vz*dt;
+          if(!colideObstaculoXZ(nx,pol.pos.z,obterElevacao(nx,pol.pos.z),.3,.25,1.6)){pol.pos.x=nx}
+          if(!colideObstaculoXZ(pol.pos.x,nz,obterElevacao(pol.pos.x,nz),.3,.25,1.6)){pol.pos.z=nz}
+          pol.grupo.rotation.y=Math.atan2(vx,vz);
+        }
+      }else{
+        // Parar para atirar (estado 'atirando')
+        pol.estado='atirando';
+        pol.grupo.rotation.y=Math.atan2(jogadorPos.x-pol.pos.x,jogadorPos.z-pol.pos.z);
+        
+        // Atirar a cada 0.8 segundos
+        pol.tempoPatrulha+=dt;
+        if(pol.tempoPatrulha>0.8){
+          pol.tempoPatrulha=0;
+          // Chance de acertar baseada na distância
+          const precisao=1-Math.min(distParaJogador/DISTANCIA_TIRO,0.7);
+          if(Math.random()<precisao*0.6){
+            vidaJogador-=DANO_TIRO_POLICIAL;
+            if(vidaJogador<=0){
+              // Jogador morreu - resetar posição
+              vidaJogador=vidaJogadorMax;
+              player.position.set(0,obterElevacao(0,8),8);
+              velocidadeY=0;
+            }
+          }
+        }
+      }
+    }else{
+      // Modo patrulha
+      pol.estado='patrulha';
+      pol.tempoPatrulha+=dt;
+      if(pol.tempoPatrulha>3+Math.random()*2){
+        pol.tempoPatrulha=0;
+        // Escolher novo ponto de patrulha aleatório nas vielas
+        const wp=waypointsVielas[Math.floor(Math.random()*waypointsVielas.length)];
+        pol.pontoPatrulha.set(wp.x,0,wp.z);
+      }
+      
+      const dx=pol.pontoPatrulha.x-pol.pos.x,dz=pol.pontoPatrulha.z-pol.pos.z;
+      const d=Math.hypot(dx,dz);
+      if(d>0.5){
+        const vx=dx/d*VELOCIDADE_POLICIAL*.6,vz=dz/d*VELOCIDADE_POLICIAL*.6;
+        const nx=pol.pos.x+vx*dt,nz=pol.pos.z+vz*dt;
+        if(!colideObstaculoXZ(nx,pol.pos.z,obterElevacao(nx,pol.pos.z),.3,.25,1.6)){pol.pos.x=nx}
+        if(!colideObstaculoXZ(pol.pos.x,nz,obterElevacao(pol.pos.x,nz),.3,.25,1.6)){pol.pos.z=nz}
+        pol.grupo.rotation.y=Math.atan2(vx,vz);
+      }
+    }
+    
+    // Atualizar posição Y e animação
+    pol.grupo.position.set(pol.pos.x,obterElevacao(pol.pos.x,pol.pos.z),pol.pos.z);
+    const emMovimento=pol.estado==='perseguicao'||(pol.estado==='patrulha'&&Math.hypot(pol.pontoPatrulha.x-pol.pos.x,pol.pontoPatrulha.z-pol.pos.z)>0.5);
+    if(emMovimento){
+      pol.caminhando+=dt*6;
+      const balanco=Math.sin(pol.caminhando)*.4;
+      pol.pernas[0].rotation.x=balanco;
+      pol.pernas[1].rotation.x=-balanco;
+      pol.bracos[0].rotation.x=pol.estado==='atirando'?-0.8:-balanco*.6;
+      pol.bracos[1].rotation.x=pol.estado==='atirando'?-0.8:balanco*.6;
+    }else{
+      pol.pernas[0].rotation.x*=.9;
+      pol.pernas[1].rotation.x*=.9;
+      if(pol.estado!=='atirando'){
+        pol.bracos[0].rotation.x*=.9;
+        pol.bracos[1].rotation.x*=.9;
+      }
+    }
   }
 }
 const player=new THREE.Group();const skin=new THREE.MeshStandardMaterial({color:0xc79067,roughness:.55}),shirt=new THREE.MeshStandardMaterial({color:0x202b27,roughness:.75}),pants=new THREE.MeshStandardMaterial({color:0x495744,roughness:.85});
@@ -456,6 +603,50 @@ const raycasterMira=new THREE.Raycaster(),ALCANCE_MIRA=14;
 const potGhostMat=new THREE.MeshBasicMaterial({color:0x33ff55,transparent:true,opacity:.5,depthTest:false});
 const potGhost=new THREE.Mesh(new THREE.CylinderGeometry(.2,.16,.26,8),potGhostMat);potGhost.visible=false;potGhost.renderOrder=2;scene.add(potGhost);
 const miraEl=document.getElementById('mira');
+
+// Sistema de tiro FPS
+const DANO_TIRO_JOGADOR=35;
+const ALCANCE_TIRO=50;
+let podeAtirar=true;
+const TEMPO_RECARGA=0.25;
+
+function atirar(){
+  if(!podeAtirar)return;
+  podeAtirar=false;
+  setTimeout(()=>{podeAtirar=true},TEMPO_RECARGA*1000);
+  
+  // Raycast do tiro a partir da câmera
+  const dir=new THREE.Vector3();camera.getWorldDirection(dir);
+  const rayTiro=new THREE.Raycaster(camera.position,dir);
+  rayTiro.far=ALCANCE_TIRO;
+  
+  // Verificar acerto nos policiais
+  for(const pol of policiais){
+    if(pol.vida<=0)continue;
+    const hit=rayTiro.ray.intersectBox(new THREE.Box3(
+      new THREE.Vector3(pol.pos.x-.4,pol.grupo.position.y,pol.pos.z-.4),
+      new THREE.Vector3(pol.pos.x+.4,pol.grupo.position.y+2,pol.pos.z+.4)
+    ));
+    if(hit){
+      pol.vida-=DANO_TIRO_JOGADOR;
+      // Efeito visual de acerto (flash vermelho)
+      pol.hpBar.material.color.setHex(0xffffff);
+      setTimeout(()=>{
+        const hpPercent=pol.vida/pol.vidaMax;
+        pol.hpBar.material.color.setHex(hpPercent>0.5?0x33ff33:hpPercent>0.25?0xffff33:0xff3333);
+      },50);
+      
+      if(pol.vida<=0){
+        // Policial morreu - derrubar e esconder barra
+        pol.barraVida.visible=false;
+        pol.grupo.rotation.y+=Math.PI/2;
+        pol.grupo.position.y-=0.5;
+      }
+      break;
+    }
+  }
+}
+
 function calcularAlvoPlantio(){
   const dir=new THREE.Vector3();camera.getWorldDirection(dir);
   raycasterMira.set(camera.position,dir);raycasterMira.far=ALCANCE_MIRA*2;
@@ -643,9 +834,12 @@ let yaw=0,targetYaw=0,pitch=.28,targetPitch=.28,drag=false,lastX=0,lastY=0;
 renderer.domElement.addEventListener('pointerdown',e=>{drag=true;lastX=e.clientX;lastY=e.clientY;renderer.domElement.setPointerCapture?.(e.pointerId);if(e.pointerType==='mouse'){try{const p=renderer.domElement.requestPointerLock?.();p?.catch?.(()=>{})}catch(err){}}});
 renderer.domElement.addEventListener('pointermove',e=>{if(document.pointerLockElement===renderer.domElement){targetYaw-=e.movementX*.0035;targetPitch=Math.max(-.12,Math.min(.7,targetPitch-e.movementY*.0025))}else if(drag){const dx=e.clientX-lastX,dy=e.clientY-lastY;lastX=e.clientX;lastY=e.clientY;targetYaw-=dx*.009;targetPitch=Math.max(-.12,Math.min(.7,targetPitch-dy*.006))}});
 renderer.domElement.addEventListener('pointerup',()=>drag=false);renderer.domElement.addEventListener('pointercancel',()=>drag=false);
+// Atirar com botão direito do mouse ou toque duplo na tela
+renderer.domElement.addEventListener('contextmenu',e=>{e.preventDefault();atirar()});
+let lastTapTime=0;renderer.domElement.addEventListener('pointerdown',e=>{if(e.pointerType==='touch'){const now=Date.now();if(now-lastTapTime<300&&now-lastTapTime>50){atirar()}lastTapTime=now}});
 const startScreen=document.getElementById('startScreen'),playBtn=document.getElementById('playBtn');let gameStarted=false;playBtn.addEventListener('click',()=>{gameStarted=true;startScreen.classList.add('hide');document.body.classList.add('started')});
 
-const clock=new THREE.Clock(),pos=document.getElementById('pos');let walk=0;const velocity=new THREE.Vector3(),desired=new THREE.Vector3(),camGoal=new THREE.Vector3(),lookGoal=new THREE.Vector3();
+const clock=new THREE.Clock(),pos=document.getElementById('pos'),vidaPlayerEl=document.getElementById('vidaPlayer');let walk=0;const velocity=new THREE.Vector3(),desired=new THREE.Vector3(),camGoal=new THREE.Vector3(),lookGoal=new THREE.Vector3();
 function tick(){const dt=Math.min(clock.getDelta(),.05);const smooth=1-Math.exp(-18*dt),camSmooth=1-Math.exp(-7*dt);yaw=THREE.MathUtils.lerp(yaw,targetYaw,1-Math.exp(-12*dt));pitch=THREE.MathUtils.lerp(pitch,targetPitch,1-Math.exp(-12*dt));if(modoDrone){
   let x=(keys.KeyD?1:0)-(keys.KeyA?1:0)+joy.x,z=(keys.KeyS?1:0)-(keys.KeyW?1:0)-joy.y,m=Math.hypot(x,z);
   if(m){x/=m;z/=m;const f=new THREE.Vector3(-Math.sin(yaw),0,-Math.cos(yaw)),r=new THREE.Vector3(Math.cos(yaw),0,-Math.sin(yaw));droneX+=(r.x*x-f.x*z)*DRONE_VELOCIDADE*dt;droneZ+=(r.z*x-f.z*z)*DRONE_VELOCIDADE*dt}
@@ -658,7 +852,7 @@ function tick(){const dt=Math.min(clock.getDelta(),.05);const smooth=1-Math.exp(
 }else{
   let x=(keys.KeyD?1:0)-(keys.KeyA?1:0)+joy.x,z=(keys.KeyS?1:0)-(keys.KeyW?1:0)-joy.y,m=Math.hypot(x,z);desired.set(0,0,0);if(m){x/=m;z/=m;const f=new THREE.Vector3(-Math.sin(yaw),0,-Math.cos(yaw)),r=new THREE.Vector3(Math.cos(yaw),0,-Math.sin(yaw));desired.set((r.x*x-f.x*z)*5.8,0,(r.z*x-f.z*z)*5.8)}velocity.lerp(desired,smooth);const proximaX=player.position.x+velocity.x*dt;if(!jogadorColideNaPosicao(proximaX,player.position.z)){player.position.x=proximaX}else{velocity.x=0}const proximaZ=player.position.z+velocity.z*dt;if(!jogadorColideNaPosicao(player.position.x,proximaZ)){player.position.z=proximaZ}else{velocity.z=0}player.position.x=THREE.MathUtils.clamp(player.position.x,-100,92);player.position.z=THREE.MathUtils.clamp(player.position.z,-100,100);atualizarFisicaVertical(dt);preencherHitboxJogador(jogadorBoxDebugTemp,player.position.x,player.position.z);const speed=Math.hypot(velocity.x,velocity.z);if(speed>.08){const wanted=Math.atan2(velocity.x,velocity.z);let da=wanted-player.rotation.y;while(da>Math.PI)da-=Math.PI*2;while(da<-Math.PI)da+=Math.PI*2;player.rotation.y+=da*(1-Math.exp(-14*dt));walk+=dt*(6+speed*1.3);const swing=Math.sin(walk)*Math.min(.55,speed*.075);legs[0].rotation.x=swing;legs[1].rotation.x=-swing;arms[0].rotation.x=-swing*.45;arms[1].rotation.x=swing*.45}else{for(const limb of [...legs,...arms])limb.rotation.x*=Math.exp(-12*dt)}const target=new THREE.Vector3(player.position.x,player.position.y+EYE_HEIGHT,player.position.z);const dist=5;const cp=Math.cos(pitch);camGoal.set(target.x+Math.sin(yaw)*dist*cp,player.position.y+2+Math.sin(pitch)*dist,target.z+Math.cos(yaw)*dist*cp);const camGoalSeguro=cameraSemClipping(target,camGoal);camera.position.lerp(camGoalSeguro,camSmooth);lookGoal.lerp(target,camSmooth);camera.lookAt(lookGoal);
 }
-ceu.position.copy(camera.position);horizonte.position.set(camera.position.x,22,camera.position.z);for(const nv of nuvens){nv.position.x+=dt*.6;nv.position.z+=dt*.25;if(nv.position.x>200)nv.position.x-=400;if(nv.position.z>200)nv.position.z-=400}atualizarPlantas();atualizarRadar();atualizarNPCs(dt);atualizarAnimais(dt);if(inventarioAberto){atualizarMiraPlantio();renderizarInventario()}{const ctxA=contextoAtual(),chave=ctxA?ctxA.tipo+(ctxA.planta?ctxA.planta.estagio:''):null;if(chave!==ultimoContextoTipo)renderizarAcoes()}pos.textContent=modoDrone?`🚁 x ${droneX.toFixed(1)} · z ${droneZ.toFixed(1)} · alt ${droneY.toFixed(0)}m`:`x ${player.position.x.toFixed(1)} · z ${player.position.z.toFixed(1)}`;composer.render();requestAnimationFrame(tick)}
+ceu.position.copy(camera.position);horizonte.position.set(camera.position.x,22,camera.position.z);for(const nv of nuvens){nv.position.x+=dt*.6;nv.position.z+=dt*.25;if(nv.position.x>200)nv.position.x-=400;if(nv.position.z>200)nv.position.z-=400}atualizarPlantas();atualizarRadar();atualizarNPCs(dt);atualizarPolicias(dt);atualizarAnimais(dt);if(inventarioAberto){atualizarMiraPlantio();renderizarInventario()}{const ctxA=contextoAtual(),chave=ctxA?ctxA.tipo+(ctxA.planta?ctxA.planta.estagio:''):null;if(chave!==ultimoContextoTipo)renderizarAcoes()}pos.textContent=modoDrone?`🚁 x ${droneX.toFixed(1)} · z ${droneZ.toFixed(1)} · alt ${droneY.toFixed(0)}m`:`x ${player.position.x.toFixed(1)} · z ${player.position.z.toFixed(1)}`;vidaPlayerEl.textContent=Math.ceil(vidaJogador);composer.render();requestAnimationFrame(tick)}
 addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);composer.setSize(innerWidth,innerHeight)});tick();
 })();
 </script>
