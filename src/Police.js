@@ -31,10 +31,11 @@ import{scene,camera}from'./core.js';
 import{obterElevacao}from'./Terrain.js';
 import{primeiroImpactoNoSegmento,intersectarSegmentoCaixa,buscarPosicaoLivre}from'./Physics.js';
 import{encontrarCaminho,visaoHorizontalLivre}from'./NavMesh.js';
-import{player,obterBocaDaArma,zonasDeAcertoJogador,PLAYER_HEIGHT}from'./Player.js';
+import{player,zonasDeAcertoJogador,PLAYER_HEIGHT,encararDirecao}from'./Player.js';
+import{ORDEM_ARMAS,armaEquipada,idArmaEquipada,equiparArma,obterBocaDaArma,direcaoComDispersao}from'./Weapons.js';
 import{refugios}from'./WorldGenerator.js';
 import{colidePedestre}from'./NPCs.js';
-import{plantas,confiscarPlanta,aplicarMulta,inventario,atualizarStatusEconomia}from'./Economy.js';
+import{plantas,confiscarPlanta,aplicarMulta,inventario,atualizarStatusEconomia,isInventarioAberto}from'./Economy.js';
 import{dispararBala,atualizarBalas,limparBalas}from'./Bullets.js';
 import{aplicarDano,renderizarVidaJogador,criarBarraMundo}from'./HealthBar.js';
 import{droneState}from'./Camera.js';
@@ -60,7 +61,10 @@ const POLICIAL_HP=100,POLICIAL_VELOCIDADE=2,POLICIAL_ALCANCE_TIRO=13,POLICIAL_AP
 const POLICIAL_DANO_MIN=10,POLICIAL_DANO_MAX=18,POLICIAL_COOLDOWN_MIN=1.1,POLICIAL_COOLDOWN_MAX=2.1;
 const REFUGIO_RAIO=3.2,REFUGIO_TEMPO=4.5;
 const JOGADOR_HP_MAX=100,JOGADOR_ARMADURA_MAX=100,JOGADOR_REGEN=3;
-const TIRO_COOLDOWN=.28,DANO_TIRO_JOGADOR=34,ALCANCE_MIRA=120;
+// Cadência/dano/alcance agora vêm da ficha da arma equipada (Weapons.js). Sobrou só o custo da troca:
+// o cooldown é global (proximoTiroJogador), então sem ele dava pra escopeta→pistola→escopeta pra
+// cancelar os 0,85 s de recarga.
+const TEMPO_TROCA=.35;
 // Janela generosa: com 2,2 s o jogador quase nunca conseguia chegar a tempo e o confronto virava
 // confisco silencioso — dava a impressão de que a troca de tiro nem existia no jogo.
 const CONFISCO_DURACAO=9,RECUO_DURACAO=2;
@@ -163,13 +167,23 @@ let proximoTiroJogador=0;
 const alertaEl=document.getElementById('alertaPolicia'),
   refugioEl=document.getElementById('refugioIndicador'),miraCombateEl=document.getElementById('miraCombate'),
   fireBtn=document.getElementById('fireBtn'),danoFlash=document.getElementById('danoFlash'),
-  avisoPolicia=document.getElementById('avisoPolicia'),municaoEl=document.getElementById('municaoHud');
+  avisoPolicia=document.getElementById('avisoPolicia'),municaoEl=document.getElementById('municaoHud'),
+  armaBtn=document.getElementById('armaBtn'),armaIconeEl=document.getElementById('armaIcone'),
+  armaMunicaoEl=document.getElementById('armaMunicao');
 function atualizarHudSaude(){renderizarVidaJogador(saudeJogador,JOGADOR_HP_MAX,armaduraJogador,JOGADOR_ARMADURA_MAX)}
 // A munição também muda por COMPRA (na Economy, que não conhece este módulo). Em vez de acoplar os dois,
 // o HUD observa o valor e só redesenha quando ele muda de fato — nada de escrever no DOM por frame.
-let municaoHudCache=-1;
+// A chave é COMPOSTA de propósito: só o número não bastaria, porque rifle com 12 balas e pistola com
+// 12 balas dariam cache-hit e o ícone congelaria na arma anterior.
+let armaHudCache='';
 function atualizarHudMunicao(){
-  if(municaoEl&&inventario.municao!==municaoHudCache){municaoHudCache=inventario.municao;municaoEl.textContent=`🔫 ${inventario.municao}`}
+  const arma=armaEquipada(),n=inventario.municao[arma.id],donas=ORDEM_ARMAS.filter(id=>inventario.armas[id]).length;
+  const chave=`${arma.id}:${n}:${donas}`;
+  if(chave===armaHudCache)return;
+  armaHudCache=chave;
+  if(municaoEl)municaoEl.textContent=`${arma.icone} ${n}`;
+  if(armaIconeEl)armaIconeEl.textContent=arma.icone;
+  if(armaMunicaoEl)armaMunicaoEl.textContent=n;
 }
 function mostrarAviso(texto,ms=2600){avisoPolicia.textContent=texto;avisoPolicia.style.display='block';avisoPolicia.style.opacity='1';clearTimeout(avisoPolicia._t);avisoPolicia._t=setTimeout(()=>{avisoPolicia.style.opacity='0';setTimeout(()=>avisoPolicia.style.display='none',300)},ms)}
 function flashDano(){danoFlash.style.opacity='.55';clearTimeout(danoFlash._t);danoFlash._t=setTimeout(()=>danoFlash.style.opacity='0',120)}
@@ -326,35 +340,75 @@ function atualizarPolicialCombate(pol,dt,agora){
 // exatamente a sensação de "errei o que estava na mira".
 // Correção: resolver o ponto visado de verdade, pelo mesmo slab test do resto da física.
 const _dirCamera=new THREE.Vector3(),_visado=new THREE.Vector3();
-function resolverPontoVisado(){
+// `miraNoAlvo` é lido pelo HUD: é o que faz a mira mudar de cor quando está em cima de um policial —
+// sem esse retorno o jogador não tem nenhuma confirmação de pontaria antes de gastar a bala.
+let miraNoAlvo=false;
+function resolverPontoVisado(alcance){
   camera.getWorldDirection(_dirCamera);
   const ox=camera.position.x,oy=camera.position.y,oz=camera.position.z;
-  const dx=_dirCamera.x*ALCANCE_MIRA,dy=_dirCamera.y*ALCANCE_MIRA,dz=_dirCamera.z*ALCANCE_MIRA;
+  const dx=_dirCamera.x*alcance,dy=_dirCamera.y*alcance,dz=_dirCamera.z*alcance;
   let melhorT=1;
   const parede=primeiroImpactoNoSegmento(ox,oy,oz,ox+dx,oy+dy,oz+dz);
   if(parede)melhorT=parede.t;
+  miraNoAlvo=false;
   // A mira gruda no CORPO, não na parede atrás dele: se o alvo vier antes, é ele que define o ponto.
   for(const pol of policiais){
     if(!pol.vivo||pol.caindo)continue;
     for(const zona of zonasDoPolicial(pol)){
       const t=intersectarSegmentoCaixa(zona.caixa,ox,oy,oz,dx,dy,dz);
-      if(t!==null&&t<melhorT)melhorT=t;
+      if(t!==null&&t<melhorT){melhorT=t;miraNoAlvo=true}
     }
   }
   // Piso de 2 m: com o jogador de nariz na parede, um t minúsculo inverteria a direção da bala.
-  const distancia=Math.max(2,melhorT*ALCANCE_MIRA);
+  const distancia=Math.max(2,melhorT*alcance);
   return _visado.set(ox+_dirCamera.x*distancia,oy+_dirCamera.y*distancia,oz+_dirCamera.z*distancia);
 }
+const _dirTiro=new THREE.Vector3(),_dirChumbo=new THREE.Vector3();
+let avisouSemMunicao=false;
 export function atirar(){
   const agora=performance.now()/1000;
   // No modo drone a câmera não é a do jogador — mirar por ela lançaria a bala de qualquer lugar do mapa.
   if(agora<proximoTiroJogador||jogadorRendido||droneState.ativo)return;
-  if(inventario.municao<=0){mostrarAviso('Sem munição — compre na Loja de Armas (nordeste do mapa).',2400);proximoTiroJogador=agora+.9;return}
-  proximoTiroJogador=agora+TIRO_COOLDOWN;
-  inventario.municao--;atualizarHudMunicao();atualizarStatusEconomia();
+  const arma=armaEquipada(),restante=inventario.municao[arma.id];
+  if(restante<arma.gasto){
+    // Com o gatilho segurado o dedo fica no botão: sem esta trava o aviso repetiria a cada 0,9 s pra
+    // sempre. Volta a false quando o gatilho solta ou quando sai um tiro válido.
+    if(!avisouSemMunicao){avisouSemMunicao=true;mostrarAviso(`Sem munição de ${arma.nome} — compre na Loja de Armas (nordeste do mapa).`,2400)}
+    proximoTiroJogador=agora+.9;return;
+  }
+  avisouSemMunicao=false;
+  proximoTiroJogador=agora+arma.cooldown;
+  inventario.municao[arma.id]-=arma.gasto;atualizarHudMunicao();
+  // Resolve o alvo primeiro: além do ponto visado, isso deixa _dirCamera preenchido com a direção da
+  // câmera, que é justo pra onde o boneco tem que virar.
+  const visado=resolverPontoVisado(arma.alcance);
+  // Vira o boneco ANTES de ler a boca: a arma é filha do braço, então a posição do cano depende dessa
+  // rotação — girar depois faria a bala nascer de onde o corpo acabou de sair.
+  encararDirecao(_dirCamera.x,_dirCamera.z);
   const boca=obterBocaDaArma();
-  const visado=resolverPontoVisado();
-  dispararBala(boca,visado.clone().sub(boca).normalize(),true);
+  _dirTiro.copy(visado).sub(boca).normalize();
+  // Um cartucho, N chumbos: cada projétil sai do mesmo cano com desvio próprio dentro do cone.
+  for(let i=0;i<arma.projeteis;i++)dispararBala(boca,direcaoComDispersao(_dirTiro,arma.dispersao,_dirChumbo),true);
+}
+// ===== Gatilho segurado =====
+// Antes era um tiro por toque: com cooldown de 0,28 s (e 0,11 s da metralhadora) isso exigia martelar
+// a tela, que é metade da sensação de "jogabilidade ruim". Quem limita a cadência é o cooldown da
+// arma dentro de atirar(), então segurar não dispara mais rápido que 1/cooldown — não existe rajada
+// dependente de FPS.
+let gatilhoPressionado=false;
+export function definirGatilho(v){gatilhoPressionado=v;if(!v)avisouSemMunicao=false}
+export function atualizarTiroContinuo(){if(gatilhoPressionado)atirar()}
+// Cicla só entre as armas que o jogador POSSUI. Mora aqui porque é o único módulo que enxerga os três
+// pedaços: inventario.armas (Economy), equiparArma (Weapons) e proximoTiroJogador (local).
+export function trocarArma(destino){
+  const donas=ORDEM_ARMAS.filter(id=>inventario.armas[id]);
+  let id;
+  if(destino){if(!inventario.armas[destino])return;id=destino}
+  else{if(donas.length<2)return;id=donas[(donas.indexOf(idArmaEquipada())+1)%donas.length]}
+  if(id===idArmaEquipada())return;
+  equiparArma(id);
+  proximoTiroJogador=Math.max(proximoTiroJogador,performance.now()/1000+TEMPO_TROCA);
+  avisouSemMunicao=false;atualizarHudMunicao();
 }
 
 // ===== Alvos das balas, montados UMA VEZ POR FRAME =====
@@ -367,7 +421,10 @@ function montarAlvosDoFrame(){
   for(const pol of policiais){
     if(!pol.vivo||pol.caindo)continue;
     for(const zona of zonasDoPolicial(pol)){
-      alvosJogador.push({caixa:zona.caixa,aoAtingir:()=>atingirPolicial(pol,DANO_TIRO_JOGADOR*zona.multiplicador)});
+      // `armaEquipada()` é lido DENTRO da arrow de propósito: esta lista é montada por frame, mas a
+      // bala só chama aoAtingir() no frame do impacto — lendo fora, o dano congelaria na arma que
+      // estava na mão quando a lista foi montada, não na que disparou.
+      alvosJogador.push({caixa:zona.caixa,aoAtingir:()=>atingirPolicial(pol,armaEquipada().dano*zona.multiplicador)});
     }
   }
   if(!jogadorRendido){
@@ -552,14 +609,39 @@ export function atualizarPolicia(dt){
   alertaEl.style.display=emAlerta?'block':'none';
   refugioEl.style.display=jogadorEscondido()?'block':'none';
   const emCombate=policia.estado==='combate';
-  miraCombateEl.style.display=emCombate?'block':'none';
+  const temArma=inventario.municao[idArmaEquipada()]>0;
+  // A mira fica na tela SEMPRE que dá pra atirar — antes só aparecia no estado 'combate', que exige
+  // plantar, esperar a muda florir, o heli achar e descer de rapel. Fora dessa janela o botão de tiro
+  // continuava clicável e gastava bala de verdade sem nenhuma indicação de para onde se estava
+  // mirando. Some só no drone (a câmera não é a do jogador), rendido, ou com a mira de plantio ativa.
+  const podeMirar=temArma&&!droneState.ativo&&!jogadorRendido&&!isInventarioAberto();
+  miraCombateEl.style.display=podeMirar?'block':'none';
+  if(podeMirar){
+    // Resolver o ponto visado por frame também alimenta `miraNoAlvo`: é o que dá o retorno de
+    // pontaria (mira vermelha grande em cima do corpo) que antes não existia.
+    resolverPontoVisado(armaEquipada().alcance);
+    miraCombateEl.classList.toggle('noAlvo',miraNoAlvo);
+  }
   // O botão aparece quando há munição pra gastar OU polícia em campo: senão o jogador nunca via que
   // existe arma no jogo. Fora do combate ele fica esmaecido, indicando que não há em quem atirar.
-  const temArma=inventario.municao>0;
   fireBtn.style.display=(emAlerta||temArma)?'flex':'none';
   fireBtn.style.opacity=emCombate&&temArma?'1':'.45';
+  // Com uma arma só, o botão de troca seria um no-op comendo espaço de polegar: só aparece com 2+.
+  if(armaBtn){
+    const temTroca=ORDEM_ARMAS.filter(id=>inventario.armas[id]).length>1;
+    armaBtn.style.display=(temTroca&&fireBtn.style.display==='flex')?'flex':'none';
+  }
 }
 
-fireBtn?.addEventListener('pointerdown',e=>{e.preventDefault();atirar()});
+// Gatilho SEGURADO: pointerdown liga, e os quatro eventos de soltura desligam. O setPointerCapture é
+// obrigatório — sem ele, o dedo deslizando pra fora do botão faz o pointerup cair noutro elemento e o
+// gatilho fica preso ligado, atirando até acabar a munição. Mesmo tratamento que o joystick já usa.
+fireBtn?.addEventListener('pointerdown',e=>{
+  e.preventDefault();fireBtn.setPointerCapture?.(e.pointerId);
+  definirGatilho(true);atirar();// tiro imediato: o primeiro disparo não pode esperar o próximo frame
+});
+for(const ev of['pointerup','pointercancel','pointerleave','lostpointercapture'])fireBtn?.addEventListener(ev,()=>definirGatilho(false));
+addEventListener('blur',()=>definirGatilho(false));// alt-tab com o dedo/tecla presos
+armaBtn?.addEventListener('pointerdown',e=>{e.preventDefault();trocarArma()});
 
 export{heli,policiais,policia};

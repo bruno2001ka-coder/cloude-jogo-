@@ -9,7 +9,7 @@ import{atualizarAnimais}from'./WorldGenerator.js';
 import{atualizarNPCs}from'./NPCs.js';
 import{atualizarPlantas,atualizarMiraPlantio,isInventarioAberto,renderizarInventario,contextoAtual,getUltimoContextoTipo,renderizarAcoes}from'./Economy.js';
 import{atualizarRadar,atualizarDebugNavMesh}from'./UI.js';
-import{atualizarPolicia}from'./Police.js';
+import{atualizarPolicia,atualizarTiroContinuo}from'./Police.js';
 import{inputState,keys,initDragLook,atualizarSuavizacaoInput}from'./Input.js';
 import{atualizarSkyline}from'./Skyline.js';
 
@@ -20,7 +20,13 @@ const droneBtn=document.getElementById('droneBtn');
 droneBtn.addEventListener('click',()=>alternarDrone(player.position,inputState));
 document.getElementById('destravarBtn').addEventListener('click',()=>destravarJogador(true));
 
-const startScreen=document.getElementById('startScreen'),playBtn=document.getElementById('playBtn');let gameStarted=false;playBtn.addEventListener('click',()=>{gameStarted=true;startScreen.classList.add('hide');document.body.classList.add('started')});
+const startScreen=document.getElementById('startScreen'),playBtn=document.getElementById('playBtn');let gameStarted=false;playBtn.addEventListener('click',()=>{gameStarted=true;startScreen.classList.add('hide');document.body.classList.add('started');
+  // O hint cobre a faixa dos botões embaixo. Ele serve pra primeira partida, não pro jogo todo:
+  // some sozinho depois de meio minuto em vez de disputar espaço com o PULAR pra sempre.
+  setTimeout(()=>{const h=document.getElementById('hint');if(h)h.style.display='none'},30000)});
+// O botão DEBUG é ferramenta de desenvolvimento e fica escondido por padrão (ver CSS): ?debug=1 na URL
+// traz ele de volta sem precisar mexer no código.
+if(new URLSearchParams(location.search).has('debug'))document.body.classList.add('debug');
 
 const clock=new THREE.Clock(),pos=document.getElementById('pos');
 const faseIcone=document.getElementById('faseIcone');let bandaAnteriorHud=null;const ICONES_FASE={noite:'🌙',nascer:'🌅',dia:'🌞',por:'🌇'};
@@ -38,7 +44,11 @@ function tick(){
   }
   atualizarAmbiente(dt);atualizarSkyline();
   {const banda=obterBandaFase();if(banda!==bandaAnteriorHud){faseIcone.textContent=ICONES_FASE[banda];bandaAnteriorHud=banda}}
-  atualizarPlantas();atualizarRadar();atualizarNPCs(dt);atualizarAnimais(dt);atualizarPolicia(dt);atualizarDebugNavMesh();
+  // O tiro contínuo vem ANTES do atualizarPolicia: a bala criada neste frame já entra no
+  // atualizarBalas que roda lá dentro, com os alvos deste frame. Depois, ela ficaria um frame parada
+  // no cano. Fica no loop principal, e não dentro da máquina de estados da polícia, porque é leitura
+  // de input, não IA.
+  atualizarPlantas();atualizarRadar();atualizarNPCs(dt);atualizarAnimais(dt);atualizarTiroContinuo();atualizarPolicia(dt);atualizarDebugNavMesh();
   if(isInventarioAberto()){atualizarMiraPlantio();renderizarInventario()}
   {const ctxA=contextoAtual(),chave=ctxA?ctxA.tipo+(ctxA.planta?ctxA.planta.estagio:''):null;if(chave!==getUltimoContextoTipo())renderizarAcoes()}
   pos.textContent=droneState.ativo?`🚁 x ${droneState.x.toFixed(1)} · z ${droneState.z.toFixed(1)} · alt ${droneState.y.toFixed(0)}m`:`x ${player.position.x.toFixed(1)} · z ${player.position.z.toFixed(1)}`;
