@@ -742,7 +742,7 @@ if(!modoDrone){
 
 // Mira com botão direito do mouse (apenas no modo normal, não drone)
 if(!modoDrone&&!pauseMenuAberto&&!inventarioAberto){
-  if(keys.Button2!==false){
+  if(keys.Button2===true){
     if(!mirando){
       mirando=true;
       targetPitch=Math.max(.45,pitch);

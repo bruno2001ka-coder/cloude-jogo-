@@ -1,4 +1,1 @@
-```
-# No build artifacts, dependencies, or temp files detected in changes
-# Only source/config files present, so no additional ignores needed
-```
+(index.html is a source file, so no need to add anything to .gitignore)
