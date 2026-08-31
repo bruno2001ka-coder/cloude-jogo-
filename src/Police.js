@@ -5,21 +5,25 @@
 import*as THREE from'three';
 import{scene,camera}from'./core.js';
 import{obterElevacao}from'./Terrain.js';
-import{obstaculos,colideObstaculoXZ}from'./Physics.js';
-import{player}from'./Player.js';
+import{primeiroImpactoNoSegmento,buscarPosicaoLivre}from'./Physics.js';
+import{player,obterBocaDaArma}from'./Player.js';
 import{refugios}from'./WorldGenerator.js';
+import{colidePedestre,PEDESTRE_MEIA_LARG,PEDESTRE_MEIA_PROF}from'./NPCs.js';
 import{plantas,confiscarPlanta,aplicarMulta}from'./Economy.js';
+import{dispararBala,atualizarBalas,limparBalas}from'./Bullets.js';
 
 const HELI_ALTURA=38,HELI_VELOCIDADE=12,MAPA_LIMITE=95;
-const SCAN_INTERVALO=1,DETECCAO_RAIO=8,APROX_RAIO=3;
+const DETECCAO_RAIO=10,APROX_RAIO=3;
 const RAPEL_DURACAO=1.5,NUM_POLICIAIS=2;
 const COMBATE_RAIO_ATIVACAO=16;
 const POLICIAL_HP=3,POLICIAL_VELOCIDADE=2,POLICIAL_ALCANCE_TIRO=13,POLICIAL_APROX_MIN=7;
 const POLICIAL_DANO_MIN=10,POLICIAL_DANO_MAX=18,POLICIAL_COOLDOWN_MIN=1.1,POLICIAL_COOLDOWN_MAX=2.1;
 const REFUGIO_RAIO=3.2,REFUGIO_TEMPO=4.5;
 const JOGADOR_HP_MAX=100,JOGADOR_REGEN=3;
-const TIRO_COOLDOWN=.28,TIRO_ALCANCE=28;
-const CONFISCO_DURACAO=2.2,RECUO_DURACAO=2;
+const TIRO_COOLDOWN=.28;
+// Janela generosa: com 2,2 s o jogador quase nunca conseguia chegar a tempo e o confronto virava
+// confisco silencioso — dava a impressão de que a troca de tiro nem existia no jogo.
+const CONFISCO_DURACAO=9,RECUO_DURACAO=2;
 const COOLDOWN_ENTRE_BUSCAS=22,MULTA_RENDICAO=60;
 const SPAWN_X=0,SPAWN_Z=8;
 
@@ -92,18 +96,7 @@ atualizarHudSaude();
 function distXZ(a,b){return Math.hypot(a.x-b.x,a.z-b.z)}
 function jogadorEscondido(){return refugios.some(r=>distXZ(player.position,r)<REFUGIO_RAIO)}
 
-// ===== Tracers (efeito visual de tiro, some rápido) =====
-const tracers=[];
-function criarTracer(a,b,cor){
-  const geo=new THREE.BufferGeometry().setFromPoints([a,b]);
-  const mat=new THREE.LineBasicMaterial({color:cor,transparent:true,opacity:.95});
-  const linha=new THREE.Line(geo,mat);scene.add(linha);
-  tracers.push({linha,ate:performance.now()/1000+.09});
-}
-function atualizarTracers(){
-  const agora=performance.now()/1000;
-  for(let i=tracers.length-1;i>=0;i--){if(agora>tracers[i].ate){scene.remove(tracers[i].linha);tracers[i].linha.geometry.dispose();tracers[i].linha.material.dispose();tracers.splice(i,1)}}
-}
+// (O efeito de tiro agora é projétil de verdade — ver Bullets.js.)
 
 // ===== Dano ao jogador =====
 function receberDanoJogador(dano){
@@ -132,6 +125,11 @@ function encerrarEncontro(){
 }
 
 // ===== IA de cada policial em combate: aproxima até uma distância mínima e atira por intervalos =====
+// Existe parede entre A e B? Sem isso os policiais atiravam através das casas.
+function temLinhaDeVisao(ax,ay,az,bx,by,bz){
+  return primeiroImpactoNoSegmento(ax,ay,az,bx,by,bz)===null;
+}
+
 function atualizarPolicialCombate(pol,dt){
   if(!pol.vivo)return;
   if(pol.caindo){
@@ -143,46 +141,81 @@ function atualizarPolicialCombate(pol,dt){
   if(dist>POLICIAL_APROX_MIN){
     const dx=player.position.x-pol.pos.x,dz=player.position.z-pol.pos.z,d=Math.hypot(dx,dz),vx=dx/d*POLICIAL_VELOCIDADE,vz=dz/d*POLICIAL_VELOCIDADE;
     const nx=pol.pos.x+vx*dt,nz=pol.pos.z+vz*dt;let moveu=false;
-    if(!colideObstaculoXZ(nx,pol.pos.z,obterElevacao(nx,pol.pos.z),.28,.22,1.6)){pol.pos.x=nx;moveu=true}
-    if(!colideObstaculoXZ(pol.pos.x,nz,obterElevacao(pol.pos.x,nz),.28,.22,1.6)){pol.pos.z=nz;moveu=true}
+    if(!colidePedestre(nx,pol.pos.z)){pol.pos.x=nx;moveu=true}
+    if(!colidePedestre(pol.pos.x,nz)){pol.pos.z=nz;moveu=true}
     if(moveu){pol.grupo.rotation.y=Math.atan2(vx,vz);pol.caminhando+=dt*7;const balanco=Math.sin(pol.caminhando)*.4;pol.pernas[0].rotation.x=balanco;pol.pernas[1].rotation.x=-balanco}
   }else{pol.grupo.rotation.y=Math.atan2(player.position.x-pol.pos.x,player.position.z-pol.pos.z)}
+  // Desencrava se acabou dentro de uma parede.
+  if(colidePedestre(pol.pos.x,pol.pos.z)){
+    const livre=buscarPosicaoLivre(pol.pos.x,pol.pos.z,colidePedestre);
+    if(livre){pol.pos.x=livre.x;pol.pos.z=livre.z}
+  }
   pol.grupo.position.set(pol.pos.x,obterElevacao(pol.pos.x,pol.pos.z),pol.pos.z);
   const agora=performance.now()/1000;
   if(dist<=POLICIAL_ALCANCE_TIRO&&agora>=pol.proximoTiro&&!jogadorEscondido()){
-    pol.proximoTiro=agora+POLICIAL_COOLDOWN_MIN+Math.random()*(POLICIAL_COOLDOWN_MAX-POLICIAL_COOLDOWN_MIN);
-    const chance=THREE.MathUtils.clamp(1-dist/POLICIAL_ALCANCE_TIRO,.12,.8);
-    const origem=new THREE.Vector3(pol.pos.x,pol.grupo.position.y+1.15,pol.pos.z);
-    const alvo=new THREE.Vector3(player.position.x,player.position.y+1.1,player.position.z);
-    criarTracer(origem,alvo,0xffcf6b);
-    if(Math.random()<chance)receberDanoJogador(POLICIAL_DANO_MIN+Math.random()*(POLICIAL_DANO_MAX-POLICIAL_DANO_MIN));
+    const ox=pol.pos.x,oy=pol.grupo.position.y+1.15,oz=pol.pos.z;
+    const ax=player.position.x,ay=player.position.y+1.1,az=player.position.z;
+    // só atira se realmente enxerga o jogador — nada de tiro atravessando casa
+    if(temLinhaDeVisao(ox,oy,oz,ax,ay,az)){
+      pol.proximoTiro=agora+POLICIAL_COOLDOWN_MIN+Math.random()*(POLICIAL_COOLDOWN_MAX-POLICIAL_COOLDOWN_MIN);
+      // erro de pontaria cresce com a distância: a bala sai torta, e é a física dela que decide o acerto
+      const espalhamento=THREE.MathUtils.clamp(dist/POLICIAL_ALCANCE_TIRO,.05,1)*.13;
+      const dir=new THREE.Vector3(ax-ox,ay-oy,az-oz).normalize();
+      dir.x+=(Math.random()*2-1)*espalhamento;
+      dir.y+=(Math.random()*2-1)*espalhamento*.5;
+      dir.z+=(Math.random()*2-1)*espalhamento;
+      dispararBala(new THREE.Vector3(ox,oy,oz),dir,false);
+    }
   }
 }
 
-// ===== Tiro do jogador: raycast da câmera contra a caixa de cada policial vivo =====
-const raycasterTiro=new THREE.Raycaster();
+// ===== Tiro do jogador: a bala sai do cano da arma e viaja de verdade =====
+// A mira continua sendo a da câmera (é o que o jogador vê no centro da tela), mas a bala nasce na arma
+// e é a física dela que decide se acerta — inclusive parando na parede se tiver uma no caminho.
 export function atirar(){
   const agora=performance.now()/1000;
   if(agora<proximoTiroJogador||policia.estado!=='combate'||jogadorRendido)return;
   proximoTiroJogador=agora+TIRO_COOLDOWN;
-  const dir=new THREE.Vector3();camera.getWorldDirection(dir);
-  raycasterTiro.set(camera.position,dir);raycasterTiro.far=TIRO_ALCANCE;
-  let alvo=null,menor=TIRO_ALCANCE,hitPonto=null;
-  for(const pol of policiais){
-    if(!pol.vivo||pol.caindo)continue;
-    const caixa=new THREE.Box3(new THREE.Vector3(pol.pos.x-.35,pol.grupo.position.y,pol.pos.z-.35),new THREE.Vector3(pol.pos.x+.35,pol.grupo.position.y+1.8,pol.pos.z+.35));
-    const hit=new THREE.Vector3();
-    if(raycasterTiro.ray.intersectBox(caixa,hit)){const d=hit.distanceTo(camera.position);if(d<menor){menor=d;alvo=pol;hitPonto=hit}}
-  }
-  const fimTracer=hitPonto||camera.position.clone().add(dir.clone().multiplyScalar(TIRO_ALCANCE));
-  criarTracer(camera.position,fimTracer,0x9be6ff);
-  if(alvo){
-    alvo.hp--;
-    if(alvo.hp<=0){alvo.vivo=false;alvo.caindo=true;alvo.quedaT=0}
-    if(policiais.every(p=>!p.vivo)){
-      mostrarAviso('Você despistou a polícia! A plantação está a salvo.',3000);
-      encerrarEncontro();
+  const dirCamera=new THREE.Vector3();camera.getWorldDirection(dirCamera);
+  const boca=obterBocaDaArma();
+  // ponto visado: bem à frente da câmera; a bala é lançada da arma NA DIREÇÃO desse ponto, senão ela
+  // sairia paralela à mira e erraria tudo que estivesse perto.
+  const visado=camera.position.clone().addScaledVector(dirCamera,60);
+  const dir=visado.sub(boca).normalize();
+  dispararBala(boca,dir,true);
+}
+
+// Caixas atingíveis por cada lado, consultadas pelas balas a cada frame.
+function alvosDaBala(deDoJogador){
+  const lista=[];
+  if(deDoJogador){
+    for(const pol of policiais){
+      if(!pol.vivo||pol.caindo)continue;
+      lista.push({
+        caixa:new THREE.Box3(
+          new THREE.Vector3(pol.pos.x-.35,pol.grupo.position.y,pol.pos.z-.35),
+          new THREE.Vector3(pol.pos.x+.35,pol.grupo.position.y+1.8,pol.pos.z+.35)),
+        aoAtingir:()=>atingirPolicial(pol)
+      });
     }
+  }else if(!jogadorRendido){
+    lista.push({
+      caixa:new THREE.Box3(
+        new THREE.Vector3(player.position.x-.35,player.position.y,player.position.z-.35),
+        new THREE.Vector3(player.position.x+.35,player.position.y+1.5,player.position.z+.35)),
+      aoAtingir:()=>receberDanoJogador(POLICIAL_DANO_MIN+Math.random()*(POLICIAL_DANO_MAX-POLICIAL_DANO_MIN))
+    });
+  }
+  return lista;
+}
+
+function atingirPolicial(pol){
+  if(!pol.vivo)return;
+  pol.hp--;
+  if(pol.hp<=0){pol.vivo=false;pol.caindo=true;pol.quedaT=0}
+  if(policiais.every(p=>!p.vivo)){
+    mostrarAviso('Você despistou a polícia! A plantação está a salvo.',3000);
+    encerrarEncontro();
   }
 }
 
@@ -192,9 +225,20 @@ export function atualizarPolicia(dt){
   // Rotor sempre girando e luzes piscando, em qualquer estado — o helicóptero nunca "desliga".
   rotorPrincipal.rotation.y+=dt*26;rotorCauda.rotation.x+=dt*40;
   const pisca=Math.floor(agora*3)%2===0;luzV.material.emissiveIntensity=pisca?1.6:.1;luzA.material.emissiveIntensity=pisca?.1:1.6;
-  atualizarTracers();
 
   if(policia.estado==='patrulha'){
+    // CAÇA ATIVA: com o heli indo pra pontos aleatórios num mapa de 190 m e raio de detecção de 10 m,
+    // a chance de ele topar com a plantação por acaso era mínima — na prática a polícia nunca aparecia.
+    // Agora, havendo plantação e o cooldown vencido, ele vai direto atrás dela.
+    if(agora>=policia.cooldownAte&&!jogadorEscondido()){
+      let maisProxima=null,menorDist=Infinity;
+      for(const p of plantas){
+        if(p.colhida)continue;
+        const d2=distXZ(heli.position,p);
+        if(d2<menorDist){menorDist=d2;maisProxima=p}
+      }
+      if(maisProxima){heliAlvo={x:maisProxima.x,z:maisProxima.z}}
+    }
     const dx=heliAlvo.x-heli.position.x,dz=heliAlvo.z-heli.position.z,d=Math.hypot(dx,dz);
     if(d<3){heliAlvo={x:(Math.random()*2-1)*MAPA_LIMITE,z:(Math.random()*2-1)*MAPA_LIMITE}}
     else{heli.position.x+=dx/d*HELI_VELOCIDADE*dt;heli.position.z+=dz/d*HELI_VELOCIDADE*dt;heli.rotation.z=THREE.MathUtils.clamp(-dz/d*.35,-.35,.35);heli.rotation.y=Math.atan2(dx,dz)}
@@ -202,7 +246,10 @@ export function atualizarPolicia(dt){
     if(agora>=policia.cooldownAte){
       let alvoEncontrado=null;
       for(const p of plantas){if(!p.colhida&&distXZ(heli.position,p)<DETECCAO_RAIO){alvoEncontrado=p;break}}
-      if(alvoEncontrado&&!jogadorEscondido()){policia.estado='indo';policia.alvoPlanta=alvoEncontrado}
+      if(alvoEncontrado&&!jogadorEscondido()){
+        policia.estado='indo';policia.alvoPlanta=alvoEncontrado;
+        mostrarAviso('🚁 A polícia achou sua plantação — corre pra defender!',3400);
+      }
     }
   }else if(policia.estado==='indo'){
     const alvo=policia.alvoPlanta;
@@ -212,7 +259,9 @@ export function atualizarPolicia(dt){
       for(let i=0;i<NUM_POLICIAIS;i++){
         const pol=criarPolicial();
         const ang=(i/NUM_POLICIAIS)*Math.PI*2,raio=2.4;
-        pol.pos.set(alvo.x+Math.cos(ang)*raio,alvo.z+Math.sin(ang)*raio);
+        // Vector3.set com DOIS argumentos jogava o z no y e deixava z=0: os policiais desciam sempre na
+        // faixa z≈0, longe da plantação. É o que fazia a batida parecer que não existia.
+        pol.pos.set(alvo.x+Math.cos(ang)*raio,0,alvo.z+Math.sin(ang)*raio);
         pol.grupo.position.set(pol.pos.x,heli.position.y,pol.pos.z);
         policiais.push(pol);
         const corda=new THREE.Line(new THREE.BufferGeometry().setFromPoints([heli.position.clone(),pol.grupo.position.clone()]),new THREE.LineBasicMaterial({color:0x333333}));
@@ -257,11 +306,13 @@ export function atualizarPolicia(dt){
     for(const pol of policiais)pol.grupo.visible=policia.tempoEstado<RECUO_DURACAO*.4;
     if(policia.tempoEstado>=RECUO_DURACAO){
       for(const pol of policiais)scene.remove(pol.grupo);
-      policiais.length=0;
+      policiais.length=0;limparBalas();
       policia.estado='patrulha';policia.alvoPlanta=null;policia.cooldownAte=agora+COOLDOWN_ENTRE_BUSCAS;
       heliAlvo={x:(Math.random()*2-1)*MAPA_LIMITE,z:(Math.random()*2-1)*MAPA_LIMITE};
     }
   }
+
+  atualizarBalas(dt,alvosDaBala);
 
   // Holofote sempre mirando o chão logo abaixo do helicóptero, e o feixe cônico acompanhando.
   const chaoAbaixo=obterElevacao(heli.position.x,heli.position.z);
@@ -278,7 +329,10 @@ export function atualizarPolicia(dt){
   refugioEl.style.display=escondido?'block':'none';
   const emCombate=policia.estado==='combate';
   miraCombateEl.style.display=emCombate?'block':'none';
-  fireBtn.style.display=emCombate?'flex':'none';
+  // O botão aparece assim que há polícia em campo (não só no combate): senão o jogador nunca via que
+  // existe arma no jogo. Fora do combate ele fica esmaecido, indicando que ainda não há em quem atirar.
+  fireBtn.style.display=emAlerta?'flex':'none';
+  fireBtn.style.opacity=emCombate?'1':'.45';
 }
 
 fireBtn?.addEventListener('pointerdown',e=>{e.preventDefault();atirar()});

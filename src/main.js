@@ -2,7 +2,7 @@
 // que roda como efeito colateral de topo de módulo, igual à IIFE original) e roda o loop principal.
 import*as THREE from'three';
 import{camera,renderer,composer}from'./core.js';
-import{EYE_HEIGHT,player,atualizarMovimentoJogador}from'./Player.js';
+import{EYE_HEIGHT,player,atualizarMovimentoJogador,vigiarTravamento,destravarJogador}from'./Player.js';
 import{droneState,alternarDrone,atualizarCameraDrone,atualizarCameraSeguidora}from'./Camera.js';
 import{atualizarAmbiente}from'./Environment.js';
 import{atualizarAnimais}from'./WorldGenerator.js';
@@ -17,6 +17,7 @@ initDragLook(renderer.domElement);
 
 const droneBtn=document.getElementById('droneBtn');
 droneBtn.addEventListener('click',()=>alternarDrone(player.position,inputState));
+document.getElementById('destravarBtn').addEventListener('click',()=>destravarJogador(true));
 
 const startScreen=document.getElementById('startScreen'),playBtn=document.getElementById('playBtn');let gameStarted=false;playBtn.addEventListener('click',()=>{gameStarted=true;startScreen.classList.add('hide');document.body.classList.add('started')});
 
@@ -28,6 +29,9 @@ function tick(){
     atualizarCameraDrone(dt,keys,inputState.joyX,inputState.joyY,inputState.yaw,inputState.pitch);
   }else{
     atualizarMovimentoJogador(dt,keys,inputState.joyX,inputState.joyY,inputState.yaw);
+    // rede de segurança: só conta como "travado" se ele estiver de fato tentando andar
+    const querendoAndar=!!(keys.KeyW||keys.KeyA||keys.KeyS||keys.KeyD)||Math.hypot(inputState.joyX,inputState.joyY)>.2;
+    vigiarTravamento(dt,querendoAndar);
     atualizarCameraSeguidora(dt,player.position,inputState.yaw,inputState.pitch,EYE_HEIGHT);
   }
   atualizarAmbiente(dt);

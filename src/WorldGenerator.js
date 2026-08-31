@@ -2,7 +2,7 @@
 import*as THREE from'three';
 import{scene}from'./core.js';
 import{obterElevacao}from'./Terrain.js';
-import{registrarObstaculo,superficiesAndaveis}from'./Physics.js';
+import{registrarObstaculo,registrarObstaculoPedestre,superficiesAndaveis}from'./Physics.js';
 import{bmat,tijolo,concreto,janela,janelaAcesa,molduraJanela,porta,agua,posteMat,folhaMat,folhaClara,criarSombraContato}from'./Materials.js';
 
 export const bairro=new THREE.Group();scene.add(bairro);
@@ -60,6 +60,10 @@ function criarEscadariaViela(casaGrupo,alturaTotal,w=6,d=4.8,lado=1){
   grupoEscada.add(patamar);
   superficiesAndaveis.push(patamar);
   grupoEscada.updateMatrixWorld(true);
+  // Moradores e policiais não sabem subir escada: registrar os degraus como obstáculo de pedestre faz
+  // eles contornarem a escadaria em vez de atravessar os degraus como se não existissem. O jogador não é
+  // afetado (ele testa só `obstaculos`), então continua subindo normalmente.
+  for(const degrau of grupoEscada.children)registrarObstaculoPedestre(degrau);
   return grupoEscada
 }
 export const casasPos=[];// footprints pro radar mostrar o traçado das ruas, não só pontos soltos

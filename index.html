@@ -36,6 +36,8 @@
 #miraCombate::after{top:50%;left:0;height:2px;width:100%;transform:translateY(-50%)}
 #fireBtn{display:none;align-items:center;justify-content:center;position:fixed;z-index:8;right:26px;bottom:140px;width:64px;height:64px;border-radius:50%;border:2px solid #ff8f6b;background:rgba(200,60,30,.88);color:#fff2ea;font-weight:900;font-size:20px;box-shadow:0 8px 24px rgba(0,0,0,.35);touch-action:none;-webkit-tap-highlight-color:transparent;cursor:pointer;user-select:none}
 #fireBtn:active{transform:scale(.92);background:rgba(220,70,35,1)}
+#destravarBtn{position:fixed;z-index:9;top:228px;right:14px;padding:8px 12px;border-radius:8px;border:1px solid #f1d178;background:rgba(45,38,12,.82);color:#f1d178;font-size:11px;font-weight:800;letter-spacing:.06em;cursor:pointer;touch-action:manipulation}
+#destravarBtn:active{background:rgba(231,197,104,.9);color:#1b2417}
 </style>
 </head>
 <body>
@@ -48,6 +50,7 @@
 <button id="debugBtn" aria-label="Alternar caixas de colisão">DEBUG</button>
 <canvas id="radar" aria-label="Radar"></canvas>
 <button id="droneBtn" aria-label="Modo drone">🚁</button>
+<button id="destravarBtn" aria-label="Destravar personagem">DESTRAVAR</button>
 <div id="hint">Joystick para andar · arraste para olhar · PULAR para saltar · chegue perto de um ponto de interesse pra ver as ações</div>
 <div id="alertaPolicia">🚁 ALERTA POLICIAL</div>
 <div id="refugioIndicador">🫥 ESCONDIDO</div>

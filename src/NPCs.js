@@ -1,25 +1,36 @@
 // Moradores caminhando pelas vielas do bairro, sem entrar nas casas — seguem 4 corredores fixos, dobrando nos cruzamentos.
 import*as THREE from'three';
 import{obterElevacao}from'./Terrain.js';
-import{colideObstaculoXZ}from'./Physics.js';
+import{colidePedestreXZ,buscarPosicaoLivre}from'./Physics.js';
 import{bairro}from'./WorldGenerator.js';
 
 function bloco(geo,material,x,y,z,parent){const m=new THREE.Mesh(geo,material);m.position.set(x,y,z);m.castShadow=true;m.receiveShadow=true;parent.add(m);return m}
 
+// Corpo com a largura REAL da silhueta (braços inclusos). Antes era .28, quase metade do corpo — por isso
+// os moradores enterravam ombro e braço dentro da parede ao encostar nela.
+export const PEDESTRE_MEIA_LARG=.45,PEDESTRE_MEIA_PROF=.22,PEDESTRE_ALTURA=1.6;
+
+// Centro da faixa LIVRE da viela, não o centro da viela: as escadarias ocupam o lado colado na casa,
+// então andar pelo meio da viela faria o morador atravessar os degraus.
+const CORREDOR_X1=-14.3,CORREDOR_X2=12.1,CORREDOR_Z1=-28.8,CORREDOR_Z2=-12;
+
 export const waypointsVielas=[];
-for(const vx of[-13.8,12.6])for(let vz=-42;vz<=-4;vz+=6)waypointsVielas.push({x:vx,z:vz});
-for(const vz of[-28.8,-12])for(let vx=-36;vx<=36;vx+=8)waypointsVielas.push({x:vx,z:vz});
+for(const vx of[CORREDOR_X1,CORREDOR_X2])for(let vz=-42;vz<=-4;vz+=6)waypointsVielas.push({x:vx,z:vz});
+for(const vz of[CORREDOR_Z1,CORREDOR_Z2])for(let vx=-36;vx<=36;vx+=8)waypointsVielas.push({x:vx,z:vz});
 // A "rota" segue as vielas de verdade (anda pela rua até o cruzamento, dobra, continua) em vez de andar
 // em linha reta e raspar diagonal pelas casas — as vielas formam uma grade de só 4 corredores fixos.
 function corredorDoPonto(p){
   if(!p)return null;
-  if(Math.abs(p.x-(-13.8))<.1)return'x1';
-  if(Math.abs(p.x-12.6)<.1)return'x2';
-  if(Math.abs(p.z-(-28.8))<.1)return'z1';
-  if(Math.abs(p.z-(-12))<.1)return'z2';
+  if(Math.abs(p.x-CORREDOR_X1)<.1)return'x1';
+  if(Math.abs(p.x-CORREDOR_X2)<.1)return'x2';
+  if(Math.abs(p.z-CORREDOR_Z1)<.1)return'z1';
+  if(Math.abs(p.z-CORREDOR_Z2)<.1)return'z2';
   return null;
 }
-const INTERSECOES={'x1,z1':{x:-13.8,z:-28.8},'x1,z2':{x:-13.8,z:-12},'x2,z1':{x:12.6,z:-28.8},'x2,z2':{x:12.6,z:-12}};
+const INTERSECOES={
+  'x1,z1':{x:CORREDOR_X1,z:CORREDOR_Z1},'x1,z2':{x:CORREDOR_X1,z:CORREDOR_Z2},
+  'x2,z1':{x:CORREDOR_X2,z:CORREDOR_Z1},'x2,z2':{x:CORREDOR_X2,z:CORREDOR_Z2}
+};
 function pontoIntersecao(a,b){return INTERSECOES[a+','+b]||INTERSECOES[b+','+a]||null}
 function construirRota(corredorOrigem,destino){
   const corredorDestino=corredorDoPonto(destino);
@@ -53,6 +64,10 @@ function escolherProximoAlvo(npc){
   npc.corredorAtual=corredorDoPonto(destino);
   npc.alvo=npc.rota.shift();
 }
+// Teste de colisão do corpo do pedestre na altura do chão daquele ponto.
+export function colidePedestre(x,z){
+  return colidePedestreXZ(x,z,obterElevacao(x,z),PEDESTRE_MEIA_LARG,PEDESTRE_MEIA_PROF,PEDESTRE_ALTURA);
+}
 export function atualizarNPCs(dt){
   for(const npc of npcs){
     if(!npc.alvo||Math.hypot(npc.alvo.x-npc.pos.x,npc.alvo.z-npc.pos.z)<.5)escolherProximoAlvo(npc);
@@ -61,9 +76,15 @@ export function atualizarNPCs(dt){
     if(dist>.1){
       const vx=dx/dist*npc.velocidade,vz=dz/dist*npc.velocidade;
       const nx=npc.pos.x+vx*dt,nz=npc.pos.z+vz*dt;
-      if(!colideObstaculoXZ(nx,npc.pos.z,obterElevacao(nx,npc.pos.z),.28,.22,1.5)){npc.pos.x=nx;moveu=true}
-      if(!colideObstaculoXZ(npc.pos.x,nz,obterElevacao(npc.pos.x,nz),.28,.22,1.5)){npc.pos.z=nz;moveu=true}
+      if(!colidePedestre(nx,npc.pos.z)){npc.pos.x=nx;moveu=true}
+      if(!colidePedestre(npc.pos.x,nz)){npc.pos.z=nz;moveu=true}
       if(moveu)npc.grupo.rotation.y=Math.atan2(vx,vz);else{npc.rota=[];npc.alvo=null}
+    }
+    // Se por qualquer motivo acabou dentro de uma parede (spawn ruim, empurrão, geometria nova),
+    // desencrava em vez de ficar preso pra sempre tentando andar contra o obstáculo.
+    if(colidePedestre(npc.pos.x,npc.pos.z)){
+      const livre=buscarPosicaoLivre(npc.pos.x,npc.pos.z,colidePedestre);
+      if(livre){npc.pos.x=livre.x;npc.pos.z=livre.z;npc.rota=[];npc.alvo=null}
     }
     npc.grupo.position.set(npc.pos.x,obterElevacao(npc.pos.x,npc.pos.z),npc.pos.z);
     if(moveu){npc.caminhando+=dt*7;const balanco=Math.sin(npc.caminhando)*.5;npc.pernas[0].rotation.x=balanco;npc.pernas[1].rotation.x=-balanco;npc.bracos[0].rotation.x=-balanco*.7;npc.bracos[1].rotation.x=balanco*.7}else{npc.pernas[0].rotation.x*=.9;npc.pernas[1].rotation.x*=.9;npc.bracos[0].rotation.x*=.9;npc.bracos[1].rotation.x*=.9}

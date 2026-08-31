@@ -2,7 +2,7 @@
 import*as THREE from'three';
 import{scene}from'./core.js';
 import{obterElevacao}from'./Terrain.js';
-import{obstaculos,superficiesAndaveis,caixaColideComObstaculos}from'./Physics.js';
+import{obstaculos,superficiesAndaveis,caixaColideComObstaculos,buscarPosicaoLivre}from'./Physics.js';
 import{criarSombraContato}from'./Materials.js';
 
 export const EYE_HEIGHT=1.27;
@@ -12,6 +12,28 @@ export const PLAYER_SCALE=PLAYER_HEIGHT/3.31;
 export const player=new THREE.Group();
 const skin=new THREE.MeshStandardMaterial({color:0xc79067,roughness:.55}),shirt=new THREE.MeshStandardMaterial({color:0x202b27,roughness:.75}),pants=new THREE.MeshStandardMaterial({color:0x495744,roughness:.85});
 const body=new THREE.Mesh(new THREE.BoxGeometry(1.05,1.55,.62),shirt);body.position.y=1.65;body.castShadow=true;body.receiveShadow=true;player.add(body);const head=new THREE.Mesh(new THREE.BoxGeometry(.7,.7,.66),skin);head.position.y=2.8;head.castShadow=true;head.receiveShadow=true;player.add(head);const faceMat=new THREE.MeshStandardMaterial({color:0x171712,roughness:.8,flatShading:true});for(const x of [-.13,.13]){const eye=new THREE.Mesh(new THREE.BoxGeometry(.11,.12,.045),faceMat);eye.position.set(x,2.88,.345);eye.castShadow=true;eye.receiveShadow=true;player.add(eye)}const mouth=new THREE.Mesh(new THREE.BoxGeometry(.24,.055,.04),faceMat);mouth.position.set(0,2.68,.348);mouth.castShadow=true;mouth.receiveShadow=true;player.add(mouth);const hair=new THREE.Mesh(new THREE.BoxGeometry(.74,.18,.69),new THREE.MeshStandardMaterial({color:0x171712,roughness:.8,flatShading:true}));hair.position.y=3.22;hair.castShadow=true;hair.receiveShadow=true;player.add(hair);const legs=[],arms=[];for(const x of [-.27,.27]){const leg=new THREE.Mesh(new THREE.BoxGeometry(.25,1.05,.3),pants);leg.position.set(x,.55,0);leg.castShadow=true;leg.receiveShadow=true;player.add(leg);legs.push(leg)}for(const x of [-.7,.7]){const arm=new THREE.Mesh(new THREE.BoxGeometry(.25,1.1,.3),skin);arm.position.set(x,1.72,0);arm.castShadow=true;arm.receiveShadow=true;player.add(arm);arms.push(arm)}criarSombraContato(.85,player);player.scale.setScalar(PLAYER_SCALE);player.position.set(0,obterElevacao(0,8),8);scene.add(player);
+
+// ===== ARMA NA MÃO: pendurada no braço direito, no mesmo estilo low-poly da arma dos policiais.
+// Fica filha do braço pra acompanhar a animação de caminhada sem código extra.
+const bracoDireito=arms[1];
+const armaMat=new THREE.MeshStandardMaterial({color:0x2a2a2a,roughness:.4,metalness:.6});
+const armaMadeira=new THREE.MeshStandardMaterial({color:0x4a3327,roughness:.75});
+export const armaJogador=new THREE.Group();
+// posição relativa ao braço: na altura da mão (ponta de baixo do braço), levemente à frente
+armaJogador.position.set(0,-.52,.16);
+bracoDireito.add(armaJogador);
+{
+  const corpo=new THREE.Mesh(new THREE.BoxGeometry(.1,.13,.34),armaMat);corpo.position.set(0,0,.05);corpo.castShadow=true;armaJogador.add(corpo);
+  const cano=new THREE.Mesh(new THREE.CylinderGeometry(.028,.028,.3,6),armaMat);cano.rotation.x=Math.PI/2;cano.position.set(0,.03,.32);cano.castShadow=true;armaJogador.add(cano);
+  const cabo=new THREE.Mesh(new THREE.BoxGeometry(.085,.17,.1),armaMadeira);cabo.position.set(0,-.12,-.04);cabo.rotation.x=-.22;cabo.castShadow=true;armaJogador.add(cabo);
+  const mira=new THREE.Mesh(new THREE.BoxGeometry(.02,.035,.02),armaMat);mira.position.set(0,.1,.2);armaJogador.add(mira);
+}
+// Ponta do cano em coordenadas de mundo — é daqui que a bala do jogador nasce.
+const _pontaTemp=new THREE.Vector3();
+export function obterBocaDaArma(){
+  armaJogador.updateWorldMatrix(true,false);
+  return _pontaTemp.set(0,.03,.48).applyMatrix4(armaJogador.matrixWorld).clone();
+}
 
 // Hitbox alinhada à malha visual, sem margens artificiais e sem excesso.
 const PLAYER_HITBOX_WIDTH=2*(.70+.25/2)*PLAYER_SCALE*.82;// um pouco mais estreita que a envergadura dos braços, pra sobrar folga das paredes
@@ -45,6 +67,60 @@ function encontrarSuperficieAbaixo(x,z,yOrigem){origemVertical.set(x,yOrigem,z);
 const GRAVIDADE=-24,VELOCIDADE_PULO=8.2;let velocidadeY=0,noChao=true;
 export function pularJogador(){if(noChao){velocidadeY=VELOCIDADE_PULO;noChao=false}}
 export function atualizarFisicaVertical(dt){velocidadeY+=GRAVIDADE*dt;const proximoY=player.position.y+velocidadeY*dt;const origemY=Math.max(player.position.y,proximoY)+1.2;const superficieY=encontrarSuperficieAbaixo(player.position.x,player.position.z,origemY);if(proximoY<=superficieY){player.position.y=superficieY;velocidadeY=0;noChao=true}else{player.position.y=proximoY;noChao=false}}
+
+// ===== REDE DE SEGURANÇA ANTI-TRAVAMENTO =====
+// Em vez de caçar um por um os cantos de geometria onde dá pra encravar, o jogo detecta que o jogador
+// ficou preso e resolve sozinho. São três camadas: (1) se a hitbox já está DENTRO de um obstáculo,
+// empurra pra posição livre mais próxima; (2) se ele está mandando andar e não sai do lugar por alguns
+// segundos, força a mesma resolução; (3) botão DESTRAVAR como garantia final.
+const SPAWN=new THREE.Vector3(0,0,8);
+const PARADO_LIMITE=.05,PARADO_TEMPO=1.2;
+let tempoParado=0;const ultimaPos=new THREE.Vector3();
+
+// Encurralado = TODAS as direções bloqueadas. É o que separa "estou preso" de "estou empurrando a
+// parede": encostar num muro trava uma direção, mas as outras continuam livres, e isso é jogo normal —
+// não pode teleportar ninguém por isso.
+function estaEncurralado(){
+  for(let i=0;i<12;i++){
+    const ang=(i/12)*Math.PI*2;
+    if(!jogadorColideNaPosicao(player.position.x+Math.cos(ang)*.45,player.position.z+Math.sin(ang)*.45))return false;
+  }
+  return true;
+}
+
+// manual=true é o botão DESTRAVAR: o jogador pediu explicitamente, então vale até voltar pro spawn.
+export function destravarJogador(manual=false){
+  const encravado=jogadorColideNaPosicao(player.position.x,player.position.z);
+  if(encravado||estaEncurralado()){
+    const livre=buscarPosicaoLivre(player.position.x,player.position.z,jogadorColideNaPosicao)
+      ||(encravado?null:{x:player.position.x,z:player.position.z});
+    if(livre){player.position.x=livre.x;player.position.z=livre.z}
+    else if(manual||encravado){player.position.set(SPAWN.x,obterElevacao(SPAWN.x,SPAWN.z),SPAWN.z)}
+  }else if(manual){
+    // não detectamos travamento, mas ele apertou o botão: sobe pra superfície e zera a queda.
+    player.position.y=Math.max(player.position.y,obterElevacao(player.position.x,player.position.z));
+  }else return false;
+  player.position.y=Math.max(player.position.y,obterElevacao(player.position.x,player.position.z));
+  velocidadeY=0;tempoParado=0;
+  return true;
+}
+
+// Chamada todo frame pelo main: resolve encravamento e vigia o "andando mas parado".
+export function vigiarTravamento(dt,querendoAndar){
+  // (1) encravado dentro de um obstáculo agora
+  if(jogadorColideNaPosicao(player.position.x,player.position.z)){destravarJogador();return}
+  // (2) caiu pra fora do mundo
+  const chao=obterElevacao(player.position.x,player.position.z);
+  if(player.position.y<chao-3){player.position.y=chao;velocidadeY=0;return}
+  // (3) manda andar e não sai do lugar — só age se estiver realmente encurralado
+  if(querendoAndar&&noChao){
+    if(player.position.distanceTo(ultimaPos)<PARADO_LIMITE){
+      tempoParado+=dt;
+      if(tempoParado>=PARADO_TEMPO){if(estaEncurralado())destravarJogador();tempoParado=0}
+    }else tempoParado=0;
+  }else tempoParado=0;
+  ultimaPos.copy(player.position);
+}
 
 // Movimento horizontal relativo à câmera (yaw), com colisão resolvida por eixo, e animação de andar.
 let walk=0;const velocity=new THREE.Vector3(),desired=new THREE.Vector3();
