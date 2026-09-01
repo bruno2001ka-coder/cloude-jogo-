@@ -4,6 +4,16 @@ Jogo 3D em Three.js — bairro brasileiro estilizado, com cultivo/economia, bots
 
 ## Sistemas principais
 
+- **O laço de quadros não morre** (`src/main.js`) — `requestAnimationFrame` é agendado no **começo** do
+  quadro e o corpo roda dentro de `try/catch`. Era a última linha, e por isso qualquer exceção no meio
+  de um quadro parava a corrente pra sempre: tela congelada, sem mensagem, sem nada. Foi exatamente
+  assim que um `ReferenceError` na polícia travou o jogo "depois de alguns minutos".
+  A armadilha que causou aquilo vale ficar escrita, porque é do tipo que volta: uma `const` usada
+  **antes** da própria declaração, dentro de um `&&` que curto-circuita, fica **invisível** até a
+  condição da esquerda virar verdadeira pela primeira vez. No caso, `if(agora>pol.expiraEm && !deOlho …)`
+  com `const deOlho` declarada duas linhas abaixo — inofensiva enquanto a dupla de rua era nova, fatal
+  no segundo em que a primeira completou os 75 s de vida útil. Nenhum dos 12 testes pegou porque
+  nenhum durava o suficiente pra um policial **expirar**; hoje o `maratona.js` dura.
 - **Grade espacial** (`src/Physics.js`) — toda consulta de segmento (bala, linha de visão da polícia,
   mira do jogador) varria as ~600 caixas do mapa inteiro, mesmo pra um trecho de 3 m: 26,4 µs por
   chamada, e a linha de visão roda **todo quadro por policial** (~264 µs por quadro com 10 em campo).
