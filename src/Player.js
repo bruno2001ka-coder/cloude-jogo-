@@ -4,6 +4,7 @@ import{scene}from'./core.js';
 import{obterElevacao}from'./Terrain.js';
 import{obstaculos,superficiesAndaveis,caixaColideComObstaculos,buscarPosicaoLivre}from'./Physics.js';
 import{criarSombraContato,coleteMat,coleteFaixaMat}from'./Materials.js';
+import{carregarPersonagem,atualizarAnimacaoPersonagem,personagemCarregado,ossoDaMao,ossoDoTronco,medidasTronco,esconderBonecoAntigo}from'./Personagem.js';
 
 export const EYE_HEIGHT=0.8;
 export const PLAYER_HEIGHT=0.9;
@@ -11,7 +12,11 @@ export const PLAYER_SCALE=PLAYER_HEIGHT/3.31;
 
 export const player=new THREE.Group();
 const skin=new THREE.MeshStandardMaterial({color:0xc79067,roughness:.55}),shirt=new THREE.MeshStandardMaterial({color:0x202b27,roughness:.75}),pants=new THREE.MeshStandardMaterial({color:0x495744,roughness:.85});
-const body=new THREE.Mesh(new THREE.BoxGeometry(1.05,1.55,.62),shirt);body.position.y=1.65;body.castShadow=true;body.receiveShadow=true;player.add(body);const head=new THREE.Mesh(new THREE.BoxGeometry(.7,.7,.66),skin);head.position.y=2.8;head.castShadow=true;head.receiveShadow=true;player.add(head);const faceMat=new THREE.MeshStandardMaterial({color:0x171712,roughness:.8,flatShading:true});for(const x of [-.13,.13]){const eye=new THREE.Mesh(new THREE.BoxGeometry(.11,.12,.045),faceMat);eye.position.set(x,2.88,.345);eye.castShadow=true;eye.receiveShadow=true;player.add(eye)}const mouth=new THREE.Mesh(new THREE.BoxGeometry(.24,.055,.04),faceMat);mouth.position.set(0,2.68,.348);mouth.castShadow=true;mouth.receiveShadow=true;player.add(mouth);const hair=new THREE.Mesh(new THREE.BoxGeometry(.74,.18,.69),new THREE.MeshStandardMaterial({color:0x171712,roughness:.8,flatShading:true}));hair.position.y=3.22;hair.castShadow=true;hair.receiveShadow=true;player.add(hair);const legs=[],arms=[];for(const x of [-.27,.27]){const leg=new THREE.Mesh(new THREE.BoxGeometry(.25,1.05,.3),pants);leg.position.set(x,.55,0);leg.castShadow=true;leg.receiveShadow=true;player.add(leg);legs.push(leg)}for(const x of [-.7,.7]){const arm=new THREE.Mesh(new THREE.BoxGeometry(.25,1.1,.3),skin);arm.position.set(x,1.72,0);arm.castShadow=true;arm.receiveShadow=true;player.add(arm);arms.push(arm)}criarSombraContato(.85,player);player.scale.setScalar(PLAYER_SCALE);player.position.set(0,obterElevacao(0,8),8);scene.add(player);
+const body=new THREE.Mesh(new THREE.BoxGeometry(1.05,1.55,.62),shirt);body.position.y=1.65;body.castShadow=true;body.receiveShadow=true;player.add(body);const head=new THREE.Mesh(new THREE.BoxGeometry(.7,.7,.66),skin);head.position.y=2.8;head.castShadow=true;head.receiveShadow=true;player.add(head);const faceMat=new THREE.MeshStandardMaterial({color:0x171712,roughness:.8,flatShading:true});for(const x of [-.13,.13]){const eye=new THREE.Mesh(new THREE.BoxGeometry(.11,.12,.045),faceMat);eye.position.set(x,2.88,.345);eye.castShadow=true;eye.receiveShadow=true;player.add(eye)}const mouth=new THREE.Mesh(new THREE.BoxGeometry(.24,.055,.04),faceMat);mouth.position.set(0,2.68,.348);mouth.castShadow=true;mouth.receiveShadow=true;player.add(mouth);const hair=new THREE.Mesh(new THREE.BoxGeometry(.74,.18,.69),new THREE.MeshStandardMaterial({color:0x171712,roughness:.8,flatShading:true}));hair.position.y=3.22;hair.castShadow=true;hair.receiveShadow=true;player.add(hair);const legs=[],arms=[];for(const x of [-.27,.27]){const leg=new THREE.Mesh(new THREE.BoxGeometry(.25,1.05,.3),pants);leg.position.set(x,.55,0);leg.castShadow=true;leg.receiveShadow=true;player.add(leg);legs.push(leg)}for(const x of [-.7,.7]){const arm=new THREE.Mesh(new THREE.BoxGeometry(.25,1.1,.3),skin);arm.position.set(x,1.72,0);arm.castShadow=true;arm.receiveShadow=true;player.add(arm);arms.push(arm)}// Snapshot ANTES da sombra de contato: neste ponto os filhos do player são exatamente as caixas do
+// boneco. A sombra entra logo depois e precisa continuar visível mesmo quando o modelo 3D substituir
+// o corpo — por isso a lista é tirada aqui, e não filtrando os filhos mais tarde.
+const bonecoCaixas=player.children.filter(o=>o.isMesh);
+criarSombraContato(.85,player);player.scale.setScalar(PLAYER_SCALE);player.position.set(0,obterElevacao(0,8),8);scene.add(player);
 
 // ===== COLETE À PROVA DE BALAS (só visual) =====
 // Grupo próprio em vez de meshes soltas no player: a visibilidade liga/desliga num único .visible, e o
@@ -40,7 +45,65 @@ export function coleteEstaVisivel(){return colete.visible}
 // ===== MÃO QUE SEGURA A ARMA =====
 // As armas (Weapons.js) são penduradas aqui pra acompanharem a animação de caminhada sem código
 // extra. O catálogo mora lá e não aqui pra este módulo não depender de economia/combate.
-export const maoDireita=arms[1];
+// Era o próprio braço-caixa. Virou um Group vazio pendurado nele pra poder MUDAR DE PAI quando o
+// modelo 3D chega: aí a âncora passa pro osso da mão direita e a arma acompanha a animação de verdade.
+// Como o Group nasce na origem do braço, a arma fica exatamente onde estava — o Weapons.js não muda.
+export const maoDireita=new THREE.Group();
+// O deslocamento até a pegada mora AQUI (e não no Weapons) porque depende de em que pai a âncora está:
+// no braço-caixa é este offset; no osso da mão do modelo 3D é zero, que é o próprio punho.
+maoDireita.position.set(0,-.52,.16);
+arms[1].add(maoDireita);
+
+// ===== TROCA PELO MODELO 3D =====
+// Assíncrono de propósito (ver Personagem.js): o jogo roda com o boneco de caixas até o GLB chegar.
+let atirandoAgora=false;
+export function definirAnimacaoTiro(v){atirandoAgora=!!v}
+carregarPersonagem(player,PLAYER_HEIGHT,()=>{
+  // A ordem importa: primeiro a arma sai do braço-caixa e vai pro osso da mão, DEPOIS as caixas somem.
+  // Ao contrário, esconder o braço levaria a arma junto (ela é filha dele).
+  const osso=ossoDaMao();
+  if(osso){
+    osso.add(maoDireita);
+    // As armas foram modeladas nas unidades do boneco de caixas. O osso vem com a escala do GLB, então
+    // sem compensar aqui a arma entraria na mão com o tamanho errado.
+    const eOsso=new THREE.Vector3(),ePlayer=new THREE.Vector3();
+    osso.getWorldScale(eOsso);player.getWorldScale(ePlayer);
+    if(eOsso.x>0)maoDireita.scale.setScalar(ePlayer.x/eOsso.x);
+    maoDireita.position.set(0,0,0);maoDireita.rotation.set(0,0,0);
+  }
+  ajustarColeteAoCorpo();
+  esconderBonecoAntigo(bonecoCaixas);
+});
+
+// O colete foi desenhado por cima do boneco de CAIXAS (tronco de 1,05 de largura). No corpo humano,
+// bem mais estreito, ele virava um caixote preto cobrindo tronco e braços. Aqui ele é refeito nas
+// medidas do tronco de verdade e pendurado no osso do peito, pra acompanhar a animação em vez de ficar
+// rígido enquanto o corpo se inclina.
+function ajustarColeteAoCorpo(){
+  const osso=ossoDoTronco(),m=medidasTronco();
+  if(!osso||!m)return;
+  const escalaOsso=new THREE.Vector3();osso.getWorldScale(escalaOsso);
+  if(!(escalaOsso.x>0))return;
+  // Do mundo pro espaço do osso: é nele que a geometria nova precisa estar.
+  const k=1/escalaOsso.x;
+  // A largura NÃO vem da medida em X: naquela faixa de altura os braços entram na conta e o colete
+  // saía transbordando os ombros. A profundidade do tronco é livre de braços, e peito humano tem por
+  // volta de 1,5x a espessura em largura — daí ela ser a referência.
+  const prof=m.profundidade*k*1.12;// folga: o colete veste POR FORA da roupa
+  const larg=m.profundidade*k*1.55,alt=m.altura*k*.92;
+  for(const filho of colete.children.slice()){colete.remove(filho);filho.geometry.dispose()}
+  const placa=new THREE.Mesh(new THREE.BoxGeometry(larg,alt,prof),coleteMat);colete.add(placa);
+  for(const lado of[-1,1]){
+    const om=new THREE.Mesh(new THREE.BoxGeometry(larg*.22,alt*.16,prof*1.04),coleteFaixaMat);
+    om.position.set(lado*larg*.42,alt*.52,0);colete.add(om);
+  }
+  const faixa=new THREE.Mesh(new THREE.BoxGeometry(larg*1.02,alt*.14,prof*.06),coleteFaixaMat);
+  faixa.position.set(0,-alt*.16,prof*.53);colete.add(faixa);
+  for(const meshColete of colete.children){meshColete.castShadow=true;meshColete.receiveShadow=true}
+  osso.add(colete);
+  colete.position.copy(osso.worldToLocal(m.centro.clone()));
+  colete.rotation.set(0,0,0);colete.scale.setScalar(1);
+}
 
 // Vira o boneco pra uma direção horizontal (a da câmera, na hora do tiro). Sem isso, atirar parado ou
 // andando pra trás dispara com o personagem virado pro outro lado e a bala sai de lado — a rotação só
@@ -211,10 +274,16 @@ export function atualizarMovimentoJogador(dt,keys,joyX,joyY,yaw,fatorVelocidade=
   atualizarFisicaVertical(dt);
   preencherHitboxJogador(jogadorBoxDebugTemp,player.position.x,player.position.z);
   const speed=Math.hypot(velocity.x,velocity.z);
+  // Virar o corpo pra direção do movimento vale pros DOIS bonecos — é rotação do grupo, não animação.
   if(speed>.08){
     const wanted=Math.atan2(velocity.x,velocity.z);
     let da=wanted-player.rotation.y;while(da>Math.PI)da-=Math.PI*2;while(da<-Math.PI)da+=Math.PI*2;
     player.rotation.y+=da*(1-Math.exp(-14*dt));
+  }
+  if(personagemCarregado()){
+    // Com o modelo 3D quem move braços e pernas é o esqueleto; o balanço manual abaixo fica de fora.
+    atualizarAnimacaoPersonagem(dt,speed,atirandoAgora);
+  }else if(speed>.08){
     walk+=dt*(6+speed*1.3);
     const swing=Math.sin(walk)*Math.min(.55,speed*.24);
     legs[0].rotation.x=swing;legs[1].rotation.x=-swing;arms[0].rotation.x=-swing*.45;arms[1].rotation.x=swing*.45;

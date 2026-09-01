@@ -20,6 +20,16 @@ Jogo 3D em Three.js — bairro brasileiro estilizado, com cultivo/economia, bots
   mão e a troca só alterna a visibilidade — nada de alocar geometria em pleno combate. Segurar o
   botão de tiro atira em rajada no ritmo da arma; o botão redondo ao lado cicla entre as que você tem
   (ou as teclas `Q` e `1`–`4`).
+- **Boneco 3D do jogador** (`src/Personagem.js`, `assets/personagem.glb`) — modelo com esqueleto de 24
+  ossos e 4 animações (andar, correr, andar atirando, corrida rápida), 3.044 triângulos. Só o jogador
+  usa: polícia e NPCs seguem low-poly porque são dezenas na tela e malha com esqueleto custa muito mais
+  por quadro. A arma pendura no osso `RightHand` e o colete no osso do peito, então os dois acompanham
+  a animação em vez de ficarem rígidos. Carga assíncrona: o jogo roda com o boneco de caixas até o
+  arquivo chegar, e segue com ele se o arquivo falhar — é degradação, não tela de erro.
+  Duas armadilhas que custaram caro e estão comentadas no código: a textura vinha como **emissiva**
+  (o boneco brilharia sozinho à noite, fora do ciclo dia/noite), e **medir uma malha com esqueleto**
+  por `Box3` ou por escala de nó dá números fantasiosos — a única medida verdadeira são os vértices já
+  deformados pelos ossos, e ela só vale depois do primeiro quadro.
 - **Controles de PC** (`src/Input.js`) — padrão de jogo de tiro: botão esquerdo atira, botão direito
   mira, mouse gira a câmera **sem inversão** em nenhum eixo (Pointer Lock), `Shift` corre, `Espaço`
   pula, `E` colhe e abre/fecha porta **sem largar a mira**, `Q` abre o inventário, `Tab`/`X`/rodinha

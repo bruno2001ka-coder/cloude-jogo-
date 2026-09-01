@@ -17,9 +17,10 @@ export const armaMadeira=new THREE.MeshStandardMaterial({color:0x4a3327,roughnes
 export const ORDEM_ARMAS=['pistola','rifle','escopeta','metralhadora'];
 
 function peca(geo,mat,x,y,z,rx,g){const m=new THREE.Mesh(geo,mat);m.position.set(x,y,z);if(rx)m.rotation.x=rx;m.castShadow=true;g.add(m);return m}
-// Todas as armas nascem no mesmo ponto de mão da arma original e ficam filhas do braço direito, pra
-// herdarem a animação de caminhada sem código extra.
-function novoGrupo(){const g=new THREE.Group();g.position.set(0,-.52,.16);maoDireita.add(g);return g}
+// Todas as armas nascem na ORIGEM da âncora da mão. O deslocamento até o ponto de pegada mora no
+// Player, junto da âncora: quando o boneco 3D entra, a âncora muda de pai (vai pro osso da mão) e o
+// deslocamento certo passa a ser outro — se ele estivesse aqui, a arma ficaria boiando fora da mão.
+function novoGrupo(){const g=new THREE.Group();maoDireita.add(g);return g}
 
 function construirPistola(){
   const g=novoGrupo();
