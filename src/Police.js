@@ -124,6 +124,8 @@ const BUSCA_DERIVA=1.1;
 // Raios tentados ao longo do setor, em fração do raio da vez. São buscas em grade (~1 µs cada), não
 // raycast: sai caro zero e é o que mantém cada policial no rumo dele mesmo em quarteirão fechado.
 const BUSCA_ESCALAS=[1,.75,1.25,.5,1.5,.3];
+// Desvios de ângulo tentados em volta do setor, em radianos (0, ±23°, ±46°).
+const BUSCA_DESVIOS=[0,.4,-.4,.8,-.8];
 // ===== POLÍCIA DE RUA =====
 // Duplas que nascem numa borda, rondam as vielas e vão embora. Nunca permanentes: com procurado 0 a
 // janela entre surtos é longa de propósito, senão a favela nunca respira. RUA_INTERVALO é sorteado em
@@ -433,9 +435,14 @@ function pontoDeBusca(pol,agora){
   // parede. Mas desistir e mandar pro ponto do rastro COLAPSA a dupla inteira no mesmo destino — foi
   // o que a primeira versão fez, e mediu 4° de separação onde os setores prometem 137°. Então ele
   // anda pelo PRÓPRIO setor atrás de um ponto livre, mais perto ou mais longe, e só desiste no fim.
-  for(const escala of BUSCA_ESCALAS){
-    const r2=raio*escala;
-    const x=rastro.x+Math.cos(ang)*r2,z=rastro.z+Math.sin(ang)*r2;
+  // Tenta o setor em vários raios E em alguns ângulos em volta dele. Só os raios não bastam: num
+  // quarteirão fechado dá pra o setor inteiro cair dentro de casa, e aí o policial desistia e ficava
+  // PARADO em cima do ponto do rastro — medido, o raio percorrido em 26 s foi de 0,1 m pra 0,0 m.
+  // Os desvios de ângulo são pequenos de propósito: o suficiente pra achar a viela ao lado, não pra
+  // invadir o setor do parceiro (que anularia o espalhamento).
+  for(const desvio of BUSCA_DESVIOS)for(const escala of BUSCA_ESCALAS){
+    const r2=raio*escala,a2=ang+desvio;
+    const x=rastro.x+Math.cos(a2)*r2,z=rastro.z+Math.sin(a2)*r2;
     if(Math.abs(x)<=MAPA_LIMITE&&Math.abs(z)<=MAPA_LIMITE&&pontoNavegavel(x,z)){
       _busca.x=x;_busca.z=z;return _busca;
     }

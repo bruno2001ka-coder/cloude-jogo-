@@ -4,6 +4,33 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <title>Quintal 3D</title>
+<!-- ===== PWA: instalável pelo navegador e pelo PWABuilder ===== -->
+<!-- O manifesto e o service worker são o que o Android/Chrome exigem pra oferecer "Instalar app", e o
+     que o pwabuilder.com lê pra gerar os pacotes de loja. Caminhos RELATIVOS porque o jogo vive numa
+     subpasta no GitHub Pages (/cloude-jogo-/) e caminho absoluto apontaria pra raiz do domínio. -->
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#10160f">
+<meta name="description" content="Jogo 3D de bairro brasileiro: cultive, atravesse a favela patrulhada e escape da polícia.">
+<link rel="icon" type="image/png" sizes="192x192" href="assets/icones/icone-192.png">
+<link rel="apple-touch-icon" href="assets/icones/apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Quintal 3D">
+<script>
+// Registro do service worker FORA do grafo de módulos do jogo, de propósito. Ele morava no main.js,
+// que importa o three.js de um CDN — e se o CDN falhasse, o registro nunca acontecia, justamente na
+// hora em que um cache offline seria mais útil. Aqui ele independe de o jogo carregar.
+// Falhar não pode atrapalhar nada: sem service worker o jogo roda igual, só não abre offline nem
+// oferece "Instalar app".
+if('serviceWorker' in navigator && location.protocol.indexOf('http')===0){
+  window.addEventListener('load',function(){
+    navigator.serviceWorker.register('sw.js').catch(function(err){
+      console.info('Quintal 3D: service worker não registrado (o jogo roda igual).',err);
+    });
+  });
+}
+</script>
 <script type="importmap">
 {"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"}}
 </script>

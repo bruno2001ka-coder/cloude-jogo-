@@ -166,7 +166,29 @@ Jogo 3D em Three.js — bairro brasileiro estilizado, com cultivo/economia, bots
 O registro da reunião técnica que definiu esses sistemas, com as fórmulas e os números medidos, está
 em [`docs/REUNIAO-TECNICA.md`](docs/REUNIAO-TECNICA.md).
 
-Esta versão carrega o Three.js e os addons de pós-processamento por CDN (unpkg), então **precisa de internet pra rodar** — em troca, ganha:
+## Instalar como aplicativo (PWA)
+
+O jogo é instalável: `manifest.webmanifest` + `sw.js` são o que o Android/Chrome exigem pra oferecer
+"Instalar app", e o que o [pwabuilder.com](https://www.pwabuilder.com/) lê pra gerar os pacotes de
+loja — é só apontar ele pra https://bruno2001ka-coder.github.io/cloude-jogo-/.
+
+Três decisões no service worker, uma por tipo de conteúdo:
+
+- **abrir o jogo** → rede primeiro, cache como reserva. Cache primeiro deixaria quem instalou preso
+  numa versão velha até limpar os dados do site, e o jogo é atualizado a cada push;
+- **código e assets do próprio site** → cache primeiro, atualizando em segundo plano. São ~3 MB entre
+  modelos, texturas e HDRI: rebuscar tudo a cada abertura é o que faz um jogo web parecer lento no
+  celular;
+- **CDN do three.js** (outro domínio) → cache primeiro também, mas a resposta vem **opaca** — o
+  navegador não deixa ler status nem corpo de outro domínio sem CORS. Opaca serve pra guardar e
+  devolver, então dá pra abrir offline; o que não dá é saber se veio 404, e por isso ela nunca
+  substitui uma cópia boa que já esteja no cache.
+
+O registro do service worker fica num `<script>` no `index.html`, **fora do grafo de módulos do jogo**.
+Ele morava no `main.js`, que importa o three.js do CDN — e se o CDN falhasse, o registro nunca
+acontecia, justamente na hora em que um cache offline seria mais útil.
+
+Esta versão carrega o Three.js e os addons de pós-processamento por CDN (unpkg), então **precisa de internet na primeira visita** — em troca, ganha:
 
 - Pós-processamento real (`EffectComposer` + `UnrealBloomPass`) — bloom nas janelas acesas e no lampião do esconderijo.
 - Iluminação de ambiente via HDRI (`assets/ceu.hdr`, CC0 / [Poly Haven](https://polyhaven.com/a/kloofendal_48d_partly_cloudy_puresky)) — reflexo mais real em vidro e metal.
