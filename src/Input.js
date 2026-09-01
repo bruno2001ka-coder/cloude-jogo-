@@ -73,10 +73,7 @@ export function initDragLook(rendererDomElement){
     // No desktop, com o mouse já travado, o clique é tiro — antes só a tecla F atirava, e com o
     // ponteiro travado o cursor nem alcançava o botão 🔫 na tela.
     if(e.pointerType==='mouse'){
-      if(document.pointerLockElement===rendererDomElement){
-        if(e.button===0)definirGatilho(true);
-        if(e.button===2)definirMira(true);// botão direito = mira, como em qualquer jogo de tiro
-      }
+      if(document.pointerLockElement===rendererDomElement)sincronizarBotoesMouse(e);
       else{try{const p=rendererDomElement.requestPointerLock?.();p?.catch?.(()=>{})}catch(err){}}
     }
     // A captura de ponteiro serve pro ARRASTE (dedo, ou mouse sem lock): sem ela, arrastar pra fora
@@ -86,6 +83,17 @@ export function initDragLook(rendererDomElement){
     // mirava. Agora fica por último e dentro de try — nada aqui pode derrubar o tiro e a mira.
     if(!document.pointerLockElement){try{rendererDomElement.setPointerCapture?.(e.pointerId)}catch(err){}}
   });
+  // Um mouse é UM ponteiro só, e o navegador dispara `pointerdown` apenas na PRIMEIRA tecla apertada:
+  // segurar o botão direito (mirar) e depois apertar o esquerdo não gera pointerdown nenhum, gera
+  // pointermove. Por isso o gatilho e a mira saem do bitmask `buttons` — que diz quais botões estão
+  // apertados AGORA — em vez de `button`, que só diz qual acabou de mudar. Sem isso era impossível
+  // atirar mirando, que é justamente o jeito de jogar de quem mira.
+  const sincronizarBotoesMouse=e=>{
+    if(e.pointerType!=='mouse')return;
+    if(document.pointerLockElement!==rendererDomElement){definirGatilho(false);definirMira(false);return}
+    definirGatilho((e.buttons&1)!==0);// esquerdo
+    definirMira((e.buttons&2)!==0);   // direito
+  };
   // Sem o menu de contexto o botão direito fica livre pra mirar em vez de abrir o menu do navegador.
   rendererDomElement.addEventListener('contextmenu',e=>e.preventDefault());
   // Mirando, o giro fica 45% mais lento: é o que transforma a mira em precisão de verdade em vez de
@@ -97,13 +105,17 @@ export function initDragLook(rendererDomElement){
   // pitch: camGoal.y = alvo.y + sin(pitch)*dist, ou seja pitch POSITIVO ergue a câmera e olha PRA BAIXO.
   //   Mouse pra cima dá movementY NEGATIVO e tem que olhar pra cima, isto é, DIMINUIR o pitch →
   //   o certo é `+= movementY`. O `-=` de antes era o eixo vertical invertido.
-  rendererDomElement.addEventListener('pointermove',e=>{if(document.pointerLockElement===rendererDomElement){const s=sens();inputState.targetYaw-=e.movementX*SENSIBILIDADE_MOUSE*s;inputState.targetPitch=limitarPitch(inputState.targetPitch+e.movementY*SENSIBILIDADE_MOUSE_VERTICAL*s)}else if(drag){const s=sens(),dx=e.clientX-lastX,dy=e.clientY-lastY;lastX=e.clientX;lastY=e.clientY;inputState.targetYaw-=dx*SENSIBILIDADE_TOQUE*s;inputState.targetPitch=limitarPitch(inputState.targetPitch+dy*SENSIBILIDADE_TOQUE_VERTICAL*s)}});
+  rendererDomElement.addEventListener('pointermove',e=>{sincronizarBotoesMouse(e);if(document.pointerLockElement===rendererDomElement){const s=sens();inputState.targetYaw-=e.movementX*SENSIBILIDADE_MOUSE*s;inputState.targetPitch=limitarPitch(inputState.targetPitch+e.movementY*SENSIBILIDADE_MOUSE_VERTICAL*s)}else if(drag){const s=sens(),dx=e.clientX-lastX,dy=e.clientY-lastY;lastX=e.clientX;lastY=e.clientY;inputState.targetYaw-=dx*SENSIBILIDADE_TOQUE*s;inputState.targetPitch=limitarPitch(inputState.targetPitch+dy*SENSIBILIDADE_TOQUE_VERTICAL*s)}});
   // Rodinha do mouse troca de arma: a mão direita nunca sai do mouse durante o tiroteio.
   rendererDomElement.addEventListener('wheel',e=>{if(document.pointerLockElement===rendererDomElement){trocarArma();e.preventDefault()}},{passive:false});
   // Só o mouse solta o gatilho aqui: no celular o tiro é o botão 🔫 (com captura de ponteiro própria),
   // e soltar por qualquer pointerup do canvas cortaria a rajada quando o segundo dedo, o que gira a
   // câmera, saísse da tela.
-  const soltar=e=>{drag=false;if(e.pointerType==='mouse'){definirGatilho(false);if(e.button===2||e.type==='pointercancel')definirMira(false)}};
+  // Soltar um dos dois botões também passa pelo bitmask: soltar o esquerdo com o direito ainda
+  // apertado tem que parar o tiro e MANTER a mira, e o `button` sozinho não sabe disso.
+  const soltar=e=>{drag=false;if(e.pointerType==='mouse'){
+    if(e.type==='pointercancel'){definirGatilho(false);definirMira(false)}else sincronizarBotoesMouse(e);
+  }};
   rendererDomElement.addEventListener('pointerup',soltar);
   rendererDomElement.addEventListener('pointercancel',soltar);
 }

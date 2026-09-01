@@ -72,7 +72,14 @@ carregarPersonagem(player,PLAYER_HEIGHT,()=>{
     const eOsso=new THREE.Vector3(),ePlayer=new THREE.Vector3();
     osso.getWorldScale(eOsso);player.getWorldScale(ePlayer);
     if(eOsso.x>0)maoDireita.scale.setScalar(ePlayer.x/eOsso.x);
-    maoDireita.position.set(0,0,0);maoDireita.rotation.set(0,0,0);
+    maoDireita.position.set(0,0,0);
+    // ORIENTAÇÃO: o osso do punho tem eixos próprios do rig, girados em relação ao corpo. Herdar a
+    // rotação dele crua deixava a arma apontando pro lado em vez de pra frente. A âncora é alinhada
+    // aos eixos do PERSONAGEM na pose de repouso — que é exatamente como a arma ficava pendurada no
+    // braço-caixa. Daí em diante ela acompanha a animação da mão normalmente, porque segue filha do osso.
+    const qOsso=new THREE.Quaternion(),qPlayer=new THREE.Quaternion();
+    osso.getWorldQuaternion(qOsso);player.getWorldQuaternion(qPlayer);
+    maoDireita.quaternion.copy(qOsso.invert().multiply(qPlayer));
   }
   ajustarColeteAoCorpo();
   esconderBonecoAntigo(bonecoCaixas);
