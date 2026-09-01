@@ -63,7 +63,7 @@ function tick(){
     vigiarTravamento(dt,querendoAndar);
     atualizarCameraSeguidora(dt,player.position,inputState.yaw,inputState.pitch,EYE_HEIGHT);
   }
-  atualizarAmbiente(dt);atualizarSkyline();
+  atualizarAmbiente(dt,player.position);atualizarSkyline();
   {const banda=obterBandaFase();if(banda!==bandaAnteriorHud){faseIcone.textContent=ICONES_FASE[banda];bandaAnteriorHud=banda}}
   // O tiro contínuo vem ANTES do atualizarPolicia: a bala criada neste frame já entra no
   // atualizarBalas que roda lá dentro, com os alvos deste frame. Depois, ela ficaria um frame parada

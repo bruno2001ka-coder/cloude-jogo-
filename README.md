@@ -87,6 +87,29 @@ Jogo 3D em Three.js — bairro brasileiro estilizado, com cultivo/economia, bots
   morte. Nasce pronta e escondida: o jogo só alterna `.visible`, nunca constrói malha em combate.
 - **Cidade no fundo** (`src/Skyline.js`) — anel de 96 prédios em 1 draw call que acompanha a câmera
   como o céu, sem colisão e sem sombra.
+- **Materiais PBR** (`src/Materials.js`, `assets/tex/`) — as casas, o chão e as escadas usam material
+  físico de verdade: albedo, **normal** e **ORM** (Oclusão no R, Roughness no G, Metalness no B — o
+  formato do glTF, que o three lê direto). Empacotar os três num RGB só significa **uma** textura na
+  memória de vídeo servindo de `aoMap`, `roughnessMap` e `metalnessMap` em vez de três. São 5
+  conjuntos — reboco, tijolo, telha, chão de terra e madeira —, 15 JPEG de 512², **888 KB no total**,
+  que é o que mantém o carregamento viável em rede de celular. As texturas são **geradas por
+  procedimento** (`scratchpad/texturas.py`, fora do repositório) e não baixadas: o ruído é sorteado no
+  domínio da frequência e volta por IFFT, então toda imagem sai **tileável por construção**, sem
+  costura na borda; e o normal é derivado por Sobel do próprio campo de altura, então reboco e tijolo
+  respondem diferente ao sol porque o **relevo** é diferente, não porque a cor é.
+  A cor de cada casa continua entrando por `material.color` — o albedo do reboco é quase branco de
+  propósito, senão as duas cores se multiplicariam e sujariam o tom. E cada bloco recebe **UV em
+  metros** (`uvPorMetro`): sem isso a mesma textura sairia gigante numa mureta de 12 cm e minúscula
+  numa parede de 6 m, porque o `BoxGeometry` mapeia 0→1 em qualquer face.
+- **Iluminação** (`src/Environment.js`) — sol direcional com **sombra que segue o jogador**: o mapa de
+  2048² cobria os 164×192 m do bairro inteiro (uns 12 texels por metro, sombra de poste virava
+  borrão); acompanhando o jogador num raio de 34 m o mesmo mapa rende **30 texels por metro**, 2,5× a
+  definição sem um pixel a mais de memória. O deslocamento sol→alvo é fixo, então a direção da luz não
+  muda e as sombras seguem paralelas no bairro todo. O alvo é **travado na grade do texel**, senão a
+  caixa desliza continuamente e a borda de toda sombra ferve enquanto o jogador anda. Com normal map
+  na parede o `bias` sozinho não basta — sem `normalBias` aparece listra na parede lisa. A luz de
+  ambiente desceu de 0,75 para 0,62: com a HDRI já preenchendo a sombra, ambiente demais lavava o
+  contraste e o relevo do reboco sumia.
 
 O registro da reunião técnica que definiu esses sistemas, com as fórmulas e os números medidos, está
 em [`docs/REUNIAO-TECNICA.md`](docs/REUNIAO-TECNICA.md).
@@ -112,8 +135,9 @@ Depois abra `http://localhost:8000/`.
 
 O jogo está no ar em **https://bruno2001ka-coder.github.io/cloude-jogo-/**, publicado pelo GitHub
 Pages a cada push na `main` — o workflow é o [`.github/workflows/static.yml`](.github/workflows/static.yml),
-que sobe o repositório inteiro como conteúdo estático. Não há build: o jogo é só HTML, módulos ES e
-um `.hdr`, e o Pages já serve tudo com o `Content-Type` correto (que é o que os módulos ES exigem).
+que sobe o repositório inteiro como conteúdo estático. Não há build: o jogo é só HTML, módulos ES,
+um `.hdr`, dois `.glb` e as texturas em `assets/tex/`, e o Pages já serve tudo com o `Content-Type`
+correto (que é o que os módulos ES exigem).
 
 A origem do Pages precisa estar em **Settings → Pages → Source: GitHub Actions**. Se for trocada
 para "Deploy from a branch", o workflow para de publicar.
