@@ -50,6 +50,18 @@ Jogo 3D em Three.js — bairro brasileiro estilizado, com cultivo/economia, bots
   a rede anti-travamento entender "encurralado" e teleportar o jogador; e **nada é enterrado além da
   saia**, um bloco único que fecha do terreno até a base do primeiro degrau (antes cada degrau descia
   ao subsolo e, onde o terreno caía, virava uma laje de 2 m saindo do chão no lote do vizinho).
+- **Fazenda** (`src/WorldGenerator.js`) — o sítio a oeste: celeiro de tábua com telhado de duas águas,
+  cerca de ripa (mourão + duas travessas), roça em canteiros de terra arada e bichos soltos. Três
+  decisões: a **inclinação do telhado sai da geometria** (meia largura × altura do cume) e a empena
+  triangular usa a mesma conta, senão os degraus dela aparecem por fora da água; a cerca e os canteiros
+  vão em **InstancedMesh** (≈330 peças em 4 draw calls) e **nada disso é obstáculo** — quem trava o
+  jogador é só a parede do celeiro, porque pôr a cerca em `obstaculos` mudaria a NavMesh e o caminho da
+  polícia de tabela; e o **pátio de terra batida** é uma manta cujos vértices seguem `obterElevacao`,
+  1 draw call, pra a fazenda ter tom próprio em vez de ficar montada na mesma areia clara do bairro.
+  A cor dos pés de planta varia por instância (`setColorAt`), o que custa zero draw call a mais.
+  Armadilha anotada no código: `setHSL` do three assume o espaço de cor **de trabalho (linear)** quando
+  não se diz nada — ao contrário de `setHex` —, então um verde "escuro" entrava claro e, com o sol a
+  2,5 e tone mapping ACES por cima, a roça saía verde-menta lavada.
 - **4 polos econômicos** (`src/Poles.js`) — cada insumo tem UM ponto de venda, pra o ciclo obrigar a
   travessia do bairro patrulhado: Fazenda (oeste) é a única fonte de vaso e terra, Mercado (centro) a
   única de semente, Loja de Armas (nordeste) vende armas/munição/colete e o Receptador (sudeste) só
@@ -91,12 +103,16 @@ Jogo 3D em Three.js — bairro brasileiro estilizado, com cultivo/economia, bots
   físico de verdade: albedo, **normal** e **ORM** (Oclusão no R, Roughness no G, Metalness no B — o
   formato do glTF, que o three lê direto). Empacotar os três num RGB só significa **uma** textura na
   memória de vídeo servindo de `aoMap`, `roughnessMap` e `metalnessMap` em vez de três. São 5
-  conjuntos — reboco, tijolo, telha, chão de terra e madeira —, 15 JPEG de 512², **888 KB no total**,
+  conjuntos — reboco, tijolo, telha, chão de terra e madeira —, 15 JPEG de 512², **844 KB no total**,
   que é o que mantém o carregamento viável em rede de celular. As texturas são **geradas por
-  procedimento** (`scratchpad/texturas.py`, fora do repositório) e não baixadas: o ruído é sorteado no
+  procedimento** por [`scripts/texturas.py`](scripts/texturas.py) e não baixadas: o ruído é sorteado no
   domínio da frequência e volta por IFFT, então toda imagem sai **tileável por construção**, sem
   costura na borda; e o normal é derivado por Sobel do próprio campo de altura, então reboco e tijolo
-  respondem diferente ao sol porque o **relevo** é diferente, não porque a cor é.
+  respondem diferente ao sol porque o **relevo** é diferente, não porque a cor é. O script é
+  determinístico (semente fixa): rodar `python scripts/texturas.py` reescreve `assets/tex/` byte a byte.
+  A madeira tem uma armadilha registrada no código: na primeira versão o **veio corria atravessado nas
+  tábuas** — junta na vertical, fibra em faixas horizontais — e a porta das casas lia como esteira, não
+  como madeira. Numa tábua o veio corre no comprimento, paralelo à junta.
   A cor de cada casa continua entrando por `material.color` — o albedo do reboco é quase branco de
   propósito, senão as duas cores se multiplicariam e sujariam o tom. E cada bloco recebe **UV em
   metros** (`uvPorMetro`): sem isso a mesma textura sairia gigante numa mureta de 12 cm e minúscula

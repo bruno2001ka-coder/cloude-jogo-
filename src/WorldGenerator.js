@@ -4,7 +4,7 @@ import{mergeGeometries}from'three/addons/utils/BufferGeometryUtils.js';
 import{scene}from'./core.js';
 import{obterElevacao}from'./Terrain.js';
 import{registrarObstaculo,superficiesAndaveis,obstaculos,obstaculosPedestres}from'./Physics.js';
-import{bmat,matReboco,matTelha,matConcreto,uvPorMetro,tijolo,concreto,janela,janelaAcesa,molduraJanela,porta,agua,posteMat,folhaMat,folhaClara,criarSombraContato}from'./Materials.js';
+import{bmat,matReboco,matTelha,matConcreto,matMadeira,matTerraArada,matTerraBatida,uvPorMetro,tijolo,concreto,janela,janelaAcesa,molduraJanela,porta,agua,posteMat,folhaMat,folhaClara,criarSombraContato}from'./Materials.js';
 import{POLOS}from'./Poles.js';
 // O degrau da escadaria é derivado do step-up do jogador: um número solto aqui viraria escada
 // intransponível na primeira vez que a altura do personagem mudasse.
@@ -270,42 +270,175 @@ const mercado=casaBairro(0,-18,9,7,3.1,0xd98545,0);bloco(new THREE.BoxGeometry(7
 [[-62,-62],[-62,36],[62,-34],[62,64],[-18,72],[18,-70]].forEach((p,i)=>arvore(p[0],p[1],.9+(i%2)*.18));
 
 // ===== FAZENDA: área rural afastada da cidade, além do limite oeste do bairro.
+// A cerca é de RIPA (mourão + duas travessas), não de estaca solta: um anel de palitos espetados no
+// chão não lê como cerca de nenhuma distância. Travessa acompanha o desnível entre um mourão e o
+// seguinte — o terreno aqui é ondulado, e travessa reta deixaria a cerca boiando no alto do morro.
+//
+// Tudo que se repete (mourão, travessa, canteiro, pé de planta) vai em InstancedMesh: são ~330 peças
+// em 4 draw calls. Nada disso é obstáculo — quem trava o jogador na fazenda é só a parede do celeiro,
+// como antes. Pôr a cerca em `obstaculos` mudaria a NavMesh e o caminho da polícia de tabela.
 function criarFazenda(cx,cz){
   const meiaLarg=13,meiaProf=11;
   const bx=cx-meiaLarg+5,bz=cz-meiaProf+5,by=obterElevacao(bx,bz);
-  const celeiroMat=bmat(0x8a3b2b),telhadoMat=bmat(0x4a3327);
-  const paredeCeleiro=bloco(new THREE.BoxGeometry(6,3.2,5),celeiroMat,bx,by+1.6,bz);
-  registrarObstaculo(paredeCeleiro);
-  const aguaEsq=new THREE.Mesh(new THREE.BoxGeometry(3.7,.15,5.6),telhadoMat);aguaEsq.position.set(bx-1.55,by+3.55,bz);aguaEsq.rotation.z=.55;aguaEsq.castShadow=true;aguaEsq.receiveShadow=true;bairro.add(aguaEsq);
-  const aguaDir=aguaEsq.clone();aguaDir.position.x=bx+1.55;aguaDir.rotation.z=-.55;bairro.add(aguaDir);
-  bloco(new THREE.BoxGeometry(1.6,2.1,.08),bmat(0x2e2018),bx,by+1.05,bz+2.52);
-  bloco(new THREE.CylinderGeometry(.35,.4,.7,10),bmat(0x666660),bx-2.6,by+.35,bz-2.3);
-  // cerca perimetral e roças em InstancedMesh (1 draw call cada, em vez de ~150 meshes separados) —
-  // puramente visual/demarcação, sem travar o jogador.
-  const cercaMat=bmat(0x6b4a2f);
-  const cantos=[[cx-meiaLarg,cz-meiaProf],[cx+meiaLarg,cz-meiaProf],[cx+meiaLarg,cz+meiaProf],[cx-meiaLarg,cz+meiaProf]];
-  const postesPos=[];
-  for(let lado=0;lado<4;lado++){
-    const a=cantos[lado],b=cantos[(lado+1)%4],passos=Math.round(Math.hypot(b[0]-a[0],b[1]-a[1])/2.4);
-    for(let i=0;i<=passos;i++){const t=i/passos;postesPos.push([a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t])}
+  const madeiraCeleiro=matMadeira(0xa2603a),madeiraCerca=matMadeira(0x8a6440),ripaEscura=matMadeira(0x59422e);
+
+  // --- PÁTIO ---
+  // Manta de terra batida por cima do chão do mapa, um pouco maior que a cerca. Os vértices seguem
+  // obterElevacao (o mesmo relevo do terreno) e sobem 4 cm: acompanhando o morro ela não afunda, e a
+  // folga tira o z-fighting com o chão. É 1 draw call e dá ao sítio um tom próprio — sem isso a
+  // fazenda fica montada em cima da mesma areia clara do bairro e parece deserto.
+  const patioL=meiaLarg*2+6,patioP=meiaProf*2+6,divs=Math.round(patioL),divsP=Math.round(patioP);
+  const geoPatio=new THREE.PlaneGeometry(patioL,patioP,divs,divsP);
+  const vp=geoPatio.attributes.position;
+  for(let i=0;i<vp.count;i++){
+    const lx=vp.getX(i),ly=vp.getY(i);// plano ainda deitado no XY: Y local vira -Z do mundo
+    vp.setZ(i,obterElevacao(cx+lx,cz-ly)-obterElevacao(cx,cz));
   }
-  const cercaMesh=new THREE.InstancedMesh(new THREE.CylinderGeometry(.045,.06,1,6),cercaMat,postesPos.length);
-  cercaMesh.castShadow=false;cercaMesh.receiveShadow=false;
-  const m4=new THREE.Matrix4();
-  postesPos.forEach(([px,pz],i)=>{const py=obterElevacao(px,pz);m4.makeTranslation(px,py+.5,pz);cercaMesh.setMatrixAt(i,m4)});
-  cercaMesh.instanceMatrix.needsUpdate=true;bairro.add(cercaMesh);
-  const cultivoMat=bmat(0x5c8a3e);
-  const cultivoPos=[];
-  for(let lx=-meiaLarg+8;lx<meiaLarg-2;lx+=1.5)for(let lz=-meiaProf+2;lz<meiaProf-8;lz+=1.2)cultivoPos.push([cx+lx,cz+lz]);
-  const cultivoMesh=new THREE.InstancedMesh(new THREE.ConeGeometry(.15,.4,5),cultivoMat,cultivoPos.length);
-  cultivoMesh.castShadow=false;cultivoMesh.receiveShadow=true;
-  const posV=new THREE.Vector3(),quatV=new THREE.Quaternion(),eixoY=new THREE.Vector3(0,1,0),escalaV=new THREE.Vector3();
-  cultivoPos.forEach(([px,pz],i)=>{
-    const py=obterElevacao(px,pz),e=.85+Math.random()*.4;
-    posV.set(px,py+.2,pz);quatV.setFromAxisAngle(eixoY,Math.random()*Math.PI);escalaV.set(e,e*(.85+Math.random()*.3),e);
-    m4.compose(posV,quatV,escalaV);cultivoMesh.setMatrixAt(i,m4);
+  geoPatio.computeVertexNormals();
+  const uvPatio=geoPatio.attributes.uv.clone();
+  for(let i=0;i<uvPatio.count;i++)uvPatio.setXY(i,uvPatio.getX(i)*patioL/4,uvPatio.getY(i)*patioP/4);
+  geoPatio.setAttribute('uv',uvPatio);geoPatio.setAttribute('uv1',uvPatio);
+  const patio=new THREE.Mesh(geoPatio,matTerraBatida());
+  patio.rotation.x=-Math.PI/2;patio.position.set(cx,obterElevacao(cx,cz)+.04,cz);
+  patio.receiveShadow=true;bairro.add(patio);
+
+  // --- CELEIRO ---
+  // A parede mantém exatamente a caixa de antes (6 x 3,2 x 5 em bx,bz): é o obstáculo registrado e o
+  // que `dentroDoCurral` usa pra manter os bichos do lado de fora. Mudar a medida mexeria nos dois.
+  bloco(new THREE.BoxGeometry(6.3,.3,5.3),matConcreto(),bx,by+.15,bz);// base: tira o celeiro do barro
+  const paredeCeleiro=bloco(new THREE.BoxGeometry(6,3.2,5),madeiraCeleiro,bx,by+1.6,bz);
+  registrarObstaculo(paredeCeleiro);
+  // Telhado de duas águas. A inclinação sai da geometria (meia largura x altura do cume), não de um
+  // ângulo escolhido no olho: a empena logo abaixo é montada com a MESMA conta, e foi assim que ela
+  // parou de furar o telhado. Antes o ângulo era .55 rad chutado e a empena vinha de larguras fixas —
+  // os degraus dela apareciam por fora da água, como uma escadinha marrom saindo do telhado.
+  const telhadoFazenda=matTelha(0x6e6a62);
+  const meiaLargC=3,alturaParede=3.2,alturaCume=4.55,beiral=.45;
+  const subidaTelhado=alturaCume-alturaParede;
+  const inclinacao=Math.atan2(subidaTelhado,meiaLargC);
+  const compAgua=Math.hypot(meiaLargC,subidaTelhado)+beiral;
+  for(const lado of[-1,1]){
+    const agua=new THREE.Mesh(uvPorMetro(new THREE.BoxGeometry(compAgua,.16,5.9)),telhadoFazenda);
+    // Centro da água = meio do trecho que vai do cume até a ponta do beiral.
+    agua.position.set(bx+lado*Math.cos(inclinacao)*compAgua/2,
+                      by+alturaCume-Math.sin(inclinacao)*compAgua/2,bz);
+    // A caixa é simétrica, então girar -incl (lado +1) ou +incl (lado -1) cobre o mesmo trecho.
+    agua.rotation.z=-lado*inclinacao;
+    agua.castShadow=true;agua.receiveShadow=true;bairro.add(agua);
+  }
+  bloco(new THREE.BoxGeometry(.3,.26,6),ripaEscura,bx,by+alturaCume-.05,bz);// cumeeira: fecha a junta
+  // Empena em degraus de ripa. Cada degrau usa a largura do telhado no TOPO dele (a parte estreita):
+  // usando a de baixo, o canto do degrau ficaria por fora da água.
+  const DEGRAUS_EMPENA=5,hDegrau=subidaTelhado/DEGRAUS_EMPENA;
+  for(const lz of[-1,1])for(let i=0;i<DEGRAUS_EMPENA;i++){
+    const yTopo=alturaParede+(i+1)*hDegrau;
+    const larg=2*meiaLargC*(alturaCume-yTopo)/subidaTelhado;
+    if(larg<.25)break;
+    bloco(new THREE.BoxGeometry(larg,hDegrau,.14),madeiraCeleiro,bx,by+yTopo-hDegrau/2,bz+lz*2.5);
+  }
+  // Portão duplo do celeiro, mais escuro que a parede.
+  for(const lx of[-.42,.42])bloco(new THREE.BoxGeometry(.8,2.1,.1),ripaEscura,bx+lx,by+1.35,bz+2.53);
+  bloco(new THREE.BoxGeometry(1.75,.12,.14),ripaEscura,bx,by+2.45,bz+2.56);
+  bloco(new THREE.BoxGeometry(.9,.7,.1),ripaEscura,bx,by+3.05,bz+2.53);// portinhola do feno, lá em cima
+  // Cocho e barril ao lado do celeiro.
+  bloco(new THREE.BoxGeometry(2.1,.4,.7),ripaEscura,bx-3.4,by+.3,bz-1.6);
+  bloco(new THREE.CylinderGeometry(.35,.4,.7,10),ripaEscura,bx-2.6,by+.35,bz-2.3);
+
+  const m4=new THREE.Matrix4(),posV=new THREE.Vector3(),quatV=new THREE.Quaternion(),escalaV=new THREE.Vector3();
+  const eixoY=new THREE.Vector3(0,1,0),eixoX=new THREE.Vector3(1,0,0);
+
+  // --- CERCA DE RIPA ---
+  const cantos=[[cx-meiaLarg,cz-meiaProf],[cx+meiaLarg,cz-meiaProf],[cx+meiaLarg,cz+meiaProf],[cx-meiaLarg,cz+meiaProf]];
+  const mouroes=[],travessas=[];
+  const ALTURA_MOURAO=1.25,ALTURAS_TRAVESSA=[.42,.82];
+  for(let lado=0;lado<4;lado++){
+    const a=cantos[lado],b=cantos[(lado+1)%4];
+    const passos=Math.round(Math.hypot(b[0]-a[0],b[1]-a[1])/2.4);
+    let antX=null,antZ=null;
+    for(let i=0;i<=passos;i++){
+      const t=i/passos,px=a[0]+(b[0]-a[0])*t,pz=a[1]+(b[1]-a[1])*t;
+      // O último mourão de um lado é o primeiro do seguinte: só empilha uma vez, senão o canto ganha
+      // dois mourões no mesmo ponto brigando por z-fighting.
+      if(!(lado>0&&i===0))mouroes.push([px,pz]);
+      if(antX!==null)travessas.push([antX,antZ,px,pz]);
+      antX=px;antZ=pz;
+    }
+  }
+  const mesaMourao=new THREE.InstancedMesh(uvPorMetro(new THREE.BoxGeometry(.13,ALTURA_MOURAO,.13)),madeiraCerca,mouroes.length);
+  mesaMourao.castShadow=true;mesaMourao.receiveShadow=true;
+  mouroes.forEach(([px,pz],i)=>{m4.makeTranslation(px,obterElevacao(px,pz)+ALTURA_MOURAO/2-.1,pz);mesaMourao.setMatrixAt(i,m4)});
+  mesaMourao.instanceMatrix.needsUpdate=true;bairro.add(mesaMourao);
+
+  // Travessa: uma caixa de 1 m no eixo X, esticada e girada pra ir de um mourão ao outro. Girar por
+  // setFromUnitVectors com a direção JÁ INCLUINDO o desnível é o que faz ela seguir o terreno.
+  const geoTravessa=uvPorMetro(new THREE.BoxGeometry(1,.13,.05));
+  const mesaTravessa=new THREE.InstancedMesh(geoTravessa,ripaEscura,travessas.length*ALTURAS_TRAVESSA.length);
+  mesaTravessa.castShadow=true;mesaTravessa.receiveShadow=true;
+  const de=new THREE.Vector3(),para=new THREE.Vector3(),dir=new THREE.Vector3();
+  let k=0;
+  for(const[ax,az,bx2,bz2]of travessas){
+    for(const alt of ALTURAS_TRAVESSA){
+      de.set(ax,obterElevacao(ax,az)+alt,az);
+      para.set(bx2,obterElevacao(bx2,bz2)+alt,bz2);
+      dir.subVectors(para,de);
+      const compr=dir.length();dir.divideScalar(compr);
+      quatV.setFromUnitVectors(eixoX,dir);
+      posV.addVectors(de,para).multiplyScalar(.5);
+      escalaV.set(compr,1,1);
+      m4.compose(posV,quatV,escalaV);mesaTravessa.setMatrixAt(k++,m4);
+    }
+  }
+  mesaTravessa.instanceMatrix.needsUpdate=true;bairro.add(mesaTravessa);
+
+  // --- ROÇA: canteiros de terra arada com os pés plantados em cima ---
+  // Antes eram cones verdes espetados no barro seco, em grade. Canteiro é o que faz virar plantação:
+  // a fileira de terra escura dá o desenho, e o pé de planta só mora nela.
+  const canteiros=[],pes=[];
+  const zIni=cz-meiaProf+2.2,zFim=cz+meiaProf-8,xIni=cx-meiaLarg+7.5,xFim=cx+meiaLarg-2.2;
+  const comprimento=xFim-xIni,meioX=(xIni+xFim)/2;
+  for(let z=zIni;z<=zFim;z+=1.7){
+    canteiros.push([meioX,z,comprimento]);
+    for(let x=xIni+.35;x<=xFim-.35;x+=.62)pes.push([x+(Math.random()-.5)*.16,z+(Math.random()-.5)*.22]);
+  }
+  const mesaCanteiro=new THREE.InstancedMesh(uvPorMetro(new THREE.BoxGeometry(1,.13,1.02)),matTerraArada(),canteiros.length);
+  mesaCanteiro.castShadow=false;mesaCanteiro.receiveShadow=true;
+  canteiros.forEach(([mx,mz,comp],i)=>{
+    // Meio enterrado: um canteiro apoiado por cima do chão vira barra de chocolate. Assentado, o que
+    // aparece é a leira de terra levantada, que é o que a enxada faz.
+    posV.set(mx,obterElevacao(mx,mz)+.02,mz);escalaV.set(comp,1,1);
+    m4.compose(posV,new THREE.Quaternion(),escalaV);mesaCanteiro.setMatrixAt(i,m4);
   });
-  cultivoMesh.instanceMatrix.needsUpdate=true;bairro.add(cultivoMesh);
+  mesaCanteiro.instanceMatrix.needsUpdate=true;bairro.add(mesaCanteiro);
+
+  // Pé de planta: icosaedro achatado lê como moita de folha, o cone lia como pinheirinho de enfeite.
+  // A cor varia POR INSTÂNCIA (instanceColor) — continua 1 draw call, e sem isso a roça inteira fica
+  // do mesmo verde chapado, que é o que mais denuncia repetição.
+  // roughness 1: a 0,92 a face plana do icosaedro ainda pegava brilho especular do sol e a roça
+  // inteira ficava com cara de vidro leitoso em vez de folha.
+  const matPe=new THREE.MeshStandardMaterial({color:0xffffff,roughness:1,flatShading:true});
+  const mesaPe=new THREE.InstancedMesh(new THREE.IcosahedronGeometry(.26,0),matPe,pes.length);
+  mesaPe.castShadow=true;mesaPe.receiveShadow=true;
+  const corPe=new THREE.Color();
+  pes.forEach(([px,pz],i)=>{
+    const e=.8+Math.random()*.5;
+    posV.set(px,obterElevacao(px,pz)+.14+e*.13,pz);
+    quatV.setFromAxisAngle(eixoY,Math.random()*Math.PI*2);
+    escalaV.set(e,e*.78,e);// achatado: moita, não bola
+    m4.compose(posV,quatV,escalaV);mesaPe.setMatrixAt(i,m4);
+    // Verde de folha. O SRGBColorSpace aqui não é enfeite: `setHSL` do three assume o espaço de
+    // TRABALHO (linear) quando não se diz nada — ao contrário de `setHex` —, então um L de 0,20
+    // "escuro" entrava como 0,20 LINEAR, que é sRGB 0,49. Com o sol a 2,5 e tone mapping ACES por
+    // cima, a roça saía verde-menta lavado. Dizendo sRGB, o número volta a significar o que parece.
+    corPe.setHSL(.25+Math.random()*.06,.5+Math.random()*.2,.22+Math.random()*.1,THREE.SRGBColorSpace);
+    mesaPe.setColorAt(i,corPe);
+  });
+  mesaPe.instanceMatrix.needsUpdate=true;if(mesaPe.instanceColor)mesaPe.instanceColor.needsUpdate=true;
+  bairro.add(mesaPe);
+
+  // Árvores no fundo do sítio, fora da roça e longe do celeiro.
+  for(const[ax,az]of[[cx-meiaLarg-3,cz+6],[cx-meiaLarg-2,cz-8],[cx+meiaLarg+3,cz-4],[cx+meiaLarg+2,cz+8],[cx-4,cz+meiaProf+3]])
+    arvore(ax,az,1+Math.random()*.25);
+
   return{cx,cz,meiaLarg,meiaProf,celeiro:{x:bx,z:bz,meiaLarg:3.3,meiaProf:2.8}};
 }
 export const FAZENDA=criarFazenda(-86,-50);
@@ -315,9 +448,9 @@ export const FAZENDA=criarFazenda(-86,-50);
 // que apareceu um painel de compra. Puramente decorativo — nada aqui vira obstáculo, o celeiro já é um.
 function criarBalcaoFazenda(x,z){
   const g=new THREE.Group();const y=obterElevacao(x,z);g.position.set(x,y,z);bairro.add(g);
-  bloco(new THREE.BoxGeometry(2.6,.12,1),bmat(0x7a5a3a),0,.95,0,g);
-  for(const lx of[-1.1,1.1])bloco(new THREE.BoxGeometry(.12,.95,.12),bmat(0x6b4a2f),lx,.48,0,g);
-  bloco(new THREE.BoxGeometry(2.9,.1,1.3),bmat(0x4a3327),0,2.05,-.1,g);
+  bloco(new THREE.BoxGeometry(2.6,.12,1),matMadeira(0x9c7448),0,.95,0,g);
+  for(const lx of[-1.1,1.1])bloco(new THREE.BoxGeometry(.12,.95,.12),matMadeira(0x8a6440),lx,.48,0,g);
+  bloco(new THREE.BoxGeometry(2.9,.1,1.3),matTelha(0x6e6a62),0,2.05,-.1,g);
   for(const lx of[-1.3,1.3])bloco(new THREE.CylinderGeometry(.05,.05,1.05,6),posteMat,lx,1.55,.5,g);
   // Sacaria empilhada: sinaliza "terra e vaso vendidos aqui" sem precisar de texto no mundo.
   for(const[sx,sy,sz]of[[-.7,1.14,.05],[-.35,1.14,-.05],[-.52,1.42,0],[.75,1.14,0]])
@@ -363,13 +496,22 @@ function criarAnimal(tipo,x,z){
     for(const lx of[-.3,.3])for(const lz of[-.15,.15])bloco(new THREE.CylinderGeometry(.07,.07,.45,6),bmat(0x2e281f),lx,.22,lz,g);
     velocidade=.5;
   }else if(tipo==='porco'){
-    bloco(new THREE.BoxGeometry(.55,.4,.32),bmat(0xe8a5a0),0,.32,0,g);
-    bloco(new THREE.BoxGeometry(.2,.22,.2),bmat(0xe8a5a0),.32,.34,0,g);
+    // Sem perna, o porco era um retângulo rosa boiando 32 cm do chão — de longe lia como um papel
+    // largado na roça. Quatro tocos e um focinho já resolvem a silhueta.
+    const pele=bmat(0xc9827c),focinho=bmat(0xa8635e);
+    bloco(new THREE.BoxGeometry(.55,.4,.32),pele,0,.42,0,g);
+    bloco(new THREE.BoxGeometry(.2,.22,.2),pele,.32,.44,0,g);
+    bloco(new THREE.BoxGeometry(.07,.08,.14),focinho,.44,.42,0,g);
+    for(const lx of[-.16,.18])for(const lz of[-.11,.11])bloco(new THREE.BoxGeometry(.09,.24,.09),focinho,lx,.12,lz,g);
+    for(const lz of[-.07,.07])bloco(new THREE.BoxGeometry(.09,.09,.03),focinho,.3,.56,lz,g);// orelhas
     velocidade=.7;
   }else{
-    bloco(new THREE.BoxGeometry(.22,.22,.3),bmat(0xf5f0e6),0,.22,0,g);
-    bloco(new THREE.BoxGeometry(.14,.14,.14),bmat(0xf5f0e6),0,.34,.14,g);
-    bloco(new THREE.ConeGeometry(.04,.09,4),bmat(0xd98a3f),0,.34,.24,g);
+    const pena=bmat(0xe4dece),bico=bmat(0xd98a3f),crista=bmat(0xb03c30);
+    bloco(new THREE.BoxGeometry(.22,.22,.3),pena,0,.3,0,g);
+    bloco(new THREE.BoxGeometry(.14,.14,.14),pena,0,.42,.14,g);
+    bloco(new THREE.ConeGeometry(.04,.09,4),bico,0,.42,.24,g);
+    bloco(new THREE.BoxGeometry(.05,.06,.03),crista,0,.51,.12,g);
+    for(const lx of[-.06,.06])bloco(new THREE.BoxGeometry(.03,.19,.03),bico,lx,.1,0,g);// pernas
     velocidade=.9;
   }
   const animal={grupo:g,x,z,velocidade,alvo:{x,z},proximaDecisao:0};
