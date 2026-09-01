@@ -54,11 +54,18 @@ Jogo 3D em Three.js — bairro brasileiro estilizado, com cultivo/economia, bots
   cerca de ripa (mourão + duas travessas), roça em canteiros de terra arada e bichos soltos. Três
   decisões: a **inclinação do telhado sai da geometria** (meia largura × altura do cume) e a empena
   triangular usa a mesma conta, senão os degraus dela aparecem por fora da água; a cerca e os canteiros
-  vão em **InstancedMesh** (≈330 peças em 4 draw calls) e **nada disso é obstáculo** — quem trava o
-  jogador é só a parede do celeiro, porque pôr a cerca em `obstaculos` mudaria a NavMesh e o caminho da
-  polícia de tabela; e o **pátio de terra batida** é uma manta cujos vértices seguem `obterElevacao`,
+  vão em **InstancedMesh** (≈330 peças em 4 draw calls), enquanto a **colisão** da cerca são só 5 AABBs
+  (uma por trecho reto) — `caixaColideComObstaculos` varre a lista inteira a cada teste de movimento, e
+  40 caixinhas de mourão custariam 10× mais e barrariam pior, porque entre dois mourões passa gente;
+  e o **pátio de terra batida** é uma manta cujos vértices seguem `obterElevacao`,
   1 draw call, pra a fazenda ter tom próprio em vez de ficar montada na mesma areia clara do bairro.
   A cor dos pés de planta varia por instância (`setColorAt`), o que custa zero draw call a mais.
+  A entrada é uma **porteira de duas folhas** no lado leste (o lado virado pro bairro), que abre e fecha
+  com a mesma tecla `E` do refúgio. Ela usa o truque já provado da porta do esconderijo: **uma** `Box3`
+  fica na lista de obstáculos pra sempre e o que muda é o CONTEÚDO dela — trocar de lista a cada
+  abre/fecha invalidaria os índices que a NavMesh já rasterizou. E ela **nasce aberta** pelo mesmo
+  motivo que as casas-refúgio: a NavMesh é construída uma vez, depois que todos os obstáculos entraram;
+  com o vão fechado nessa hora, a polícia nunca mais acharia caminho pra dentro do sítio.
   Armadilha anotada no código: `setHSL` do three assume o espaço de cor **de trabalho (linear)** quando
   não se diz nada — ao contrário de `setHex` —, então um verde "escuro" entrava claro e, com o sol a
   2,5 e tone mapping ACES por cima, a roça saía verde-menta lavada.

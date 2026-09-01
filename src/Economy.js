@@ -5,7 +5,7 @@ import{scene,camera}from'./core.js';
 import{ground}from'./Terrain.js';
 import{obstaculos,superficiesAndaveis}from'./Physics.js';
 import{criarSombraContato,folhaMat,folhaClara}from'./Materials.js';
-import{criarEsconderijo,refugioEmQueEsta,alternarPortaRefugio}from'./WorldGenerator.js';
+import{criarEsconderijo,refugioEmQueEsta,alternarPortaRefugio,porteiraFazenda,alternarPorteira,pertoDaPorteira}from'./WorldGenerator.js';
 import{player}from'./Player.js';
 import{POLOS,PRECOS}from'./Poles.js';
 import{ARMAS,ORDEM_ARMAS,equiparArma}from'./Weapons.js';
@@ -98,6 +98,7 @@ export function acaoPrimaria(){
   const ctx=contextoAtual();
   if(!ctx)return null;
   if(ctx.tipo==='refugio'){const aberta=alternarPortaRefugio(ctx.refugio);renderizarAcoes();return aberta?'porta-aberta':'porta-fechada'}
+  if(ctx.tipo==='porteira'){const aberta=alternarPorteira();renderizarAcoes();return aberta?'porteira-aberta':'porteira-fechada'}
   if(ctx.tipo==='planta'&&ctx.planta.estagio===2){colher(ctx.planta);return 'colheu'}
   return null;
 }
@@ -108,6 +109,9 @@ export function contextoAtual(){
   // escrito "Fechar" depois de fechar.
   const refugio=refugioEmQueEsta(p);
   if(refugio)return{tipo:'refugio',refugio,chave:'refugio'+(refugio.aberta?'A':'F')};
+  // A porteira vem antes dos polos: ela fica a 21 m do Depósito Rural, então não disputam contexto —
+  // a ordem aqui é só pra deixar as duas ações de abrir/fechar juntas no topo.
+  if(pertoDaPorteira(p))return{tipo:'porteira',chave:'porteira'+(porteiraFazenda.aberta?'A':'F')};
   if(distXZ(p,lojaPos)<POLOS.sementes.raio)return{tipo:'loja'};
   if(distXZ(p,receptadorPos)<POLOS.receptador.raio)return{tipo:'receptador'};
   if(distXZ(p,fazendaPos)<POLOS.fazenda.raio)return{tipo:'fazenda'};
@@ -247,6 +251,12 @@ export function renderizarAcoes(){
     const b=document.createElement('button');
     b.textContent=r.aberta?'🚪 Fechar a porta e se esconder':'🚪 Abrir a porta e sair';
     b.onclick=()=>{alternarPortaRefugio(r);renderizarAcoes()};
+    acaoPanel.appendChild(b);
+    acaoPanel.style.display='flex';
+  }else if(tipo==='porteira'){
+    const b=document.createElement('button');
+    b.textContent=porteiraFazenda.aberta?'🚧 Fechar a porteira':'🚧 Abrir a porteira';
+    b.onclick=()=>{alternarPorteira();renderizarAcoes()};
     acaoPanel.appendChild(b);
     acaoPanel.style.display='flex';
   }else if(tipo==='loja'){
