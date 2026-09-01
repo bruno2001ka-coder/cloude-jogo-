@@ -36,7 +36,7 @@ import*as THREE from'three';
 import{scene,camera}from'./core.js';
 import{obterElevacao}from'./Terrain.js';
 import{primeiroImpactoNoSegmento,intersectarSegmentoCaixa,buscarPosicaoLivre}from'./Physics.js';
-import{encontrarCaminho,visaoHorizontalLivre}from'./NavMesh.js';
+import{encontrarCaminho,visaoHorizontalLivre,pontoNavegavel}from'./NavMesh.js';
 import{player,zonasDeAcertoJogador,PLAYER_HEIGHT,encararDirecao,definirAnimacaoTiro}from'./Player.js';
 import{ORDEM_ARMAS,armaEquipada,idArmaEquipada,equiparArma,obterBocaDaArma,direcaoComDispersao}from'./Weapons.js';
 import{estaEscondido,refugioEmQueEsta,refugios}from'./WorldGenerator.js';
@@ -107,6 +107,23 @@ const VISAO_INTERVALO=.3,VISAO_DEFASAGEM=.07;
 // Quanto tempo a última posição avistada continua valendo como destino depois que o jogador some.
 // Curto demais e eles desistem na primeira quina; longo demais e viram teleguiados.
 const MEMORIA_ALVO=9;
+// ===== BUSCA: o estado que faltava =====
+// Antes existiam só dois modos: ou o policial via o jogador, ou (passados os 9 s de rastro) voltava a
+// sortear um ponto no mapa INTEIRO. Não havia "procurando" — ou estavam em cima de você, ou andavam à
+// toa, e um policial que acabava de te perder podia sair andando pro outro lado da favela.
+// Agora, quando o rastro quente esfria, começa a BUSCA: cada um vasculha em volta do último ponto
+// conhecido, num raio que CRESCE com o tempo, até desistir.
+const BUSCA_DURACAO=26,BUSCA_RAIO_INICIAL=4,BUSCA_RAIO_FINAL=22;
+// Ângulo de ouro. Dando a cada policial um setor separado por 137,5°, qualquer número deles se
+// espalha em volta do ponto sem ninguém precisar coordenar nada — e é o que faz a dupla ABRIR em vez
+// de andar em fila indiana atrás do mesmo destino, que é o que mais denunciava o bot.
+const SETOR_OURO=2.399963229728653;
+// Deriva angular ao longo da busca: sem ela cada um anda em linha reta pra fora do seu setor. Com
+// ela o caminho vira espiral, que é o que lê como varredura.
+const BUSCA_DERIVA=1.1;
+// Raios tentados ao longo do setor, em fração do raio da vez. São buscas em grade (~1 µs cada), não
+// raycast: sai caro zero e é o que mantém cada policial no rumo dele mesmo em quarteirão fechado.
+const BUSCA_ESCALAS=[1,.75,1.25,.5,1.5,.3];
 // ===== POLÍCIA DE RUA =====
 // Duplas que nascem numa borda, rondam as vielas e vão embora. Nunca permanentes: com procurado 0 a
 // janela entre surtos é longa de propósito, senão a favela nunca respira. RUA_INTERVALO é sorteado em
@@ -198,6 +215,8 @@ function criarPolicial(indice,tipo='rapel'){
     // Percepção: `proximaVisao` defasa a checagem entre policiais (ver comentário do custo por frame);
     // `viu` é o resultado da última avaliação, reaproveitado pelos frames intermediários.
     proximaVisao:indice*VISAO_DEFASAGEM,viu:false,olharY:0,
+    // Setor de busca deste policial, espalhado pelo ângulo de ouro (ver SETOR_OURO).
+    setorBusca:indice*SETOR_OURO,
     // Altura renderizada, interpolada: é o que deixa o policial subir junto pra laje (o A* é 2D).
     alturaAtual:null,
     // Vida útil e destino da ronda — só a polícia de RUA usa. `modo` distingue ronda · vasculhando ·
@@ -367,15 +386,41 @@ export function alcanceVisao(procurado){return VISAO_ALCANCE_BASE+VISAO_ALCANCE_
 // ===== RÁDIO: um viu, todos sabem =====
 // Guarda só a ÚLTIMA posição avistada, com validade. É o suficiente pra os outros convergirem sem
 // virarem teleguiados: ninguém recebe a posição atual do jogador, recebe onde ele estava.
-const rastro={ativo:false,x:0,z:0,ate:0,avisadoEm:-99};
+const rastro={ativo:false,x:0,z:0,ate:0,avisadoEm:-99,buscaAte:0};
 function compartilharAvistamento(x,z,agora){
   const novo=!rastro.ativo;
   rastro.ativo=true;rastro.x=x;rastro.z=z;rastro.ate=agora+MEMORIA_ALVO;
+  rastro.buscaAte=rastro.ate+BUSCA_DURACAO;
   // O aviso é limitado no tempo porque o rastro é reescrito a cada avistamento — sem a trava, um
   // policial de olho no jogador cuspiria a mesma frase a cada 0,3 s.
   if(novo&&agora-rastro.avisadoEm>12){rastro.avisadoEm=agora;mostrarAviso('👮 Te viram — estão chamando reforço no rádio.',2800)}
 }
 function rastroValido(agora){if(rastro.ativo&&agora>rastro.ate)rastro.ativo=false;return rastro.ativo}
+// Janela de busca: já passou o rastro quente, mas ainda não desistiram. Chamar SEMPRE depois de
+// rastroValido — é ele que expira o rastro quente.
+function emBusca(agora){return !rastro.ativo&&rastro.buscaAte>0&&agora<=rastro.buscaAte}
+// Ponto que ESTE policial vasculha agora. Função pura do tempo e do setor dele: o ponto se afasta
+// sozinho conforme a busca avança, então o policial varre pra fora sem precisar de máquina de estado
+// própria nem de sorteio a cada chegada.
+const _busca={x:0,z:0};
+function pontoDeBusca(pol,agora){
+  const t=THREE.MathUtils.clamp((agora-rastro.ate)/BUSCA_DURACAO,0,1);
+  const raio=BUSCA_RAIO_INICIAL+(BUSCA_RAIO_FINAL-BUSCA_RAIO_INICIAL)*t;
+  const ang=pol.setorBusca+t*BUSCA_DERIVA;
+  // Ponto dentro de casa ou fora do mapa não serve de destino: o A* falharia e ele ficaria empurrando
+  // parede. Mas desistir e mandar pro ponto do rastro COLAPSA a dupla inteira no mesmo destino — foi
+  // o que a primeira versão fez, e mediu 4° de separação onde os setores prometem 137°. Então ele
+  // anda pelo PRÓPRIO setor atrás de um ponto livre, mais perto ou mais longe, e só desiste no fim.
+  for(const escala of BUSCA_ESCALAS){
+    const r2=raio*escala;
+    const x=rastro.x+Math.cos(ang)*r2,z=rastro.z+Math.sin(ang)*r2;
+    if(Math.abs(x)<=MAPA_LIMITE&&Math.abs(z)<=MAPA_LIMITE&&pontoNavegavel(x,z)){
+      _busca.x=x;_busca.z=z;return _busca;
+    }
+  }
+  _busca.x=rastro.x;_busca.z=rastro.z;
+  return _busca;
+}
 
 // Avaliação de visão de UM policial, escalonada no tempo. Devolve o resultado memorizado nos frames
 // em que não é a vez dele — é isso que segura o custo por frame (ver bloco de constantes).
@@ -401,13 +446,15 @@ function alvoDeMovimento(pol,agora,destX,destZ){
   }
   const rotaInvalida=!pol.rota||pol.indiceRota>=pol.rota.length
     ||!pol.destinoRota||Math.hypot(pol.destinoRota.x-destX,pol.destinoRota.z-destZ)>REPLANEJAR_DESVIO;
-  if(rotaInvalida||agora>=pol.proximoReplan){
+  // O portão de tempo vale AGORA TAMBÉM pra rota inválida. Antes era `rotaInvalida||agora>=...`, e o
+  // corpo só rodava com rotaInvalida — ou seja, o portão nunca barrava nada: rota nula significava A*
+  // todo quadro. Um policial encravado numa quina zera a rota, o A* falha, a rota continua nula, e ele
+  // gastava 585 µs por quadro pra sempre (35 ms por segundo de CPU, de um policial só).
+  if(rotaInvalida&&agora>=pol.proximoReplan){
     pol.proximoReplan=agora+REPLANEJAR_INTERVALO;
-    if(rotaInvalida){
-      const caminho=encontrarCaminho(pol.pos.x,pol.pos.z,destX,destZ);
-      if(caminho&&caminho.length){pol.rota=caminho;pol.indiceRota=0;pol.destinoRota={x:destX,z:destZ}}
-      else{pol.rota=null;pol.destinoRota=null}
-    }
+    const caminho=encontrarCaminho(pol.pos.x,pol.pos.z,destX,destZ);
+    if(caminho&&caminho.length){pol.rota=caminho;pol.indiceRota=0;pol.destinoRota={x:destX,z:destZ}}
+    else{pol.rota=null;pol.destinoRota=null}
   }
   if(!pol.rota)return{x:destX,z:destZ};// sem rota: tenta a reta, o desencravador cobre
   let wp=pol.rota[pol.indiceRota];
@@ -424,7 +471,9 @@ function passoPolicial(pol,dt,alvoX,alvoZ,velocidade){
   const nx=pol.pos.x+vx*dt,nz=pol.pos.z+vz*dt;let moveu=false;
   if(!colidePedestre(nx,pol.pos.z)){pol.pos.x=nx;moveu=true}
   if(!colidePedestre(pol.pos.x,nz)){pol.pos.z=nz;moveu=true}
-  if(!moveu){pol.rota=null;pol.destinoRota=null;pol.proximoReplan=0}
+  // Bater na parede invalida a rota, mas NÃO libera replanejamento imediato: era o `proximoReplan=0`
+  // daqui que abria a torneira de A* por quadro (ver alvoDeMovimento).
+  if(!moveu){pol.rota=null;pol.destinoRota=null}
   else{
     pol.olharY=Math.atan2(vx,vz);pol.grupo.rotation.y=pol.olharY;
     pol.caminhando+=dt*7;const balanco=Math.sin(pol.caminhando)*.4;
@@ -492,6 +541,7 @@ function atualizarPolicialCombate(pol,dt,agora){
   let destino=null;
   if(vendo)destino={x:player.position.x,z:player.position.z};
   else if(rastroValido(agora))destino={x:rastro.x,z:rastro.z};
+  else if(emBusca(agora))destino=pontoDeBusca(pol,agora);
   const aproxMin=aproxMinima();
   if(destino&&(vendo?dist>aproxMin:distXZ(pol.pos,destino)>RUA_CHEGADA)){
     const alvo=alvoDeMovimento(pol,agora,destino.x,destino.z);
@@ -886,10 +936,11 @@ function atualizarPoliciaDeRua(dt,agora){
     const vendo=perceber(pol,agora);
     // Expira e vai embora — mas nunca no meio de uma perseguição, que seria a polícia evaporando na
     // cara do jogador. Com rastro ativo eles ficam até o rastro esfriar.
-    if(agora>pol.expiraEm&&!vendo&&!rastroValido(agora)){removerRua(i);continue}
+    if(agora>pol.expiraEm&&!vendo&&!rastroValido(agora)&&!emBusca(agora)){removerRua(i);continue}
     let destino=null;
     if(vendo)destino={x:player.position.x,z:player.position.z};
     else if(rastroValido(agora))destino={x:rastro.x,z:rastro.z};
+    else if(emBusca(agora))destino=pontoDeBusca(pol,agora);
     else{
       destino=pol.destinoRonda;
       if(distXZ(pol.pos,destino)<RUA_CHEGADA)pol.destinoRonda=pontoDeRonda();
@@ -999,12 +1050,19 @@ export function atualizarPolicia(dt){
   const emAlerta=policia.estado!=='patrulha';
   // Nível de procurado em estrelas: o jogador precisa VER a barra subir pra entender que se esconder
   // serviu pra alguma coisa. Escrito só quando muda, pelo mesmo motivo do cache da munição.
-  const chaveAlerta=`${policia.procurado}|${emAlerta}|${policiais.length}`;
+  // Três estados, não dois: PERSEGUINDO (alguém está te vendo), PROCURANDO (perderam de vista mas a
+  // busca corre) e limpo. O jogador precisa enxergar em qual está — é o que transforma sumir de vista
+  // numa jogada, em vez de num acaso.
+  const perseguindo=rastro.ativo;
+  const procurando=!perseguindo&&emBusca(agora);
+  const chaveAlerta=`${policia.procurado}|${emAlerta}|${policiais.length}|${perseguindo}|${procurando}`;
   if(chaveAlerta!==alertaCache){
     alertaCache=chaveAlerta;
     alertaEl.style.display=(emAlerta||policia.procurado>0)?'block':'none';
+    alertaEl.classList.toggle('procurando',procurando);
     const vivos=policiais.filter(p=>p.vivo).length;
-    alertaEl.textContent=`🚁 PROCURADO ${'★'.repeat(policia.procurado)}${'☆'.repeat(PROCURADO_MAX-policia.procurado)}`
+    const estrelas=`${'★'.repeat(policia.procurado)}${'☆'.repeat(PROCURADO_MAX-policia.procurado)}`;
+    alertaEl.textContent=(procurando?`🔦 PROCURANDO ${estrelas}`:`🚁 PROCURADO ${estrelas}`)
       +(vivos?` · 👮${vivos}`:'');
   }
   // O indicador conta a diferença entre "dentro da casa" e "escondido de verdade": dentro com a porta
