@@ -192,8 +192,18 @@ function fio(a,b){const pts=[new THREE.Vector3(a[0],6.05,a[1]),new THREE.Vector3
 const CELL_W=6,CELL_D=4.8,BECO=2.4,BLOCK_COLS=12,BLOCK_ROWS=8;let casaIndex=0;
 const telhados=[0x8a8a82,0x9c958a,0x7f8a7d,0x8f7f6e,0x87877f,0x9a8f7c];
 for(let row=0;row<BLOCK_ROWS;row++){for(let col=0;col<BLOCK_COLS;col++){const i=casaIndex++;const x=-36+col*CELL_W+Math.floor(col/4)*BECO;const z=-42+row*CELL_D+Math.floor(row/3)*BECO;const h=i%7===0?3.6:i%3===0?3.2:2.8;const tipo=i%5===0?1:i%4===0?2:i%3;const cor=coresBairro[i%coresBairro.length];const corTelhado=telhados[i%telhados.length];
-// Escada só nasce onde existe viela real ao lado (limite de bloco de 4 casas), nunca encostada em outra casa.
-const ladoEscada=(col%4===0&&col>0&&Math.random()<.6)?-1:0;
+// Escada precisa de viela nos DOIS lados que importam, e antes só a primeira era checada:
+//  · AO LADO (beco entre blocos de 4 colunas) — é onde a escadaria encosta;
+//  · À FRENTE DO 1º DEGRAU (beco entre blocos de 3 fileiras) — é por onde se chega nela.
+// Sem a segunda, as fileiras ficam coladas fundo-com-frente e a escadaria da casa de trás nasce a
+// ~60 cm do pé desta: a laje enterrada dela (2 m saindo do chão) fechava o acesso, o jogador andava
+// contra ela sem subir, e aí a rede anti-travamento entendia "encurralado" e teleportava ele pra
+// fora — exatamente o "não consigo subir, me joga pra fora".
+// A coluna do outro lado do beco (col%4===3) também ganha escada, virada pro mesmo beco: assim o
+// bairro não perde escadaria por causa da regra nova.
+const vielaAoLado=(col%4===0&&col>0)?-1:(col%4===3&&col<BLOCK_COLS-1)?1:0;
+const peDesobstruido=row%3===0;// beco na frente do 1º degrau (na fileira 0, a borda do mapa)
+const ladoEscada=(vielaAoLado&&peDesobstruido)?vielaAoLado:0;
 // Refúgio só onde a PORTA dá pra ser alcançada: as fileiras são coladas fundo-com-frente, e só há
 // vão livre à frente no fim de cada bloco de 3 (row%3===2) ou na última fileira. Marcar uma casa
 // do meio faria um esconderijo com a entrada emparedada pela casa de trás. Sobrado fica de fora
