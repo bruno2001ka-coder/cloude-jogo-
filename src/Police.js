@@ -37,7 +37,7 @@ import{scene,camera}from'./core.js';
 import{obterElevacao}from'./Terrain.js';
 import{primeiroImpactoNoSegmento,intersectarSegmentoCaixa,buscarPosicaoLivre}from'./Physics.js';
 import{encontrarCaminho,visaoHorizontalLivre}from'./NavMesh.js';
-import{player,zonasDeAcertoJogador,PLAYER_HEIGHT,encararDirecao}from'./Player.js';
+import{player,zonasDeAcertoJogador,PLAYER_HEIGHT,encararDirecao,definirAnimacaoTiro}from'./Player.js';
 import{ORDEM_ARMAS,armaEquipada,idArmaEquipada,equiparArma,obterBocaDaArma,direcaoComDispersao}from'./Weapons.js';
 import{estaEscondido,refugioEmQueEsta,refugios}from'./WorldGenerator.js';
 import{colidePedestre,waypointsVielas}from'./NPCs.js';
@@ -598,7 +598,9 @@ export function atirar(){
 // arma dentro de atirar(), então segurar não dispara mais rápido que 1/cooldown — não existe rajada
 // dependente de FPS.
 let gatilhoPressionado=false;
-export function definirGatilho(v){gatilhoPressionado=v;if(!v)avisouSemMunicao=false}
+// Avisa o boneco 3D pra ele trocar pra animação de andar atirando. Fica aqui, e não no Input, porque
+// o gatilho também é acionado pelo botão 🔫 do celular — este é o ponto por onde os dois passam.
+export function definirGatilho(v){gatilhoPressionado=v;if(!v)avisouSemMunicao=false;definirAnimacaoTiro(v)}
 export function atualizarTiroContinuo(){if(gatilhoPressionado)atirar()}
 // Cicla só entre as armas que o jogador POSSUI. Mora aqui porque é o único módulo que enxerga os três
 // pedaços: inventario.armas (Economy), equiparArma (Weapons) e proximoTiroJogador (local).
