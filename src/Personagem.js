@@ -144,6 +144,10 @@ function trocar(nome,transicao=TRANSICAO){
 // 332,8 m → 0,900 m, e as passadas seguintes não mexem mais em nada).
 function normalizar(){
   aNormalizar=false;
+  // Aplica a pose da ANIMAÇÃO antes de medir. Sem isto os ossos ainda estão na pose de repouso do
+  // arquivo, que não é a que aparece na tela — e quem se pendura num osso (a arma) sai alinhado com
+  // uma pose que nunca é desenhada: a pistola nascia 31° torta em relação ao corpo.
+  mixer.update(0);
   raiz.updateMatrixWorld(true);
   const f=alturaDaMalha(malhaPele);
   if(f.altura>0){
