@@ -13,6 +13,7 @@ import{atualizarPolicia,atualizarTiroContinuo,jogadorComColete}from'./Police.js'
 import{inputState,keys,initDragLook,atualizarSuavizacaoInput,fatorVelocidadeDesejado}from'./Input.js';
 import{atualizarSkyline}from'./Skyline.js';
 import{carregar,atualizarSave,instalarSalvamentoAoSair,saveDisponivel}from'./Save.js';
+import{personagemCarregado}from'./Personagem.js';
 
 camera.position.set(0,EYE_HEIGHT,16);
 initDragLook(renderer.domElement);
@@ -20,6 +21,15 @@ initDragLook(renderer.domElement);
 const droneBtn=document.getElementById('droneBtn');
 droneBtn.addEventListener('click',()=>alternarDrone(player.position,inputState));
 document.getElementById('destravarBtn').addEventListener('click',()=>destravarJogador(true));
+
+// Marca de versão na tela inicial. Existe por um motivo prático: quando uma novidade "não aparece",
+// a primeira pergunta é se o navegador está servindo o build novo ou um cache velho — e sem isso não
+// há como responder olhando a tela. O segundo campo diz se o boneco 3D entrou.
+const VERSAO_JOGO='2026-09-01';
+{const el=document.getElementById('versaoJogo');
+ if(el){el.textContent=`versão ${VERSAO_JOGO} · boneco 3D: carregando…`;
+   const marcar=()=>{el.textContent=`versão ${VERSAO_JOGO} · boneco 3D: ${personagemCarregado()?'ok':'não carregou'}`};
+   setTimeout(marcar,4000);setTimeout(marcar,12000);}}
 
 const startScreen=document.getElementById('startScreen'),playBtn=document.getElementById('playBtn');let gameStarted=false;playBtn.addEventListener('click',()=>{gameStarted=true;startScreen.classList.add('hide');document.body.classList.add('started');
   // O hint cobre a faixa dos botões embaixo. Ele serve pra primeira partida, não pro jogo todo:
