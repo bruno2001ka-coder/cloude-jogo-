@@ -48,8 +48,27 @@ const nuvemMat=new THREE.SpriteMaterial({map:criarTexturaNuvem(),transparent:tru
 const nuvens=[];
 for(let i=0;i<8;i++){const s=new THREE.Sprite(nuvemMat);const ang=Math.random()*Math.PI*2,raio=75+Math.random()*95;s.position.set(Math.cos(ang)*raio,55+Math.random()*30,Math.sin(ang)*raio);const esc=16+Math.random()*13;s.scale.set(esc,esc*.5,1);scene.add(s);nuvens.push(s)}
 
-const hemi=new THREE.HemisphereLight(0x9ec9e8,0x6b4a34,0.75);scene.add(hemi);
-const sun=new THREE.DirectionalLight(0xffe6bd,2.35);sun.position.set(-35,60,25);sun.castShadow=true;sun.shadow.mapSize.width=2048;sun.shadow.mapSize.height=2048;sun.shadow.camera.left=-82;sun.shadow.camera.right=82;sun.shadow.camera.top=96;sun.shadow.camera.bottom=-96;sun.shadow.camera.near=1;sun.shadow.camera.far=180;sun.shadow.camera.updateProjectionMatrix();sun.shadow.bias=-.0004;sun.shadow.radius=3;scene.add(sun);
+// Ambiente um pouco MAIS BAIXO que antes (0,75 -> 0,62): com a HDRI já preenchendo a sombra, o
+// hemisférico alto lavava o contraste e as paredes texturadas ficavam chapadas. Menos ambiente é o
+// que deixa o relevo do reboco e do tijolo aparecer.
+const hemi=new THREE.HemisphereLight(0x9ec9e8,0x6b4a34,0.62);scene.add(hemi);
+// SOL. A sombra SEGUE O JOGADOR (ver atualizarAmbiente): antes o mapa de 2048 cobria 164x192 m do
+// bairro inteiro, uns 12 texels por metro — sombra de poste virava borrão. Acompanhando o jogador
+// num raio de 34 m, o mesmo mapa rende 30 texels por metro, 2,5x mais definição, sem custar um pixel
+// a mais de memória. O que sai do raio simplesmente não projeta sombra, e a essa distância ninguém vê.
+const SOMBRA_RAIO=34;
+// Deslocamento fixo do sol em relação ao alvo: mantém a MESMA direção de luz do bairro todo (é o que
+// faz as sombras ficarem paralelas), só reposiciona a caixa de projeção.
+const SOL_OFFSET=new THREE.Vector3(-35,60,25);
+const sun=new THREE.DirectionalLight(0xffe6bd,2.5);sun.position.copy(SOL_OFFSET);sun.castShadow=true;
+sun.shadow.mapSize.width=2048;sun.shadow.mapSize.height=2048;
+sun.shadow.camera.left=-SOMBRA_RAIO;sun.shadow.camera.right=SOMBRA_RAIO;
+sun.shadow.camera.top=SOMBRA_RAIO;sun.shadow.camera.bottom=-SOMBRA_RAIO;
+sun.shadow.camera.near=1;sun.shadow.camera.far=200;sun.shadow.camera.updateProjectionMatrix();
+// bias contra acne + normalBias, que é o que resolve o serrilhado agora que as paredes têm normal map:
+// o normal perturbado desloca a amostra da sombra, e sem esta folga aparece listra na parede lisa.
+sun.shadow.bias=-.0002;sun.shadow.normalBias=.035;sun.shadow.radius=3;
+scene.add(sun);scene.add(sun.target);
 const fillLight=new THREE.DirectionalLight(0x8fb4e0,0.4);fillLight.position.set(40,25,-30);scene.add(fillLight);
 // Lua: segunda luz direcional fixa, sem sombra (evita dobrar o custo de shadow map). Faz cross-fade
 // com o sol — mais simples e mais barato que arquear o sol pra "debaixo do chão" à noite.
@@ -103,7 +122,7 @@ function atualizarCicloDia(dt){
 
   hemi.color.copy(HEMI_CEU_DIA).lerp(HEMI_CEU_NOITE,quanNoite);
   hemi.groundColor.copy(HEMI_CHAO_DIA).lerp(HEMI_CHAO_NOITE,quanNoite);
-  hemi.intensity=THREE.MathUtils.lerp(.75,.28,quanNoite);
+  hemi.intensity=THREE.MathUtils.lerp(.62,.26,quanNoite);
 
   horizonteMat.color.copy(HORIZ_TINTA_DIA).lerp(HORIZ_TINTA_NOITE,quanNoite);
   nuvemMat.color.copy(NUVEM_COR_DIA).lerp(NUVEM_COR_NOITE,quanNoite);
@@ -118,7 +137,18 @@ function atualizarCicloDia(dt){
 export function obterBandaFase(){return fase<.22||fase>.78?'noite':fase<.30?'nascer':fase<.68?'dia':'por'}
 
 // Chamado a cada frame: avança o ciclo dia/noite, mantém céu/pano de fundo centrados na câmera e as nuvens derivando devagar.
-export function atualizarAmbiente(dt){
+// `alvo` é a posição do jogador: a caixa de sombra viaja com ele (ver SOMBRA_RAIO).
+const _alvoSol=new THREE.Vector3();
+export function atualizarAmbiente(dt,alvo){
+  if(alvo){
+    // Trava o alvo na grade de um texel. Sem isso a caixa de sombra desliza continuamente com o
+    // jogador e a borda de toda sombra ferve (shadow swimming) enquanto ele anda.
+    const passo=SOMBRA_RAIO*2/2048;
+    _alvoSol.set(Math.round(alvo.x/passo)*passo,0,Math.round(alvo.z/passo)*passo);
+    sun.target.position.copy(_alvoSol);
+    sun.position.copy(_alvoSol).add(SOL_OFFSET);
+    sun.target.updateMatrixWorld();
+  }
   atualizarCicloDia(dt);
   ceu.position.copy(camera.position);
   horizonte.position.set(camera.position.x,22,camera.position.z);
