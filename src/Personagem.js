@@ -18,6 +18,8 @@ import{GLTFLoader}from'three/addons/loaders/GLTFLoader.js';
 export const AJUSTE={
   escala:1,        // multiplica a altura final. 1 = exatamente a altura do jogo (PLAYER_HEIGHT)
   alturaPes:0,     // sobe (+) ou desce (-) o boneco inteiro, em metros
+  // Mochila dos pacotes: tamanho e posição em relação ao centro do tronco (z negativo = costas).
+  mochila:{escala:1,x:0,y:.02,z:-.12},
   // Posição e giro da ARMA na mão. Ela já nasce alinhada aos eixos do corpo; isto é o ajuste fino.
   arma:{x:0,y:0,z:0,giroX:0,giroY:0,giroZ:0},
   // COLETE: escala relativa ao tronco medido, e deslocamento em metros a partir do centro do peito.
@@ -177,6 +179,7 @@ function normalizar(){
   raiz.visible=true;
   aoProntoCb?.(raiz);aoProntoCb=null;
   tentarVestirColete();// o arquivo do colete pode já ter chegado antes deste primeiro quadro
+  tentarPendurarMochilas();// a mochila não depende de arquivo, só da medida do tronco
 }
 
 // Chamado uma vez por quadro pelo Player. `velocidade` é o módulo da velocidade horizontal em unidades
@@ -256,6 +259,56 @@ function tentarVestirColete(){
   const destino=m.centro.clone().add(new THREE.Vector3(AJUSTE.colete.x,AJUSTE.colete.y,AJUSTE.colete.z));
   coleteModelo.position.add(destino.sub(centro).divideScalar(escalaDe(coleteGrupo)));
 }
+// ===== MOCHILA =====
+// Diferente do colete, a mochila não tem arquivo: as caixas que o Player montou continuam sendo as
+// caixas. O que este módulo faz é pendurá-las no osso do tronco e redimensionar pela medida REAL do
+// tronco do modelo — sem isso ficariam do tamanho do boneco de caixas (tronco de 1,05 de largura) e
+// engoliriam o humanoide, que foi exatamente o que aconteceu com o colete antes de ser ajustado.
+let mochilaModelo=null;
+const mochilasPendentes=[];
+export function pendurarMochila(grupo){
+  mochilasPendentes.push(grupo);
+  // Pede o modelo 3D. Se chegar, troca as caixas por ele DENTRO do mesmo grupo — o liga/desliga
+  // continua sendo um `.visible` só. Se falhar, as caixas ficam e o jogador vê a mochila simples.
+  if(!mochilaModelo)new GLTFLoader().load('assets/mochila.glb',gltf=>{
+    mochilaModelo=gltf.scene;tentarPendurarMochilas();
+  },undefined,err=>{
+    console.warn('Quintal 3D: mochila 3D não carregou, seguindo com a mochila simples.',err);
+    tentarPendurarMochilas();
+  });
+  tentarPendurarMochilas();
+}
+function tentarPendurarMochilas(){
+  if(!mochilasPendentes.length||!troncoOsso||aNormalizar)return;
+  const m=medidasTronco();if(!m)return;
+  for(const grupo of mochilasPendentes.splice(0)){
+    troncoOsso.add(grupo);
+    grupo.position.set(0,0,0);grupo.rotation.set(0,0,0);grupo.scale.setScalar(1);
+    if(mochilaModelo){
+      for(const filho of grupo.children.slice()){grupo.remove(filho);filho.geometry?.dispose?.()}
+      grupo.add(mochilaModelo);
+      // De costas pro observador: o modelo vem virado pra frente, e uma mochila com o bolso pro lado
+      // das costas do jogador fica com a alça pra fora.
+      mochilaModelo.rotation.y=Math.PI;
+    }
+    grupo.updateWorldMatrix(true,true);
+    const caixa=new THREE.Box3().setFromObject(grupo);
+    const larg=caixa.max.x-caixa.min.x;
+    // Mochila um pouco mais estreita que as costas: do tamanho do tronco ela lê como armário.
+    const alvo=m.profundidade*1.35*AJUSTE.mochila.escala;
+    if(larg>0)grupo.scale.multiplyScalar(alvo/larg);
+    // Centra no tronco e empurra pras COSTAS. O deslocamento é medido em mundo e `position` vive no
+    // espaço do pai, então quem converte é a escala do PAI — mesma armadilha do colete, que dividido
+    // pela escala do próprio modelo ficou 5 cm acima do peito.
+    grupo.updateWorldMatrix(true,true);
+    caixa.setFromObject(grupo);
+    const centro=new THREE.Vector3();caixa.getCenter(centro);
+    const destino=m.centro.clone().add(new THREE.Vector3(AJUSTE.mochila.x,AJUSTE.mochila.y,AJUSTE.mochila.z));
+    grupo.position.add(destino.sub(centro).divideScalar(escalaDe(troncoOsso)));
+    grupo.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true}});
+  }
+}
+
 // Escala de mundo acumulada num objeto: converter um deslocamento de mundo pra local pede dividir por ela.
 function escalaDe(obj){const e=new THREE.Vector3();obj.getWorldScale(e);return e.x||1}
 export function raizPersonagem(){return raiz}

@@ -1,0 +1,21 @@
+{
+  "id": "/cloude-jogo-/",
+  "name": "Quintal 3D",
+  "short_name": "Quintal 3D",
+  "description": "Jogo 3D de bairro brasileiro: cultive, atravesse a favela patrulhada e escape da polícia.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "display_override": ["fullscreen", "standalone"],
+  "orientation": "any",
+  "background_color": "#10160f",
+  "theme_color": "#10160f",
+  "lang": "pt-BR",
+  "dir": "ltr",
+  "categories": ["games"],
+  "icons": [
+    { "src": "assets/icones/icone-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "assets/icones/icone-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "assets/icones/icone-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

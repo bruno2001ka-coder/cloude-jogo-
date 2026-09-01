@@ -3,7 +3,7 @@ import*as THREE from'three';
 import{mergeGeometries}from'three/addons/utils/BufferGeometryUtils.js';
 import{scene}from'./core.js';
 import{obterElevacao}from'./Terrain.js';
-import{registrarObstaculo,superficiesAndaveis,obstaculos,obstaculosPedestres}from'./Physics.js';
+import{registrarObstaculo,superficiesAndaveis,obstaculos,obstaculosPedestres,marcarObstaculoMovel}from'./Physics.js';
 import{bmat,matReboco,matTelha,matConcreto,matMadeira,matTerraArada,matTerraBatida,uvPorMetro,tijolo,concreto,janela,janelaAcesa,molduraJanela,porta,agua,posteMat,folhaMat,folhaClara,criarSombraContato}from'./Materials.js';
 import{POLOS}from'./Poles.js';
 // O degrau da escadaria é derivado do step-up do jogador: um número solto aqui viraria escada
@@ -219,6 +219,7 @@ function registrarRefugio(g,x,z,w,d,pecaPorta){
   pivo.rotation.y=PORTA_ABERTA_RAD;// a casa nasce com a porta aberta
   const caixa=new THREE.Box3();sumirCaixa(caixa);
   obstaculos.push(caixa);// a MESMA Box3 fica na lista pra sempre; o que muda é o conteúdo dela
+  marcarObstaculoMovel(caixa);// fora da grade espacial: o conteúdo muda, o índice ficaria errado
   // O recuo precisa cobrir a parede MAIS a meia-largura do corpo (≈0,19 m): com o recuo justo da
   // parede, um ponto do "interior" colado na lateral já deixava a hitbox dentro do tijolo, e fechar
   // a porta ali prendia o jogador no próprio colisor. Medido: 42 pontos do interior davam colisão.
@@ -550,7 +551,7 @@ function criarFazenda(cx,cz){
     new THREE.Vector3(porteiraX-.2,yPorteira-.6,vaoZ0),
     new THREE.Vector3(porteiraX+.2,yPorteira+ALTURA_PORTEIRA,vaoZ1));
   const caixaPorteira=new THREE.Box3();sumirCaixa(caixaPorteira);
-  obstaculos.push(caixaPorteira);
+  obstaculos.push(caixaPorteira);marcarObstaculoMovel(caixaPorteira);
   // Nasce ABERTA pelo mesmo motivo que as casas-refúgio: a NavMesh é rasterizada uma vez, depois que
   // todos os obstáculos entraram, e se o vão estivesse fechado nessa hora a polícia nunca acharia
   // caminho pra dentro do sítio — nem depois de o jogador abrir a porteira.

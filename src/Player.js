@@ -3,8 +3,8 @@ import*as THREE from'three';
 import{scene}from'./core.js';
 import{obterElevacao}from'./Terrain.js';
 import{obstaculos,superficiesAndaveis,caixaColideComObstaculos,buscarPosicaoLivre}from'./Physics.js';
-import{criarSombraContato,coleteMat,coleteFaixaMat}from'./Materials.js';
-import{carregarPersonagem,atualizarAnimacaoPersonagem,personagemCarregado,ossoDaMao,ossoDoTronco,medidasTronco,esconderBonecoAntigo,carregarColete,coleteVestido,AJUSTE}from'./Personagem.js';
+import{criarSombraContato,coleteMat,coleteFaixaMat,mochilaMat,mochilaFaixaMat}from'./Materials.js';
+import{carregarPersonagem,atualizarAnimacaoPersonagem,personagemCarregado,ossoDaMao,ossoDoTronco,medidasTronco,esconderBonecoAntigo,carregarColete,coleteVestido,pendurarMochila,AJUSTE}from'./Personagem.js';
 
 export const EYE_HEIGHT=0.8;
 export const PLAYER_HEIGHT=0.9;
@@ -44,6 +44,31 @@ carregarColete(colete);
 // não este módulo — daí só expormos o liga/desliga em vez de ler estado de fora.
 export function definirColeteVisivel(v){colete.visible=!!v}
 export function coleteEstaVisivel(){return colete.visible}
+
+// ===== MOCHILA DOS PACOTES =====
+// É o FLAGRANTE do jogo: enquanto houver pacote no inventário a mochila aparece nas costas, e é vendo
+// ela que a polícia decide abordar (Police.js). Sem carga, ela some e o jogador volta a ser um
+// morador qualquer. Mesma técnica do colete — grupo próprio, nasce escondido, o jogo só alterna
+// `.visible` e nunca constrói malha em pleno jogo.
+// Medidas em unidades CRUAS, como o resto do boneco (o corpo é 1.05 x 1.55 x .62).
+const mochila=new THREE.Group();mochila.visible=false;
+{
+  const corpoM=new THREE.Mesh(new THREE.BoxGeometry(.82,.92,.42),mochilaMat);corpoM.position.set(0,1.95,-.48);mochila.add(corpoM);
+  // Bolso da frente e alça horizontal: sem eles a mochila lê como um caixote colado nas costas.
+  const bolso=new THREE.Mesh(new THREE.BoxGeometry(.56,.40,.14),mochilaFaixaMat);bolso.position.set(0,1.78,-.72);mochila.add(bolso);
+  const alcaH=new THREE.Mesh(new THREE.BoxGeometry(.84,.10,.06),mochilaFaixaMat);alcaH.position.set(0,2.18,-.70);mochila.add(alcaH);
+  // Alças por cima dos ombros, indo do topo da mochila até o peito.
+  for(const x of[-.30,.30]){
+    const alca=new THREE.Mesh(new THREE.BoxGeometry(.12,.86,.10),mochilaFaixaMat);
+    alca.position.set(x,2.16,-.12);alca.rotation.x=-.22;mochila.add(alca);
+  }
+  for(const m of mochila.children){m.castShadow=true;m.receiveShadow=true}
+}
+player.add(mochila);
+// Pendura no osso do tronco quando o boneco 3D chega, pra ela acompanhar a animação em vez de ficar
+// rígida. Se o modelo não carregar, ela fica onde está e o jogador vê a mochila simples.
+pendurarMochila(mochila);
+export function definirMochilaVisivel(v){mochila.visible=!!v}
 
 // ===== MÃO QUE SEGURA A ARMA =====
 // As armas (Weapons.js) são penduradas aqui pra acompanharem a animação de caminhada sem código
