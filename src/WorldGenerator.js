@@ -144,14 +144,17 @@ export const casasPos=[];// footprints pro radar mostrar o traçado das ruas, n�
 // as outras seguem como um único bloco maciço, que é muito mais barato (1 malha e 1 colisor por casa
 // contra 6) — 96 casas ocas seria desperdício de draw call e de teste de colisão por frame.
 const ESP_PAREDE=.18,PORTA_ALTURA=2.1,VAO_PORTA=1.2;
-function construirCascaCasa(g,w,h,d,fachada){
+// `afundar` estende as paredes PRA BAIXO sem mexer no topo: é o que assenta a casa no terreno em
+// declive. Ver casaBairro.
+function construirCascaCasa(g,w,h,d,fachada,afundar=0){
   const paredes=[],meia=ESP_PAREDE/2;
-  paredes.push(bloco(new THREE.BoxGeometry(w,h,ESP_PAREDE),fachada,0,h/2,-d/2+meia,g));
-  for(const s of[-1,1])paredes.push(bloco(new THREE.BoxGeometry(ESP_PAREDE,h,d-ESP_PAREDE*2),fachada,s*(w/2-meia),h/2,0,g));
+  const hp=h+afundar,yp=h/2-afundar/2;// parede mais alta, topo no mesmo lugar
+  paredes.push(bloco(new THREE.BoxGeometry(w,hp,ESP_PAREDE),fachada,0,yp,-d/2+meia,g));
+  for(const s of[-1,1])paredes.push(bloco(new THREE.BoxGeometry(ESP_PAREDE,hp,d-ESP_PAREDE*2),fachada,s*(w/2-meia),yp,0,g));
   // Frente: duas faixas ao lado do vão + verga por cima, deixando a porta ABERTA (sem a folha, que
   // nas casas normais é uma placa colada na fachada e aqui tamparia justamente a entrada).
   const ladoLarg=(w-VAO_PORTA)/2;
-  for(const s of[-1,1])paredes.push(bloco(new THREE.BoxGeometry(ladoLarg,h,ESP_PAREDE),fachada,s*(VAO_PORTA+ladoLarg)/2,h/2,d/2-meia,g));
+  for(const s of[-1,1])paredes.push(bloco(new THREE.BoxGeometry(ladoLarg,hp,ESP_PAREDE),fachada,s*(VAO_PORTA+ladoLarg)/2,yp,d/2-meia,g));
   const alturaVerga=h-PORTA_ALTURA;
   if(alturaVerga>.05)paredes.push(bloco(new THREE.BoxGeometry(VAO_PORTA,alturaVerga,ESP_PAREDE),fachada,0,PORTA_ALTURA+alturaVerga/2,d/2-meia,g));
   return paredes;
@@ -169,7 +172,15 @@ function construirPortaRefugio(g,d){
   bloco(new THREE.SphereGeometry(.05,6,5),posteMat,larg-.14,PORTA_ALTURA*.5,.06,pivo);// maçaneta: lê como porta de longe
   return{pivo,folha};
 }
-function casaBairro(x,z,w=6,d=6,h=3,cor=0xd87957,tipo=0,registrar=true,ladoEscada=0,corTelhado=0x888888,refugio=false){const g=new THREE.Group();const terrenoY=obterElevacao(x,z);g.position.set(x,terrenoY,z);g.rotation.y=z>0?Math.PI:0;g.userData={bairroCasa:true,cor,tipo};bairro.add(g);const fachada=matReboco(cor);const casca=refugio?construirCascaCasa(g,w,h,d,fachada):null;if(refugio)g.userData.pecaPorta=construirPortaRefugio(g,d);const paredeMesh=casca?null:bloco(new THREE.BoxGeometry(w,h,d),fachada,0,h/2,0,g);const frente=new THREE.Mesh(new THREE.BoxGeometry(w*.7,.1,.04),concreto);frente.position.set(0,.08,d/2+.025);frente.castShadow=true;frente.receiveShadow=true;g.add(frente);const doorHeight=PORTA_ALTURA;if(!refugio)bloco(new THREE.BoxGeometry(.95,doorHeight,.08),porta,0,doorHeight/2,d/2+.07,g);for(const xx of [-w*.27,w*.27]){bloco(new THREE.BoxGeometry(1.22,1.02,.05),molduraJanela,xx,h*.56,d/2+.05,g);bloco(new THREE.BoxGeometry(1.05,.85,.06),Math.random()<.22?janelaAcesa:janela,xx,h*.56,d/2+.12,g);bloco(new THREE.BoxGeometry(1.18,.07,.08),concreto,xx,h*.56,d/2+.20,g)}const laje=bloco(new THREE.BoxGeometry(w+.12,.12,d+.12),matTelha(corTelhado),0,h+.06,0,g);superficiesAndaveis.push(laje);const muretaY=h+.12+.25;
+// ASSENTAMENTO NO TERRENO. A casa é posicionada pela elevação do CENTRO, mas o terreno é ondulado:
+// num lote em declive isso deixava um canto até 80 cm no ar (e o oposto 80 cm enterrado). `afundar`
+// estica as paredes pra baixo até o canto mais baixo, mantendo o topo onde estava. É de graça em
+// draw calls — a mesma malha, só mais alta — enquanto um baldrame separado custaria +111 malhas.
+// `assentar=false` é pro andar de cima do sobrado, que se apoia na casa e não no chão.
+function casaBairro(x,z,w=6,d=6,h=3,cor=0xd87957,tipo=0,registrar=true,ladoEscada=0,corTelhado=0x888888,refugio=false,assentar=true){const g=new THREE.Group();const terrenoY=obterElevacao(x,z);g.position.set(x,terrenoY,z);g.rotation.y=z>0?Math.PI:0;g.userData={bairroCasa:true,cor,tipo};bairro.add(g);const fachada=matReboco(cor);
+let afundar=0;
+if(assentar){let menor=terrenoY;for(const sx of[-1,1])for(const sz of[-1,1])menor=Math.min(menor,obterElevacao(x+sx*w/2,z+sz*d/2));afundar=Math.max(0,terrenoY-menor)+.12}
+const casca=refugio?construirCascaCasa(g,w,h,d,fachada,afundar):null;if(refugio)g.userData.pecaPorta=construirPortaRefugio(g,d);const paredeMesh=casca?null:bloco(new THREE.BoxGeometry(w,h+afundar,d),fachada,0,h/2-afundar/2,0,g);const frente=new THREE.Mesh(new THREE.BoxGeometry(w*.7,.1,.04),concreto);frente.position.set(0,.08,d/2+.025);frente.castShadow=true;frente.receiveShadow=true;g.add(frente);const doorHeight=PORTA_ALTURA;if(!refugio)bloco(new THREE.BoxGeometry(.95,doorHeight,.08),porta,0,doorHeight/2,d/2+.07,g);for(const xx of [-w*.27,w*.27]){bloco(new THREE.BoxGeometry(1.22,1.02,.05),molduraJanela,xx,h*.56,d/2+.05,g);bloco(new THREE.BoxGeometry(1.05,.85,.06),Math.random()<.22?janelaAcesa:janela,xx,h*.56,d/2+.12,g);bloco(new THREE.BoxGeometry(1.18,.07,.08),concreto,xx,h*.56,d/2+.20,g)}const laje=bloco(new THREE.BoxGeometry(w+.12,.12,d+.12),matTelha(corTelhado),0,h+.06,0,g);superficiesAndaveis.push(laje);const muretaY=h+.12+.25;
 // A escadaria (quando existe) fica FORA da largura w da casa (ver criarEscadariaViela). Sem estender a
 // mureta frontal/traseira até lá, sobra um canto sem parapeito bem onde a escadaria termina — o jogador
 // caminha por cima do telhado, passa reto por esse canto aberto e cai direto no vão entre as casas.
@@ -177,8 +188,10 @@ const alcanceEscada=w/2+ESCADA_LARGURA+ESCADA_MARGEM;
 const muretaMinX=ladoEscada===-1?-alcanceEscada:-(w/2+.06),muretaMaxX=ladoEscada===1?alcanceEscada:(w/2+.06);
 const muretaLargura=muretaMaxX-muretaMinX,muretaCentroX=(muretaMaxX+muretaMinX)/2;
 const muretas=[bloco(new THREE.BoxGeometry(muretaLargura,.5,.12),matTelha(corTelhado),muretaCentroX,muretaY,d/2,g),bloco(new THREE.BoxGeometry(muretaLargura,.5,.12),matTelha(corTelhado),muretaCentroX,muretaY,-d/2,g)];if(ladoEscada!==1)muretas.push(bloco(new THREE.BoxGeometry(.12,.5,d+.12),matTelha(corTelhado),w/2,muretaY,0,g));if(ladoEscada!==-1)muretas.push(bloco(new THREE.BoxGeometry(.12,.5,d+.12),matTelha(corTelhado),-w/2,muretaY,0,g));g.userData.muretas=muretas;casasPos.push({x,z,w,d});if(tipo===2){const sacada=bloco(new THREE.BoxGeometry(w*.62,.12,.75),concreto,0,h*.62,d/2+.42,g);for(const xx of [-w*.3,-w*.1,w*.1,w*.3])bloco(new THREE.BoxGeometry(.05,.8,.05),posteMat,xx,h*.62+.38,d/2+.73,g)}if(tipo!==1){const tank=bloco(new THREE.CylinderGeometry(.38,.38,.62,10),agua,w*.22,h+.55,-d*.12,g);tank.castShadow=true}g.userData.paredeMesh=paredeMesh;if(registrar){if(casca)casca.forEach(registrarObstaculo);else registrarObstaculo(paredeMesh);muretas.forEach(registrarObstaculo)}return g}
-function sobrado(x,z,w,d,h,cor,ladoEscada=0,corTelhado=0x888888){const g=casaBairro(x,z,w,d,h,cor,2,true,ladoEscada,corTelhado);const up=casaBairro(x,z,w*.86,d*.82,h*.72,cor===tijolo.color?.getHex?.()?0xd87957:0xe8c45d,1,false,0,corTelhado);up.position.y=obterElevacao(x,z)+h+.18;registrarObstaculo(up.userData.paredeMesh);up.userData.muretas.forEach(registrarObstaculo);return g}
-function arvore(x,z,s=1){const g=new THREE.Group();g.position.set(x,0,z);bairro.add(g);bloco(new THREE.CylinderGeometry(.16*s,.22*s,1.5*s,6),posteMat,0,.75*s,0,g);
+function sobrado(x,z,w,d,h,cor,ladoEscada=0,corTelhado=0x888888){const g=casaBairro(x,z,w,d,h,cor,2,true,ladoEscada,corTelhado);const up=casaBairro(x,z,w*.86,d*.82,h*.72,cor===tijolo.color?.getHex?.()?0xd87957:0xe8c45d,1,false,0,corTelhado,false,false);up.position.y=obterElevacao(x,z)+h+.18;registrarObstaculo(up.userData.paredeMesh);up.userData.muretas.forEach(registrarObstaculo);return g}
+// A árvore nasce NO TERRENO. Ela ficava em y=0 fixo, e o terreno do mapa vai de -2,5 a +3,8 m: as 11
+// árvores estavam todas fora do chão — a de (-18,72) enterrada 3,8 m e as das bordas boiando 2,5 m no ar.
+function arvore(x,z,s=1){const g=new THREE.Group();g.position.set(x,obterElevacao(x,z),z);bairro.add(g);bloco(new THREE.CylinderGeometry(.16*s,.22*s,1.5*s,6),posteMat,0,.75*s,0,g);
   const clusters=[[0,1.8,0],[-.45,1.55,0],[.45,1.55,0],[0,1.55,.45],[0,1.55,-.42]];
   clusters.forEach((p,i)=>{const folha=bloco(new THREE.DodecahedronGeometry(.62*s*(.85+Math.random()*.3),0),i%2===0?folhaMat:folhaClara,p[0],p[1]*s,p[2],g);folha.rotation.set(Math.random()*Math.PI,Math.random()*Math.PI,Math.random()*Math.PI)});
   criarSombraContato(.85*s,g);
@@ -240,6 +253,15 @@ function poste(x,z){const g=new THREE.Group();g.position.set(x,0,z);bairro.add(g
 function fio(a,b){const pts=[new THREE.Vector3(a[0],6.05,a[1]),new THREE.Vector3((a[0]+b[0])/2,5.35,(a[1]+b[1])/2),new THREE.Vector3(b[0],6.05,b[1])];const line=new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),new THREE.LineBasicMaterial({color:0x252321}));bairro.add(line)}
 // Comunidade compacta: paredes coladas em blocos de quatro, com vielas de 2,4 m.
 const CELL_W=6,CELL_D=4.8,BECO=2.4,BLOCK_COLS=12,BLOCK_ROWS=8;let casaIndex=0;
+// ===== PRAÇA DO MERCADO =====
+// O Mercado é uma casa de 9x7 fincada em (0,-18), que é DENTRO da grade de casas — ele invadia quatro
+// lotes, com até 5,1 x 3,5 m de parede dentro de parede. Era o "casa em cima de casa".
+// Não dá pra mudá-lo de lugar: (0,-18) é a coordenada do polo de sementes (Poles.js), e o Mercado no
+// centro é o que obriga a atravessar o bairro patrulhado. Então os lotes que ele ocupa deixam de
+// existir e viram o largo à frente dele.
+const MERCADO={x:0,z:-18,w:9,d:7};
+const xDaColuna=c=>-36+c*CELL_W+Math.floor(c/4)*BECO;
+const naPraca=(x,z)=>Math.abs(x-MERCADO.x)<(CELL_W+MERCADO.w)/2-.1&&Math.abs(z-MERCADO.z)<(CELL_D+MERCADO.d)/2-.1;
 const telhados=[0x8a8a82,0x9c958a,0x7f8a7d,0x8f7f6e,0x87877f,0x9a8f7c];
 for(let row=0;row<BLOCK_ROWS;row++){for(let col=0;col<BLOCK_COLS;col++){const i=casaIndex++;const x=-36+col*CELL_W+Math.floor(col/4)*BECO;const z=-42+row*CELL_D+Math.floor(row/3)*BECO;const h=i%7===0?3.6:i%3===0?3.2:2.8;const tipo=i%5===0?1:i%4===0?2:i%3;const cor=coresBairro[i%coresBairro.length];const corTelhado=telhados[i%telhados.length];
 // Escada precisa de viela nos DOIS lados que importam, e antes só a primeira era checada:
@@ -260,7 +282,13 @@ const ladoEscada=(vielaAoLado&&peDesobstruido)?vielaAoLado:0;
 // do meio faria um esconderijo com a entrada emparedada pela casa de trás. Sobrado fica de fora
 // (são duas casas empilhadas, a de cima não tem como ser oca sem retrabalho).
 const frenteLivre=(row%3===2||row===BLOCK_ROWS-1);
-const ehRefugio=frenteLivre&&col%4===2&&i%7!==0;
+// Lote engolido pela praça do Mercado: não constrói nada aqui.
+if(naPraca(x,z))continue;
+// O refúgio de cada fileira mora na 3ª coluna do bloco (col%4===2). Numa fileira, essa coluna cai
+// dentro da praça — sem o desvio abaixo o bairro perderia um dos 8 esconderijos, que é gameplay.
+const colNatural=col-(col%4)+2;
+const colRefugio=naPraca(xDaColuna(colNatural),z)?3:2;
+const ehRefugio=frenteLivre&&col%4===colRefugio&&i%7!==0;
 const grupoCasa=i%7===0?sobrado(x,z,CELL_W,CELL_D,h,cor,ladoEscada,corTelhado):casaBairro(x,z,CELL_W,CELL_D,h,cor,tipo,true,ladoEscada,corTelhado,ehRefugio);
 if(ladoEscada)criarEscadariaViela(grupoCasa,h+.12,CELL_W,CELL_D,ladoEscada);
 if(ehRefugio){marcarRefugio(grupoCasa,CELL_D);registrarRefugio(grupoCasa,x,z,CELL_W,CELL_D,grupoCasa.userData.pecaPorta)}

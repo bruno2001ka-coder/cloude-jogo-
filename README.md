@@ -80,12 +80,29 @@ Jogo 3D em Three.js — bairro brasileiro estilizado, com cultivo/economia, bots
   Esconder-se são 8 casas comuns da favela, ocas e com porta que abre e fecha: **entrar e fechar**,
   as duas condições juntas. Aos 3 s escondido a guarnição perde o rastro e recua; a cada 18 s cai uma
   estrela. Sair antes de zerar deixa ficha, e com ficha a polícia recomeça — agora numa **caçada**
-  atrás do jogador (sem plantação envolvida), com o holofote seguindo ele. O helicóptero **só entra
-  a partir de 3★**: com a ficha baixa o céu fica limpo.
+  atrás do jogador (sem plantação envolvida), com o holofote seguindo ele.
+  ⚠️ **Divergência conhecida:** `PROCURADO_HELI_ATIVO` (3★) governa só o *regime de patrulha* do
+  helicóptero — altitude e raio de detecção de plantação. A **caçada** dispara em `procurado > 0`, ou
+  seja, com 1 estrela o helicóptero já vem atrás do jogador e desce guarnição. O comentário ao lado da
+  constante diz o contrário ("caçada ao jogador por rapel não acontece" abaixo do limiar), então é o
+  código que não implementa a intenção. Medido: com 1★ uma guarnição de 2 desceu em ~13 s. Fica
+  registrado sem correção porque mexer nisso muda a dificuldade das fichas baixas.
 - **Polícia de rua** (`src/Police.js`) — duplas que aparecem de tempos em tempos (a cada 70–140 s, no
   máximo 2 ao mesmo tempo, 75 s de ronda cada) e vão embora sozinhas. Não é vigilância 24 h: com a
   ficha limpa elas rondam pontos aleatórios do bairro, e com ficha aberta 60% das rondas passam a
   mirar os **esconderijos** — é a polícia batendo nas casas onde você costuma se enfiar.
+- **Busca** (`src/Police.js`) — o estado que separa "estão em cima de você" de "estão te procurando".
+  Antes eram dois modos só: ou o policial via o jogador, ou (passados os 9 s de rastro do rádio)
+  sorteava um ponto no **mapa inteiro** — quem acabava de te perder podia sair andando pro outro lado
+  da favela. Agora, quando o rastro esfria, começa a busca: cada um vasculha em volta do último ponto
+  conhecido num raio que **cresce** com o tempo (4 → 22 m em 26 s), e só então desiste.
+  Cada policial recebe um **setor** separado pelo ângulo de ouro (137,5°), então qualquer número deles
+  se espalha em volta do ponto sem coordenar nada — é o que faz a dupla ABRIR em vez de andar em fila
+  indiana atrás do mesmo destino. Quando o ponto do setor cai dentro de uma casa, ele procura um lugar
+  livre **no próprio setor** antes de desistir: a primeira versão caía no ponto do rastro e colapsava a
+  dupla toda no mesmo destino (medido: 4° de separação, contra 41° depois da correção).
+  E o jogador **vê**: o HUD entra em `🔦 PROCURANDO` com pulso próprio enquanto a busca corre. Sem esse
+  sinal não dá pra distinguir os dois estados, e metade do valor da mecânica se perde.
 - **Visão da polícia** (`src/Police.js`) — cada policial só enxerga dentro de um **cone à frente**
   (±54° e 18 m com a ficha limpa, abrindo até ±74° e 27 m no topo) **e** com linha de visão livre:
   atrás de parede, dentro de casa com a porta fechada ou pelas costas, ele não vê. Quem avista
