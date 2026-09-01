@@ -184,6 +184,18 @@ Três decisões no service worker, uma por tipo de conteúdo:
   devolver, então dá pra abrir offline; o que não dá é saber se veio 404, e por isso ela nunca
   substitui uma cópia boa que já esteja no cache.
 
+O manifesto traz **screenshots de verdade** do jogo rodando (uma `narrow` de celular, uma `wide`), que
+é o que o Android mostra no diálogo de instalação — sem elas o diálogo cai no formato pobre. São JPEG
+de ~140 KB: em PNG davam 1 MB cada, e isso é peso que todo mundo que instalar vai baixar.
+
+O que **não** foi adicionado, e por quê: o PWABuilder sugere `shortcuts`, notificações push,
+`background sync` e `periodic sync`. Um jogo com um botão "JOGAR AGORA" não tem entrada alternativa —
+um atalho de lançador que abre a mesma tela seria mentira no manifesto (e auto-iniciar sem toque do
+usuário quebraria o Pointer Lock no PC). Push exige servidor com chaves VAPID, que um site estático no
+Pages não tem. `background sync` serve pra reenviar requisição que falhou, e este jogo não manda nada
+pra lugar nenhum — o progresso é local. Os três subiriam a nota do PWABuilder e não fariam nada pelo
+jogador.
+
 O registro do service worker fica num `<script>` no `index.html`, **fora do grafo de módulos do jogo**.
 Ele morava no `main.js`, que importa o three.js do CDN — e se o CDN falhasse, o registro nunca
 acontecia, justamente na hora em que um cache offline seria mais útil.
