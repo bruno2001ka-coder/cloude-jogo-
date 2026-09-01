@@ -4,6 +4,18 @@ Jogo 3D em Three.js — bairro brasileiro estilizado, com cultivo/economia, bots
 
 ## Sistemas principais
 
+- **Grade espacial** (`src/Physics.js`) — toda consulta de segmento (bala, linha de visão da polícia,
+  mira do jogador) varria as ~600 caixas do mapa inteiro, mesmo pra um trecho de 3 m: 26,4 µs por
+  chamada, e a linha de visão roda **todo quadro por policial** (~264 µs por quadro com 10 em campo).
+  Era o maior custo contínuo do jogo, maior que o A\*. A grade divide o mapa em células de 2 m e a
+  consulta só visita as que o segmento atravessa: **6,98 µs**, 3,8× mais rápido.
+  Duas decisões vieram de MEDIR, não de intuição — a primeira versão ficou **mais lenta** que a
+  varredura linear (30,9 µs), porque olhava as 9 células vizinhas de cada amostra e deduplicava com um
+  `Set`. O que resolveu foi **margem na inserção** (cada caixa entra nas células que toca mais uma de
+  folga, então a consulta olha uma célula só) e **carimbo** num `Uint32Array` no lugar do `Set`
+  (acesso por índice, sem hash e sem lixo pro coletor). As 9 caixas que mudam de conteúdo (portas de
+  esconderijo e porteira) ficam fora da grade, numa lista varrida linearmente: indexá-las daria uma
+  célula errada no instante em que alguém abrisse uma porta.
 - **NavMesh + A\*** (`src/NavMesh.js`) — grade de navegação de 463×463 células construída por
   rasterização dos obstáculos (14 ms, preguiçosa), A\* com heurística octile e anti-corner-cutting,
   string-pulling por raycast horizontal. É o que faz a polícia contornar os quarteirões em vez de

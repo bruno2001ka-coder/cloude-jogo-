@@ -147,6 +147,12 @@ const COOLDOWN_ENTRE_BUSCAS=22,MULTA_RENDICAO=60;
 const SPAWN_X=0,SPAWN_Z=8;
 // Perseguição: intervalo de recálculo do caminho e distância que o alvo precisa andar pra invalidar a rota.
 const REPLANEJAR_INTERVALO=.7,REPLANEJAR_DESVIO=3,CHEGADA_WAYPOINT=.7;
+// ORÇAMENTO DE A* POR QUADRO. Um caminho custa 585 µs; dois policiais replanejando no mesmo
+// quadro dão 1,2 ms de uma vez, que num celular é um soluço visível. Com teto de 1 por quadro,
+// quem ficou de fora usa a rota velha (ou a reta, que `alvoDeMovimento` já devolve como reserva)
+// por mais um quadro — 16 ms de atraso que ninguém percebe, contra um engasgo que se vê.
+const ORCAMENTO_A_ESTRELA=1;
+let caminhosNesteQuadro=0;
 
 // ===== Helicóptero: fuselagem em cápsula, cauda com rotor, rotor principal girando, luzes de alerta piscando.
 const heliMat=new THREE.MeshStandardMaterial({color:0x2b3a2e,roughness:.55,metalness:.35});
@@ -472,7 +478,8 @@ function alvoDeMovimento(pol,agora,destX,destZ){
   // corpo só rodava com rotaInvalida — ou seja, o portão nunca barrava nada: rota nula significava A*
   // todo quadro. Um policial encravado numa quina zera a rota, o A* falha, a rota continua nula, e ele
   // gastava 585 µs por quadro pra sempre (35 ms por segundo de CPU, de um policial só).
-  if(rotaInvalida&&agora>=pol.proximoReplan){
+  if(rotaInvalida&&agora>=pol.proximoReplan&&caminhosNesteQuadro<ORCAMENTO_A_ESTRELA){
+    caminhosNesteQuadro++;
     pol.proximoReplan=agora+REPLANEJAR_INTERVALO;
     const caminho=encontrarCaminho(pol.pos.x,pol.pos.z,destX,destZ);
     if(caminho&&caminho.length){pol.rota=caminho;pol.indiceRota=0;pol.destinoRota={x:destX,z:destZ}}
@@ -1033,6 +1040,7 @@ export function aplicarEstadoPoliciaDoSave(s){
 
 export function atualizarPolicia(dt){
   const agora=performance.now()/1000;
+  caminhosNesteQuadro=0;// zera o orçamento de A* deste quadro
   // Rotor sempre girando e luzes piscando, em qualquer estado — o helicóptero nunca "desliga".
   rotorPrincipal.rotation.y+=dt*26;rotorCauda.rotation.x+=dt*40;
   const pisca=Math.floor(agora*3)%2===0;luzV.material.emissiveIntensity=pisca?1.6:.1;luzA.material.emissiveIntensity=pisca?.1:1.6;
