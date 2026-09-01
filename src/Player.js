@@ -4,7 +4,7 @@ import{scene}from'./core.js';
 import{obterElevacao}from'./Terrain.js';
 import{obstaculos,superficiesAndaveis,caixaColideComObstaculos,buscarPosicaoLivre}from'./Physics.js';
 import{criarSombraContato,coleteMat,coleteFaixaMat}from'./Materials.js';
-import{carregarPersonagem,atualizarAnimacaoPersonagem,personagemCarregado,ossoDaMao,ossoDoTronco,medidasTronco,esconderBonecoAntigo}from'./Personagem.js';
+import{carregarPersonagem,atualizarAnimacaoPersonagem,personagemCarregado,ossoDaMao,ossoDoTronco,medidasTronco,esconderBonecoAntigo,carregarColete,coleteVestido}from'./Personagem.js';
 
 export const EYE_HEIGHT=0.8;
 export const PLAYER_HEIGHT=0.9;
@@ -37,6 +37,9 @@ const colete=new THREE.Group();colete.visible=false;
   for(const m of colete.children){m.castShadow=true;m.receiveShadow=true}
 }
 player.add(colete);
+// Pede o colete 3D. Se ele chegar, troca estas caixas pelo modelo dentro do MESMO grupo — o liga/
+// desliga continua sendo um `.visible` só. Se falhar, as caixas ficam e o jogador vê o colete simples.
+carregarColete(colete);
 // API mínima pro combate/save: quem decide se o jogador ESTÁ com colete é a economia (inventario.colete),
 // não este módulo — daí só expormos o liga/desliga em vez de ler estado de fora.
 export function definirColeteVisivel(v){colete.visible=!!v}
@@ -80,6 +83,8 @@ carregarPersonagem(player,PLAYER_HEIGHT,()=>{
 // medidas do tronco de verdade e pendurado no osso do peito, pra acompanhar a animação em vez de ficar
 // rígido enquanto o corpo se inclina.
 function ajustarColeteAoCorpo(){
+  // Com o colete 3D vestido, quem dimensiona é o Personagem — refazer as caixas aqui apagaria o modelo.
+  if(coleteVestido())return;
   const osso=ossoDoTronco(),m=medidasTronco();
   if(!osso||!m)return;
   const escalaOsso=new THREE.Vector3();osso.getWorldScale(escalaOsso);

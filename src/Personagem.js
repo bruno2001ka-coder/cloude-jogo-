@@ -24,6 +24,9 @@ const VEL_PARADO=.35;
 
 let mixer=null,acoes=null,atual=null,raiz=null,maoOsso=null,malhaPele=null,troncoOsso=null;
 let aNormalizar=false,alvoAltura=0,playerRef=null,aoProntoCb=null;
+// Colete 3D: o arquivo e o encaixe no corpo. Chegam em ordem imprevisível (o GLB do colete pode vir
+// antes ou depois do primeiro quadro do boneco), então o encaixe é tentado dos dois lados.
+let coleteModelo=null,coleteGrupo=null;
 let velocidadeAndar=1;// ritmo nominal da animação de andar, medido na carga
 
 export function personagemCarregado(){return !!mixer}
@@ -155,6 +158,7 @@ function normalizar(){
   }
   raiz.visible=true;
   aoProntoCb?.(raiz);aoProntoCb=null;
+  tentarVestirColete();// o arquivo do colete pode já ter chegado antes deste primeiro quadro
 }
 
 // Chamado uma vez por quadro pelo Player. `velocidade` é o módulo da velocidade horizontal em unidades
@@ -183,4 +187,56 @@ export function atualizarAnimacaoPersonagem(dt,velocidade,atirando){
 // Some com o boneco de caixas quando o modelo chega. Recebe a lista porque quem sabe quais malhas
 // formam o boneco antigo é o Player, não este módulo.
 export function esconderBonecoAntigo(meshes){for(const m of meshes)if(m)m.visible=false}
+
+// ===== COLETE 3D =====
+// Recebe o GRUPO do colete que já existe no Player (com as caixas dentro) e, quando o arquivo chega,
+// troca as caixas pelo modelo e veste no osso do peito. Se o arquivo falhar, as caixas continuam lá —
+// o jogador vê o colete simples em vez de nada.
+export function carregarColete(grupo){
+  coleteGrupo=grupo;
+  new GLTFLoader().load('assets/colete.glb',gltf=>{coleteModelo=gltf.scene;tentarVestirColete()},undefined,err=>{
+    console.warn('Quintal 3D: colete 3D não carregou, seguindo com o colete simples.',err);
+  });
+}
+export function coleteVestido(){return !!(coleteModelo&&coleteModelo.parent)}
+
+function tentarVestirColete(){
+  // Precisa das duas pontas: o arquivo baixado E o boneco já normalizado (é dele que sai a medida do
+  // tronco). Quem chegar por último dispara o encaixe.
+  if(!coleteModelo||!coleteGrupo||!troncoOsso||aNormalizar)return;
+  const m=medidasTronco();
+  if(!m)return;
+
+  troncoOsso.add(coleteGrupo);
+  coleteGrupo.position.set(0,0,0);coleteGrupo.rotation.set(0,0,0);coleteGrupo.scale.setScalar(1);
+  // Fora as caixas: o modelo entra no lugar delas, no mesmo grupo, pra o liga/desliga de visibilidade
+  // continuar sendo um `.visible` só (é ele que o combate chama a cada quadro).
+  for(const filho of coleteGrupo.children.slice()){
+    coleteGrupo.remove(filho);
+    filho.geometry?.dispose?.();
+  }
+  coleteGrupo.add(coleteModelo);
+  coleteModelo.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true}});
+
+  // Sem esqueleto aqui, então Box3 é confiável — desde que as matrizes estejam atualizadas.
+  coleteGrupo.updateWorldMatrix(true,true);
+  const caixa=new THREE.Box3().setFromObject(coleteModelo);
+  const larg=caixa.max.x-caixa.min.x;
+  // Veste pela LARGURA, não pelo maior lado horizontal: o colete envolve o tronco, então ele é mais
+  // FUNDO que largo, e escalar pelo maior encolhia a largura (saiu 0,179 quando o alvo era 0,206).
+  // A largura do tronco vem da profundidade medida, e não da medida em X, porque na altura do peito
+  // os braços entram na conta. O 1,08 é a folga de vestir por cima da roupa.
+  const alvo=m.profundidade*1.5*1.08;
+  if(larg>0)coleteModelo.scale.multiplyScalar(alvo/larg);
+
+  // Centra no tronco. O deslocamento é medido em MUNDO e `position` vive no espaço do PAI, então quem
+  // converte é a escala do pai — dividir pela escala do próprio modelo (o erro anterior) deixava o
+  // colete 5 cm acima do peito.
+  coleteGrupo.updateWorldMatrix(true,true);
+  caixa.setFromObject(coleteModelo);
+  const centro=new THREE.Vector3();caixa.getCenter(centro);
+  coleteModelo.position.add(m.centro.clone().sub(centro).divideScalar(escalaDe(coleteGrupo)));
+}
+// Escala de mundo acumulada num objeto: converter um deslocamento de mundo pra local pede dividir por ela.
+function escalaDe(obj){const e=new THREE.Vector3();obj.getWorldScale(e);return e.x||1}
 export function raizPersonagem(){return raiz}
