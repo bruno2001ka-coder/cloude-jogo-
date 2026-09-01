@@ -205,16 +205,34 @@ const ZONAS_POLICIAL=[
   {nome:'pernas',de:0,ate:.313,meia:.111,multiplicador:.6},
 ];
 
+// ===== GEOMETRIAS E MATERIAIS COMPARTILHADOS =====
+// Policial nasce e morre o tempo todo: duplas de rua com 75 s de vida útil, guarnições de rapel a cada
+// encontro. Cada um criava 9 BoxGeometry e um MeshStandardMaterial NOVOS, e a remoção só tirava da
+// cena — sem `dispose`, cada ciclo deixava as 9 geometrias na memória de vídeo pra sempre. Medido num
+// jogo parado: +15 geometrias depois de uma única dupla nascer e ir embora.
+// Compartilhar resolve melhor que descartar: as formas são todas iguais, então são criadas UMA vez e
+// reusadas por todo mundo. As 4 cores de pele viram 4 materiais fixos em vez de um por policial.
+const GEO_POL={
+  tronco:new THREE.BoxGeometry(.55,.82,.33),
+  colete:new THREE.BoxGeometry(.58,.4,.36),
+  cabeca:new THREE.BoxGeometry(.37,.37,.35),
+  bone:new THREE.BoxGeometry(.4,.14,.38),
+  perna:new THREE.BoxGeometry(.13,.55,.16),
+  braco:new THREE.BoxGeometry(.13,.58,.16),
+  arma:new THREE.BoxGeometry(.08,.1,.42),
+};
+const MATS_PELE=skinPolicial.map(c=>new THREE.MeshStandardMaterial({color:c,roughness:.55}));
+
 function criarPolicial(indice,tipo='rapel'){
   const g=new THREE.Group();
-  const skinMat=new THREE.MeshStandardMaterial({color:skinPolicial[Math.floor(Math.random()*skinPolicial.length)],roughness:.55});
-  blocoP(new THREE.BoxGeometry(.55,.82,.33),uniformeMat,0,.87,0,g);
-  blocoP(new THREE.BoxGeometry(.58,.4,.36),coleteMat,0,1.02,0,g);
-  blocoP(new THREE.BoxGeometry(.37,.37,.35),skinMat,0,1.48,0,g);
-  blocoP(new THREE.BoxGeometry(.4,.14,.38),boneMat,0,1.7,0,g);
-  const pernas=[-.14,.14].map(lx=>blocoP(new THREE.BoxGeometry(.13,.55,.16),uniformeMat,lx,.29,0,g));
-  const bracos=[-.37,.37].map(lx=>blocoP(new THREE.BoxGeometry(.13,.58,.16),skinMat,lx,.9,0,g));
-  const arma=blocoP(new THREE.BoxGeometry(.08,.1,.42),armaMat,.37,.68,.18,g);
+  const skinMat=MATS_PELE[Math.floor(Math.random()*MATS_PELE.length)];
+  blocoP(GEO_POL.tronco,uniformeMat,0,.87,0,g);
+  blocoP(GEO_POL.colete,coleteMat,0,1.02,0,g);
+  blocoP(GEO_POL.cabeca,skinMat,0,1.48,0,g);
+  blocoP(GEO_POL.bone,boneMat,0,1.7,0,g);
+  const pernas=[-.14,.14].map(lx=>blocoP(GEO_POL.perna,uniformeMat,lx,.29,0,g));
+  const bracos=[-.37,.37].map(lx=>blocoP(GEO_POL.braco,skinMat,lx,.9,0,g));
+  const arma=blocoP(GEO_POL.arma,armaMat,.37,.68,.18,g);
   g.scale.setScalar(ESCALA_POLICIAL);
   scene.add(g);
   return{
@@ -980,13 +998,19 @@ function atualizarPoliciaDeRua(dt,agora){
       continue;
     }
     const vendo=perceber(pol,agora);
-    // Expira e vai embora — mas nunca no meio de uma perseguição, que seria a polícia evaporando na
-    // cara do jogador. Com rastro ativo eles ficam até o rastro esfriar.
-    if(agora>pol.expiraEm&&!deOlho&&!rastroValido(agora)&&!emBusca(agora)){removerRua(i);continue}
     // Ver o jogador só INTERESSA se ele chama atenção (mochila com pacote ou ficha corrida). Sem
     // isso a dupla segue a ronda mesmo olhando direto pra ele — que é o comportamento certo pra quem
     // não fez nada. Antes qualquer avistamento virava abordagem.
+    //
+    // ESTA LINHA PRECISA VIR ANTES DA EXPIRAÇÃO ABAIXO. Ela estava depois, e a expiração já usava
+    // `deOlho`: enquanto a dupla era nova a condição curto-circuitava em `agora>pol.expiraEm` e nada
+    // acontecia, mas no instante em que a primeira dupla completava os 75 s de vida o acesso à const
+    // ainda não inicializada lançava ReferenceError — dentro do laço do quadro, que matava o
+    // requestAnimationFrame e congelava o jogo. Era o "trava depois de alguns minutos".
     const deOlho=vendo&&chamaAtencao();
+    // Expira e vai embora — mas nunca no meio de uma perseguição, que seria a polícia evaporando na
+    // cara do jogador. Com rastro ativo eles ficam até o rastro esfriar.
+    if(agora>pol.expiraEm&&!deOlho&&!rastroValido(agora)&&!emBusca(agora)){removerRua(i);continue}
     let destino=null;
     if(deOlho)destino={x:player.position.x,z:player.position.z};
     else if(rastroValido(agora))destino={x:rastro.x,z:rastro.z};

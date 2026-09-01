@@ -73,7 +73,32 @@ instalarSalvamentoAoSair();
 
 const clock=new THREE.Clock(),pos=document.getElementById('pos');
 const faseIcone=document.getElementById('faseIcone');let bandaAnteriorHud=null;const ICONES_FASE={noite:'🌙',nascer:'🌅',dia:'🌞',por:'🌇'};
+// ===== O LOOP NÃO PODE MORRER =====
+// `requestAnimationFrame` era a ÚLTIMA linha do quadro, então qualquer exceção no meio parava a
+// corrente pra sempre: tela congelada, sem mensagem, sem nada. Foi exatamente assim que um
+// ReferenceError na polícia (uma const usada antes da declaração, que só disparava quando a primeira
+// dupla de rua completava 75 s de vida) travou o jogo "depois de alguns minutos".
+// Agora o próximo quadro é agendado ANTES do corpo e o corpo roda protegido: um erro vira um quadro
+// ruim e uma linha no console, não um jogo morto. O contador impede que um erro por quadro vire
+// dezenas de milhares de linhas de log.
+let errosDeQuadro=0;
 function tick(){
+  requestAnimationFrame(tick);
+  try{quadro()}
+  catch(err){
+    errosDeQuadro++;
+    if(errosDeQuadro<=5)console.error('Quintal 3D: erro no quadro',err);
+    // Avisa na tela DIRETO no elemento, sem chamar função de outro módulo: o erro pode ter vindo
+    // justamente de lá, e aí o tratador quebraria junto. Protegido por try porque nem o aviso pode
+    // derrubar o loop.
+    if(errosDeQuadro===1)try{
+      const el=document.getElementById('avisoPolicia');
+      if(el){el.textContent='Alguma coisa falhou — o jogo segue rodando.';el.style.display='block';el.style.opacity='1';
+        setTimeout(()=>{el.style.opacity='0';setTimeout(()=>{el.style.display='none'},300)},3000);}
+    }catch(e){}
+  }
+}
+function quadro(){
   const dt=Math.min(clock.getDelta(),.05);
   atualizarSuavizacaoInput(dt);
   if(droneState.ativo){
@@ -104,6 +129,5 @@ function tick(){
   definirMochilaVisivel(jogadorComMochila());
   atualizarSave(dt);
   composer.render();
-  requestAnimationFrame(tick);
 }
 tick();
