@@ -113,6 +113,11 @@ export const coleteMat=new THREE.MeshStandardMaterial({color:0x14181f,roughness:
 // Faixa/ombreira um tico mais clara: sem ela o colete vira um bloco preto chapado contra a camisa escura.
 export const coleteFaixaMat=new THREE.MeshStandardMaterial({color:0x2b323d,roughness:.7});
 
+// Mochila dos pacotes: lona escura esverdeada com detalhe mais claro, pra ler como mochila e não
+// como o colete (que é preto-azulado). A diferença de tom é o que deixa distinguir os dois de longe.
+export const mochilaMat=new THREE.MeshStandardMaterial({color:0x2f3a28,roughness:.85});
+export const mochilaFaixaMat=new THREE.MeshStandardMaterial({color:0x55613f,roughness:.8});
+
 // Sombra de contato falsa (blob radial suave): ajuda a "grudar" objetos no chão sem custo de mais uma luz/sombra real.
 function criarTexturaSombra(){const s=128,cv=document.createElement('canvas');cv.width=cv.height=s;const ctx=cv.getContext('2d');const grad=ctx.createRadialGradient(s/2,s/2,0,s/2,s/2,s/2);grad.addColorStop(0,'rgba(0,0,0,.45)');grad.addColorStop(.7,'rgba(0,0,0,.16)');grad.addColorStop(1,'rgba(0,0,0,0)');ctx.fillStyle=grad;ctx.fillRect(0,0,s,s);return new THREE.CanvasTexture(cv)}
 const sombraTex=criarTexturaSombra();

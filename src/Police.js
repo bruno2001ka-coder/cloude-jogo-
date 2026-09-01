@@ -70,7 +70,7 @@ const POLICIAL_DANO_MIN=10,POLICIAL_DANO_MAX=18,POLICIAL_COOLDOWN_MIN=1.1,POLICI
 // decaimento nenhum: correr não limpa ficha, e é isso que dá função ao esconderijo.
 //   · matar policial              → +1
 //   · a abordagem avançar         → piso de 1 (indo), 2 (confisco) e 3 (combate)
-//   · escondido, a cada 6 s       → −1
+//   · escondido, a cada 18 s      → −1
 //   · escondido por 3 s           → a guarnição em campo perde o rastro e recua
 //   · saiu com a barra > 0        → a caçada recomeça, agora atrás do JOGADOR
 const PROCURADO_MAX=5;
@@ -247,6 +247,17 @@ function zonasDoPolicial(pol){
 // só a batida termina em confisco.
 const policia={estado:'patrulha',alvoPlanta:null,pontoAlvo:{x:0,z:0},tempoEstado:0,cooldownAte:0,
   tempoEscondido:0,tempoNivel:0,retomarCacaEm:0,procurado:0};
+// ===== O QUE CHAMA ATENÇÃO DA POLÍCIA =====
+// Antes bastava EXISTIR: a abordagem à plantação já elevava a ficha por si só, e a partir daí o
+// jogador era caçado pra sempre sem ter feito nada além de plantar. Agora a polícia só se interessa
+// por duas razões, e as duas são coisas que o jogador FEZ:
+//   · está com a MOCHILA nas costas levando pacote (flagrante — dá pra ver de longe);
+//   · já foi preso alguma vez (tem ficha corrida, então fica marcado).
+// Fora isso ele é mais um morador: a batida vem pela PLANTA, confisca e vai embora.
+let jaFoiPreso=false;
+function levandoPacote(){return inventario.pacote>0}
+export function chamaAtencao(){return levandoPacote()||jaFoiPreso}
+export function temFichaCorrida(){return jaFoiPreso}
 function elevarProcurado(n){if(n>policia.procurado)policia.procurado=Math.min(PROCURADO_MAX,n)}
 function somarProcurado(n){policia.procurado=Math.min(PROCURADO_MAX,policia.procurado+n)}
 const policiais=[];
@@ -324,9 +335,14 @@ function receberDanoJogador(dano){
 }
 function renderJogador(){
   jogadorRendido=true;
+  // Ficha corrida: a partir daqui a polícia passa a ficar de olho nele mesmo sem flagrante. É a
+  // segunda (e única outra) razão de a polícia se interessar por alguém — ver `chamaAtencao`.
+  jaFoiPreso=true;
   // O colete é apreendido junto: ser rendido é a "morte" deste jogo, e armadura que sobrevive à
   // rendição deixaria a placa no corpo depois do respawn sem o jogador ter pagado por ela.
-  armaduraJogador=0;inventario.colete=0;atualizarStatusEconomia();
+  // A carga vai junto: ser rendido apreende os pacotes. Deixar a mochila cheia depois da prisão
+  // faria o flagrante recomeçar no mesmo instante do respawn.
+  armaduraJogador=0;inventario.colete=0;inventario.pacote=0;atualizarStatusEconomia();
   mostrarAviso('Você foi rendido pela polícia — plantação perdida e multa aplicada.',3400);
   if(policia.alvoPlanta&&!policia.alvoPlanta.colhida)confiscarPlanta(policia.alvoPlanta);
   aplicarMulta(MULTA_RENDICAO);
@@ -432,7 +448,13 @@ function perceber(pol,agora){
   const ox=pol.pos.x,oy=pol.grupo.position.y+1.55,oz=pol.pos.z;// olho, não peito
   pol.viu=veAlvo(ox,oy,oz,pol.olharY,player.position.x,player.position.y+1.1,player.position.z,
     meiaAberturaCone(policia.procurado),alcanceVisao(policia.procurado),temLinhaDeVisao);
-  if(pol.viu)compartilharAvistamento(player.position.x,player.position.z,agora);
+  if(pol.viu){
+    // FLAGRANTE. Ver alguém carregando pacote é o que dá causa pra abordagem — é o único jeito de a
+    // ficha nascer sem o jogador ter atirado em ninguém. Sem mochila e sem ficha corrida, ver o
+    // jogador não gera nada: ele é mais um morador passando na viela.
+    if(levandoPacote())elevarProcurado(1);
+    compartilharAvistamento(player.position.x,player.position.z,agora);
+  }
   return pol.viu;
 }
 
@@ -769,7 +791,12 @@ const ESTADOS={
       // quer que esteja — não depende de sobrevoo nem de plantação. É o "saiu do esconderijo com
       // procurado > 0, a polícia volta a procurar". `retomarCacaEm` dá um respiro de alguns segundos
       // ao sair, senão eles reapareceriam em cima do jogador no mesmo frame em que ele abre a porta.
-      if(policia.procurado>0){
+      // O AVIÃO SÓ CAÇA COM FICHA ALTA — agora de verdade. O limiar existia e governava só a altitude
+      // e o raio de detecção; a caçada disparava em `procurado > 0`, então com UMA estrela o
+      // helicóptero já vinha e descia guarnição (medido: 2 policiais em ~13 s). O comentário da
+      // constante sempre disse o contrário; era o código que não cumpria. Abaixo do limiar quem
+      // persegue é a polícia de rua, como está escrito lá em cima.
+      if(policia.procurado>=PROCURADO_HELI_ATIVO){
         if(agora<policia.retomarCacaEm)return;
         policia.alvoPlanta=null;
         policia.pontoAlvo.x=player.position.x;policia.pontoAlvo.z=player.position.z;
@@ -793,7 +820,10 @@ const ESTADOS={
     }
   },
   indo:{
-    aoEntrar(){elevarProcurado(1)},
+    // A ficha só sobe se o alvo for O JOGADOR. Numa batida o destino é a muda: eles vêm pela planta,
+    // e ser abordado por causa dela não faz de ninguém procurado — era isso que transformava "plantei"
+    // em "sou caçado pra sempre".
+    aoEntrar(){if(!policia.alvoPlanta)elevarProcurado(1)},
     aoAtualizar(dt){
       if(!atualizarPontoAlvo())return;
       const alvo=policia.pontoAlvo;
@@ -852,7 +882,9 @@ const ESTADOS={
     }
   },
   confiscando:{
-    aoEntrar(){elevarProcurado(2)},
+    // Confisco não é crime do jogador: eles estão levando a planta, não prendendo ele. Ficar por perto
+    // vendo não suja ficha; atirar suja (ver o estado de combate).
+    aoEntrar(){if(!policia.alvoPlanta)elevarProcurado(2)},
     aoAtualizar(dt){
       policia.tempoEstado+=dt;
       if(!policia.alvoPlanta){transitar('recuando');return}
@@ -936,16 +968,20 @@ function atualizarPoliciaDeRua(dt,agora){
     const vendo=perceber(pol,agora);
     // Expira e vai embora — mas nunca no meio de uma perseguição, que seria a polícia evaporando na
     // cara do jogador. Com rastro ativo eles ficam até o rastro esfriar.
-    if(agora>pol.expiraEm&&!vendo&&!rastroValido(agora)&&!emBusca(agora)){removerRua(i);continue}
+    if(agora>pol.expiraEm&&!deOlho&&!rastroValido(agora)&&!emBusca(agora)){removerRua(i);continue}
+    // Ver o jogador só INTERESSA se ele chama atenção (mochila com pacote ou ficha corrida). Sem
+    // isso a dupla segue a ronda mesmo olhando direto pra ele — que é o comportamento certo pra quem
+    // não fez nada. Antes qualquer avistamento virava abordagem.
+    const deOlho=vendo&&chamaAtencao();
     let destino=null;
-    if(vendo)destino={x:player.position.x,z:player.position.z};
+    if(deOlho)destino={x:player.position.x,z:player.position.z};
     else if(rastroValido(agora))destino={x:rastro.x,z:rastro.z};
     else if(emBusca(agora))destino=pontoDeBusca(pol,agora);
     else{
       destino=pol.destinoRonda;
       if(distXZ(pol.pos,destino)<RUA_CHEGADA)pol.destinoRonda=pontoDeRonda();
     }
-    const perto=vendo&&distXZ(pol.pos,player.position)<=aproxMinima();
+    const perto=deOlho&&distXZ(pol.pos,player.position)<=aproxMinima();
     if(perto)encararPonto(pol,player.position.x,player.position.z);
     else{
       const alvo=alvoDeMovimento(pol,agora,destino.x,destino.z);
@@ -960,7 +996,7 @@ function atualizarPoliciaDeRua(dt,agora){
     pol.barra.mostrar(pol.hp<POLICIAL_HP);
     // Polícia de rua só abre fogo com ficha suja: patrulha de rotina não fuzila quem passa na rua.
     const dist=distXZ(pol.pos,player.position);
-    if(vendo&&policia.procurado>0&&dist<=POLICIAL_ALCANCE_TIRO&&agora>=pol.proximoTiro&&!jogadorEscondido()){
+    if(deOlho&&policia.procurado>0&&dist<=POLICIAL_ALCANCE_TIRO&&agora>=pol.proximoTiro&&!jogadorEscondido()){
       const ox=pol.pos.x,oy=pol.grupo.position.y+1.15,oz=pol.pos.z;
       const ax=player.position.x,ay=player.position.y+1.1,az=player.position.z;
       if(temLinhaDeVisao(ox,oy,oz,ax,ay,az)){
@@ -983,12 +1019,16 @@ export function policiaisAtingiveis(){return policiais.concat(policiaisRua)}
 // proteção, some quando a última acaba (ou quando o jogador é rendido). Quem desenha é o Player;
 // aqui só se expõe a condição, que é estado de combate.
 export function jogadorComColete(){return !jogadorRendido&&(armaduraJogador>0||inventario.colete>0)}
-export function estadoPoliciaParaSave(){return{procurado:policia.procurado}}
+// A mochila é o FLAGRANTE: aparece enquanto houver pacote e é vendo ela que a polícia decide
+// abordar (`chamaAtencao`). Rendido, some junto com a carga apreendida.
+export function jogadorComMochila(){return !jogadorRendido&&inventario.pacote>0}
+export function estadoPoliciaParaSave(){return{procurado:policia.procurado,jaFoiPreso}}
 export function aplicarEstadoPoliciaDoSave(s){
   try{
     const n=Math.floor(Number(s&&s.procurado));
     policia.procurado=Number.isFinite(n)?Math.min(PROCURADO_MAX,Math.max(0,n)):0;
-  }catch(e){policia.procurado=0}
+    jaFoiPreso=!!(s&&s.jaFoiPreso);
+  }catch(e){policia.procurado=0;jaFoiPreso=false}
 }
 
 export function atualizarPolicia(dt){
@@ -1000,7 +1040,7 @@ export function atualizarPolicia(dt){
   // ===== ESCONDERIJO: o único lugar onde a ficha desce =====
   // Dois relógios separados, e é a separação que faz a mecânica funcionar:
   //   tempoEscondido → aos 3 s a guarnição em campo perde o rastro e recua;
-  //   tempoNivel     → a cada 6 s apaga UMA estrela.
+  //   tempoNivel     → a cada 18 s apaga UMA estrela (ESCONDIDO_POR_NIVEL).
   // Sair antes de zerar deixa ficha, e com ficha a patrulha recomeça a caçada — é o "se ainda tiver
   // nível de procurado, a polícia volta a procurar".
   const escondido=jogadorEscondido();

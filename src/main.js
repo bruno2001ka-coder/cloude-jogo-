@@ -2,17 +2,17 @@
 // que roda como efeito colateral de topo de módulo, igual à IIFE original) e roda o loop principal.
 import*as THREE from'three';
 import{camera,renderer,composer}from'./core.js';
-import{EYE_HEIGHT,player,atualizarMovimentoJogador,vigiarTravamento,destravarJogador,definirColeteVisivel}from'./Player.js';
+import{EYE_HEIGHT,player,atualizarMovimentoJogador,vigiarTravamento,destravarJogador,definirColeteVisivel,definirMochilaVisivel}from'./Player.js';
 import{droneState,alternarDrone,atualizarCameraDrone,atualizarCameraSeguidora}from'./Camera.js';
 import{atualizarAmbiente,obterBandaFase}from'./Environment.js';
 import{atualizarAnimais,atualizarRefugios}from'./WorldGenerator.js';
 import{atualizarNPCs}from'./NPCs.js';
 import{atualizarPlantas,atualizarMiraPlantio,isInventarioAberto,renderizarInventario,contextoAtual,chaveContexto,getUltimoContextoTipo,renderizarAcoes}from'./Economy.js';
 import{atualizarRadar,atualizarDebugNavMesh}from'./UI.js';
-import{atualizarPolicia,atualizarTiroContinuo,jogadorComColete}from'./Police.js';
+import{atualizarPolicia,atualizarTiroContinuo,jogadorComColete,jogadorComMochila}from'./Police.js';
 import{inputState,keys,initDragLook,atualizarSuavizacaoInput,fatorVelocidadeDesejado}from'./Input.js';
 import{atualizarSkyline}from'./Skyline.js';
-import{carregar,atualizarSave,instalarSalvamentoAoSair,saveDisponivel}from'./Save.js';
+import{carregar,atualizarSave,instalarSalvamentoAoSair,saveDisponivel,apagarSave}from'./Save.js';
 import{personagemCarregado}from'./Personagem.js';
 
 camera.position.set(0,EYE_HEIGHT,16);
@@ -42,6 +42,30 @@ if(new URLSearchParams(location.search).has('debug'))document.body.classList.add
 // ===== CARGA DO SAVE =====
 // Depois de TODOS os imports: o mundo, a economia e as armas já existem neste ponto, e é neles que o
 // save escreve. Carregar antes seria escrever em cima de estado que o módulo ainda vai inicializar.
+// ===== APAGAR TUDO E RECOMEÇAR =====
+// Só na tela inicial, e em DOIS toques: o primeiro pergunta, o segundo apaga. Apagar progresso é
+// irreversível e o botão fica ao lado do JOGAR — um toque só seria acidente esperando acontecer.
+// Recarregar a página em vez de zerar as variáveis na mão: o estado do jogo mora espalhado em vários
+// módulos (economia, polícia, plantas, armas), e zerar cada um daria um caminho de reinício que
+// ninguém testa e que diverge do início de verdade. Recarregar usa o MESMO caminho de sempre.
+{
+  const recomecarBtn=document.getElementById('recomecarBtn');
+  if(!saveDisponivel())recomecarBtn.hidden=true;
+  let armado=false,voltarEm=0;
+  recomecarBtn.addEventListener('click',()=>{
+    if(!armado){
+      armado=true;recomecarBtn.classList.add('confirmar');
+      recomecarBtn.textContent='TEM CERTEZA? TOQUE DE NOVO';
+      clearTimeout(voltarEm);
+      voltarEm=setTimeout(()=>{armado=false;recomecarBtn.classList.remove('confirmar');
+        recomecarBtn.textContent='APAGAR TUDO E RECOMEÇAR'},4000);
+      return;
+    }
+    apagarSave();
+    location.reload();
+  });
+}
+
 // Sem save, `carregar()` devolve false e o jogo começa do zero — sem caso especial nenhum.
 if(carregar())console.info('Quintal 3D: progresso carregado.');
 else if(!saveDisponivel())console.info('Quintal 3D: sem armazenamento — o progresso não será salvo.');
@@ -77,6 +101,7 @@ function tick(){
   // por frame é barato; o que não pode é reconstruir a malha, que é justamente por que ela nasce
   // pronta e escondida no Player.
   definirColeteVisivel(jogadorComColete());
+  definirMochilaVisivel(jogadorComMochila());
   atualizarSave(dt);
   composer.render();
   requestAnimationFrame(tick);

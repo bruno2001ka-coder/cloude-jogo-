@@ -31,6 +31,10 @@ export const POLOS={
 // `qtd` é o tamanho do pacote de munição — cartucho de escopeta vale mais que bala de pistola.
 export const PRECOS={
   fazendaTerra:6,fazendaVaso:8,
+  // Diária da roça: a rede de segurança contra ficar sem saída. R$25 a cada 45 s dá R$33/min,
+  // contra R$80-120 por ciclo de plantio (2-3 pacotes a R$40, custando R$48) — nunca compensa
+  // mais que plantar, então é piso e não atalho.
+  fazendaDiaria:25,fazendaDiariaEspera:45,
   // Cada insumo tem UM ponto de venda: vaso e terra na fazenda, semente no mercado. Os preços de
   // vaso/terra no mercado e de semente no receptador saíram junto com os botões — preço sem loja
   // que o use é a próxima coisa a divergir sem ninguém notar.

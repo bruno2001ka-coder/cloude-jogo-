@@ -10,7 +10,7 @@ import{player}from'./Player.js';
 import{POLOS,PRECOS}from'./Poles.js';
 import{ARMAS,ORDEM_ARMAS,equiparArma}from'./Weapons.js';
 
-export let dinheiro=300;
+export let dinheiro=1000;
 // `municao` e `colete` são consumidos pelo sistema de combate (Police.js). Ficam no inventário, e não
 // dentro do Police, porque Economy → Police seria dependência circular: o Police já importa a Economy.
 // `armas` (o que o jogador POSSUI) e `municao` (estoque POR ARMA) seguem a mesma regra: o Weapons.js
@@ -114,7 +114,10 @@ export function contextoAtual(){
   if(pertoDaPorteira(p))return{tipo:'porteira',chave:'porteira'+(porteiraFazenda.aberta?'A':'F')};
   if(distXZ(p,lojaPos)<POLOS.sementes.raio)return{tipo:'loja'};
   if(distXZ(p,receptadorPos)<POLOS.receptador.raio)return{tipo:'receptador'};
-  if(distXZ(p,fazendaPos)<POLOS.fazenda.raio)return{tipo:'fazenda'};
+  // A chave inclui a espera da diária: o painel só se redesenha quando a chave muda, e sem isso o
+  // "volte em 45s" ficava congelado no número do momento do clique. Redesenha uma vez por segundo,
+  // e só enquanto o jogador está parado no balcão.
+  if(distXZ(p,fazendaPos)<POLOS.fazenda.raio)return{tipo:'fazenda',chave:'fazenda'+esperaDaDiaria()};
   if(distXZ(p,armasPos)<POLOS.armas.raio)return{tipo:'armas'};
   const plantaProxima=plantas.find(pl=>!pl.colhida&&Math.hypot(pl.x-p.x,pl.z-p.z)<1.6);
   if(plantaProxima)return{tipo:'planta',planta:plantaProxima};
@@ -140,6 +143,20 @@ export function comprarMunicao(id){
   if(!p||!inventario.armas[id]||dinheiro<p.municao)return;
   dinheiro-=p.municao;inventario.municao[id]+=p.qtd;
   atualizarStatusEconomia();renderizarAcoes();renderizarInventario();
+}
+// ===== DIÁRIA DA ROÇA: a saída pra quem quebrou =====
+// Sem isto dava pra travar o jogo de vez: um ciclo custa R$48 (vaso 8 + terra 6 + semente 34) e ser
+// rendido tira R$60. Chegando abaixo de R$48 sem vaso, terra, semente nem pacote, NÃO EXISTIA
+// nenhuma forma de ganhar dinheiro — e sem botão de recomeçar, o save ficava morto.
+// A espera é o que impede virar estratégia: dá pra ficar batendo enxada, mas rende um terço de plantar.
+let proximaDiaria=0;
+export function esperaDaDiaria(){return Math.max(0,Math.ceil((proximaDiaria-performance.now()/1000)))}
+export function trabalharNaRoca(){
+  if(esperaDaDiaria()>0)return false;
+  proximaDiaria=performance.now()/1000+PRECOS.fazendaDiariaEspera;
+  dinheiro+=PRECOS.fazendaDiaria;
+  atualizarStatusEconomia();renderizarAcoes();
+  return true;
 }
 export function venderPacotes(){if(inventario.pacote>0){dinheiro+=inventario.pacote*PRECOS.receptadorPacote;inventario.pacote=0;atualizarStatusEconomia();renderizarAcoes();renderizarInventario()}}
 export function plantarAqui(){
@@ -269,6 +286,16 @@ export function renderizarAcoes(){
     // Depósito Rural (oeste, longe): a ÚNICA fonte de vaso e terra.
     botaoLoja(`Comprar Terra (R$${PRECOS.fazendaTerra})`,PRECOS.fazendaTerra,()=>comprar('terra',PRECOS.fazendaTerra));
     botaoLoja(`Comprar Vaso (R$${PRECOS.fazendaVaso})`,PRECOS.fazendaVaso,()=>comprar('vaso',PRECOS.fazendaVaso));
+    // Diária: sempre visível, pra o jogador SABER que existe antes de precisar. Um socorro que só
+    // aparece quando você já quebrou é um socorro que ninguém encontra.
+    {
+      const espera=esperaDaDiaria();
+      const b=document.createElement('button');
+      b.textContent=espera>0?`🌾 Trabalhar na roça (volte em ${espera}s)`:`🌾 Trabalhar na roça (+R$${PRECOS.fazendaDiaria})`;
+      b.disabled=espera>0;
+      b.onclick=()=>{trabalharNaRoca()};
+      acaoPanel.appendChild(b);
+    }
     acaoPanel.style.display='flex';
   }else if(tipo==='armas'){
     // Loja de Armas (nordeste): é o polo que sustenta o combate — sem munição não há defesa.
