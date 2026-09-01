@@ -199,9 +199,10 @@ for(let row=0;row<BLOCK_ROWS;row++){for(let col=0;col<BLOCK_COLS;col++){const i=
 // ~60 cm do pé desta: a laje enterrada dela (2 m saindo do chão) fechava o acesso, o jogador andava
 // contra ela sem subir, e aí a rede anti-travamento entendia "encurralado" e teleportava ele pra
 // fora — exatamente o "não consigo subir, me joga pra fora".
-// A coluna do outro lado do beco (col%4===3) também ganha escada, virada pro mesmo beco: assim o
-// bairro não perde escadaria por causa da regra nova.
-const vielaAoLado=(col%4===0&&col>0)?-1:(col%4===3&&col<BLOCK_COLS-1)?1:0;
+// UMA escadaria por beco. Já tentei aproveitar também a coluna do outro lado (col%4===3) pra não
+// perder escadarias com a regra nova — e o resultado foi dois lances paralelos a 1,34 m um do outro,
+// com 1 m de largura cada: sobravam 34 cm entre eles e o beco lia como uma escada duplicada na tela.
+const vielaAoLado=(col%4===0&&col>0)?-1:0;
 const peDesobstruido=row%3===0;// beco na frente do 1º degrau (na fileira 0, a borda do mapa)
 const ladoEscada=(vielaAoLado&&peDesobstruido)?vielaAoLado:0;
 // Refúgio só onde a PORTA dá pra ser alcançada: as fileiras são coladas fundo-com-frente, e só há
