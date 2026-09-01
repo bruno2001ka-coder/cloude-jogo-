@@ -7,9 +7,10 @@ import{renderer}from'./core.js';
 // Metalness no B — o formato do glTF, que o three lê direto. A MESMA imagem serve de aoMap,
 // roughnessMap e metalnessMap, então são 3 texturas por material na memória de vídeo e não 5.
 //
-// Os mapas são gerados proceduralmente (scripts/texturas.py): saem tileáveis por construção — o ruído
-// é sorteado no domínio da frequência, então a borda fecha sozinha — e cabem em 0,94 MB no total, que
-// é o que decide se roda no celular.
+// Os mapas são gerados proceduralmente (scripts/texturas.py, que está no repositório e reproduz
+// assets/tex/ byte a byte): saem tileáveis por construção — o ruído é sorteado no domínio da
+// frequência, então a borda fecha sozinha — e cabem em 844 KB no total, que é o que decide se roda
+// no celular.
 const carregador=new THREE.TextureLoader();
 const anisotropia=Math.min(8,renderer.capabilities.getMaxAnisotropy());
 function tex(caminho,ehCor){
@@ -55,6 +56,19 @@ const pbrConcreto=pbr('reboco',0x9d9a92,{aoMapIntensity:1});
 export const matChao=()=>pbrChao;
 const pbrChao=pbr('chao',0xffffff);
 export const tijolo=pbr('tijolo',0xffffff),telha=matTelha(0x77736b);
+// Madeira tingida: a mesma tábua serve de porta, de cerca e de parede de celeiro — o que muda é a
+// tinta. Cacheado por cor pela mesma razão das fachadas: a cerca da fazenda são ~120 peças e material
+// compartilhado é o que deixa elas caberem em InstancedMesh.
+const cacheMadeira=new Map();
+export const matMadeira=c=>{if(!cacheMadeira.has(c))cacheMadeira.set(c,pbr('madeira',c));return cacheMadeira.get(c)};
+// Terra arada dos canteiros: mesmo mapa do chão, tinta bem mais escura e úmida. Reaproveitar o
+// conjunto custa zero textura nova na memória de vídeo.
+export const matTerraArada=()=>pbrTerraArada;
+const pbrTerraArada=pbr('chao',0x6d5334,{roughness:1});
+// Terra batida do pátio do sítio: o chão do mapa é areia clara, e a fazenda em cima dela parecia
+// montada num deserto. Mesmo conjunto de textura, tinta de terra pisada.
+export const matTerraBatida=()=>pbrTerraBatida;
+const pbrTerraBatida=pbr('chao',0xc0a074);
 
 // ===== UV EM METROS =====
 // BoxGeometry nasce com UV de 0 a 1 por face: uma parede de 6 m e uma mureta de 12 cm receberiam a
@@ -87,8 +101,11 @@ export const molduraJanela=new THREE.MeshStandardMaterial({color:0x4a4038,roughn
 export const porta=pbr('madeira',0xffffff);
 export const agua=new THREE.MeshStandardMaterial({color:0x2f7fae,roughness:.3,metalness:.45});
 export const posteMat=new THREE.MeshStandardMaterial({color:0x3a302a,roughness:.5,metalness:.55});
-export const folhaMat=new THREE.MeshStandardMaterial({color:0x4f8e4c,roughness:.9});
-export const folhaClara=new THREE.MeshStandardMaterial({color:0x75ad58,roughness:.9});
+// Folhagem escurecida (era 0x4f8e4c / 0x75ad58): com o sol a 2,5 e tone mapping ACES, verde claro
+// satura e vira menta lavado — a copa das árvores parecia de plástico. Verde escuro é o que sobrevive
+// à exposição e volta a ler como folha.
+export const folhaMat=new THREE.MeshStandardMaterial({color:0x33652f,roughness:.95});
+export const folhaClara=new THREE.MeshStandardMaterial({color:0x4a7d38,roughness:.95});
 // Colete balístico: mesma cor/aspereza do colete dos policiais (Police.js) de propósito — o jogador e a
 // polícia usam o mesmo equipamento, e repetir a cor solta em dois arquivos garantia divergência na
 // primeira vez que alguém ajustasse o tom. Fica aqui (e não em Player.js) por ser material compartilhável.
