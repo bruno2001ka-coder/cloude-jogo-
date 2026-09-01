@@ -1,8 +1,9 @@
 // Geração do bairro: casas/sobrados, escadarias de viela, postes/fios, árvores, mercado, fazenda e animais.
 import*as THREE from'three';
+import{mergeGeometries}from'three/addons/utils/BufferGeometryUtils.js';
 import{scene}from'./core.js';
 import{obterElevacao}from'./Terrain.js';
-import{registrarObstaculo,superficiesAndaveis,obstaculos}from'./Physics.js';
+import{registrarObstaculo,superficiesAndaveis,obstaculos,obstaculosPedestres}from'./Physics.js';
 import{bmat,tijolo,concreto,janela,janelaAcesa,molduraJanela,porta,agua,posteMat,folhaMat,folhaClara,criarSombraContato}from'./Materials.js';
 import{POLOS}from'./Poles.js';
 // O degrau da escadaria é derivado do step-up do jogador: um número solto aqui viraria escada
@@ -22,70 +23,115 @@ function bloco(geo,material,x,y,z,parent=bairro){const m=new THREE.Mesh(geo,mate
 // Escada exterior colada na parede lateral (eixo X local da casa), filha do grupo da casa.
 // lado=+1 encosta no lado +X local, lado=-1 no lado -X local; a subida acompanha o eixo Z local.
 //
-// Cada degrau é UM bloco maciço, do subsolo até o próprio piso, e é registrado como obstáculo de
-// verdade. Isso só é possível porque o jogador tem step-up (ver ALTURA_DEGRAU em Player.js): sem
-// ele, uma AABB pura barraria o jogador no primeiro degrau, que é exatamente por que a versão
-// anterior deixava a escada inteira SEM colisor — e aí dava pra atravessar tudo.
+// Reescrita do zero depois de três remendos que não seguraram. As três decisões que sustentam ela:
 //
-// Três defeitos da versão anterior, todos corrigidos aqui:
-//   · degrau cujo topo caísse abaixo do terreno era PULADO (`continue`) — o buraco no meio da escada;
-//   · os "corrimãos" iam do subsolo até acima do telhado, ou seja, eram dois muros fechando a escada;
-//   · nenhum degrau entrava em `obstaculos`, então nada tinha colisão pro jogador.
+//  1. UMA MALHA. A escada inteira é uma geometria fundida. A versão anterior punha uma malha por
+//     degrau: 136 malhas na cena só de escadaria, em 6 escadarias.
+//  2. DEGRAU NÃO É OBSTÁCULO DO JOGADOR. Quem sustenta o jogador é a superfície andável (raycast
+//     vertical acha o piso do degrau e assenta os pés nele). Pôr cada degrau em `obstaculos` foi a
+//     causa direta do "me joga pra fora": o jogador encostava no degrau, a rede anti-travamento
+//     entendia "encurralado" e o teleportava. Sem obstáculo no degrau, esse caso deixa de existir.
+//     Os degraus vão pra `obstaculosPedestres`, que é exatamente pra que essa lista foi criada.
+//  3. NADA ENTERRADO ALÉM DA SAIA. Os blocos vão da base da escada pra cima, e uma saia única fecha
+//     do terreno até essa base. Antes cada degrau descia até o subsolo, e onde o terreno caía isso
+//     virava uma laje de 2 m saindo do chão no lote do vizinho — parede invisível fechando o acesso.
+//
+// Degraus todos da mesma altura (divisão exata da subida) e mesma pisada (divisão exata da corrida).
 function criarEscadariaViela(casaGrupo,alturaTotal,w=6,d=4.8,lado=1){
-  const largura=ESCADA_LARGURA,prof=.17;
-  // O degrau é dimensionado a 65% do que o jogador consegue subir. A folga não é preciosismo: a
-  // subida real depende do desnível do TERRENO entre a base da escada e a casa, que empurra o degrau
-  // pra cima do alvo. Medido no mapa inteiro, o pior degrau fica em 75% do limite — com a folga
-  // menor de antes ele batia em 89%, a um tropeço de virar escada intransponível.
-  const alturaDegrauAlvo=ALTURA_DEGRAU*.65;
   casaGrupo.updateWorldMatrix(true,false);
   const casaMundo=new THREE.Vector3();casaGrupo.getWorldPosition(casaMundo);
   const rotY=casaGrupo.rotation.y,cosR=Math.cos(rotY),sinR=Math.sin(rotY);
   const localParaMundo=(lx,lz)=>({x:casaMundo.x+lx*cosR+lz*sinR,z:casaMundo.z-lx*sinR+lz*cosR});
+  const largura=ESCADA_LARGURA;
   const lx=lado*(w/2+largura/2+ESCADA_MARGEM);// encosta na parede, com leve sobreposição pra não flutuar
   const lajeY=casaMundo.y+alturaTotal;
-  // O comprimento nunca pode passar da profundidade da casa: senão a escada invade a fachada da frente.
-  const margemPonta=.2,maxRun=Math.max(prof*4,d-2*margemPonta),maxDegraus=Math.max(3,Math.floor(maxRun/prof));
-  const centroMundo=localParaMundo(lx,0),subidaAprox=lajeY-obterElevacao(centroMundo.x,centroMundo.z);
-  if(subidaAprox<=0)return null;
-  const numDegraus=Math.min(Math.max(3,Math.ceil(subidaAprox/alturaDegrauAlvo)),maxDegraus);
-  const comprimentoAcesso=numDegraus*prof,lzInicio=-comprimentoAcesso/2;
-  const inicio=localParaMundo(lx,lzInicio);
-  const yBaseEscada=obterElevacao(inicio.x,inicio.z);
-  const subidaTotal=lajeY-yBaseEscada;
-  if(subidaTotal<=0)return null;
-  const alturaDegrau=subidaTotal/numDegraus;// distribui a subida pra terminar exatamente nivelada com a laje
+  // O comprimento nunca passa da profundidade da casa: senão a escada invade a fachada da frente.
+  const margemPonta=.2,corridaMax=Math.max(1.2,d-2*margemPonta);
+
+  // A escada sobe do terreno NO PÉ dela até a laje. Medir no pé (e não no centro) é o que faz o
+  // último degrau terminar exatamente rente ao telhado em terreno inclinado.
+  const pe=localParaMundo(lx,-corridaMax/2);
+  const yBase=obterElevacao(pe.x,pe.z);
+  const subida=lajeY-yBase;
+  if(subida<=0)return null;
+
+  // Todos os degraus com a MESMA altura, tirada da divisão exata da subida. A altura alvo fica em 70%
+  // do step-up do jogador: a folga é o que impede que um desnível de terreno empurre um degrau pra
+  // cima do limite e transforme a escada em parede.
+  const numDegraus=Math.max(3,Math.ceil(subida/(ALTURA_DEGRAU*.70)));
+  const alturaDegrau=subida/numDegraus;
+  // A pisada preenche o comprimento disponível, com teto de 30 cm pra escada baixa não virar rampa.
+  const pisada=Math.min(.30,corridaMax/numDegraus);
+  const corrida=numDegraus*pisada,lzInicio=-corrida/2;
+
   const grupoEscada=new THREE.Group();grupoEscada.userData.escadariaViela=true;casaGrupo.add(grupoEscada);
-  const material=bmat(0x9a9a95);
+
+  // ===== UMA MALHA SÓ =====
+  // A escada inteira é UMA geometria fundida, não 25 malhas soltas. São 6 escadarias no mapa: o jeito
+  // antigo colocava 136 malhas e 136 colisores na cena só de degrau. Fundir é 1 draw call por escada.
+  const partes=[];
+  const caixa=(lgX,lgY,lgZ,cx,cy,cz)=>{const g=new THREE.BoxGeometry(lgX,lgY,lgZ);g.translate(cx,cy,cz);partes.push(g)};
+
+  // Saia: do ponto mais baixo do terreno sob a corrida até a base do 1º degrau. É ela que fecha o vão
+  // quando o chão desce ao longo da escada — sem isso a escada flutua e aparece buraco por baixo.
+  let terrenoMin=yBase;
+  for(let i=0;i<=numDegraus;i++){const m=localParaMundo(lx,lzInicio+i*pisada);terrenoMin=Math.min(terrenoMin,obterElevacao(m.x,m.z))}
+  const saiaAlt=Math.max(.05,yBase-(terrenoMin-.3));
+  caixa(largura,saiaAlt,corrida,lx,(yBase-saiaAlt/2)-casaMundo.y,lzInicio+corrida/2);
+
+  // Degraus: cada bloco vai da base da escada até o próprio piso. Empilhados, formam um sólido fechado
+  // — nada enterrado abaixo da saia, que era o que virava parede invisível no terreno do vizinho.
   for(let i=0;i<numDegraus;i++){
-    const lz=lzInicio+i*prof,mundo=localParaMundo(lx,lz);
-    const chaoAtual=obterElevacao(mundo.x,mundo.z),yTopoMundo=yBaseEscada+(i+1)*alturaDegrau;
-    // O bloco desce ENTERRADO abaixo do ponto mais baixo entre o terreno local e a base da escada.
-    // É o que garante degrau completo em terreno inclinado: a versão anterior media do chão daquele
-    // ponto pra cima e descartava o degrau quando a conta dava negativa, abrindo o vão.
-    const yFundo=Math.min(chaoAtual,yBaseEscada)-.4;
-    const alturaBloco=Math.max(.02,yTopoMundo-yFundo);
-    const geometria=new THREE.BoxGeometry(largura,alturaBloco,prof);
-    geometria.translate(0,-alturaBloco/2,0);// origem no TOPO do bloco: posiciono pelo piso do degrau
-    const degrau=new THREE.Mesh(geometria,material);
-    degrau.position.set(lx,yTopoMundo-casaMundo.y,lz);
-    degrau.castShadow=true;degrau.receiveShadow=true;degrau.userData.superficieEscada=true;
-    grupoEscada.add(degrau);
-    superficiesAndaveis.push(degrau);// pouso por raycast
-    registrarObstaculo(degrau);// colisão de verdade — o step-up do jogador é quem deixa subir
+    const topo=yBase+(i+1)*alturaDegrau,alt=topo-yBase;
+    caixa(largura,alt,pisada,lx,(yBase+alt/2)-casaMundo.y,lzInicio+i*pisada+pisada/2);
   }
-  // Patamar: liga o topo do último degrau à borda da laje. Fica NIVELADO com o telhado (topo em
-  // alturaTotal), então nunca vira degrau nem obstáculo — é só piso, e é o que impede o buraco
-  // entre a escada e a laje pra quem sobe reto em vez de curvar na direção da casa.
-  const ultimoLz=lzInicio+(numDegraus-1)*prof,paredeLocalX=lado*(w/2+.06);
-  const patamarMinX=Math.min(lx-largura/2,paredeLocalX),patamarMaxX=Math.max(lx+largura/2,paredeLocalX);
-  const patamarGeo=new THREE.BoxGeometry(patamarMaxX-patamarMinX,.12,prof*1.6);
-  const patamar=new THREE.Mesh(patamarGeo,material);
-  patamar.position.set((patamarMinX+patamarMaxX)/2,alturaTotal-.06,ultimoLz+prof*.8);
-  patamar.castShadow=true;patamar.receiveShadow=true;patamar.userData.superficieEscada=true;
-  grupoEscada.add(patamar);
-  superficiesAndaveis.push(patamar);
+  // Patamar: liga o último degrau à borda da laje, nivelado com o telhado. É o que fecha o vão pra
+  // quem sobe reto em vez de curvar na direção da casa.
+  const paredeLocalX=lado*(w/2+.06);
+  const patMinX=Math.min(lx-largura/2,paredeLocalX),patMaxX=Math.max(lx+largura/2,paredeLocalX);
+  caixa(patMaxX-patMinX,.12,pisada*1.6,(patMinX+patMaxX)/2,alturaTotal-.06,lzInicio+corrida+pisada*.3);
+
+  const malha=new THREE.Mesh(mergeGeometries(partes,false),bmat(0x9a9a95));
+  for(const g of partes)g.dispose();
+  malha.castShadow=true;malha.receiveShadow=true;malha.userData.superficieEscada=true;
+  grupoEscada.add(malha);
+  // É por AQUI que o jogador sobe: o raycast vertical acha o piso de cada degrau e assenta os pés nele.
+  superficiesAndaveis.push(malha);
   grupoEscada.updateMatrixWorld(true);
+  // Medidas da corrida, pro teste e pro depurador não precisarem adivinhar pela forma da malha.
+  const topoMundo=localParaMundo(lx,lzInicio+corrida);
+  grupoEscada.userData.escadaInfo={
+    numDegraus,alturaDegrau,pisada,corrida,
+    limiteStepUp:ALTURA_DEGRAU,
+    pe:{x:pe.x,z:pe.z,y:yBase},
+    topo:{x:topoMundo.x,z:topoMundo.z,y:yBase+subida},
+  };
+
+  // ===== COLISÃO =====
+  // Degrau NÃO é obstáculo do jogador. Essa era a decisão original do projeto (ver obstaculosPedestres
+  // em Physics.js) e eu a furei numa versão anterior: com cada degrau virando obstáculo, o jogador
+  // encostava, a rede anti-travamento entendia "encurralado" e o teleportava — o "me joga pra fora".
+  // Quem sustenta o jogador é a superfície andável acima; o degrau não precisa barrar ninguém.
+  // Só a SAIA vira obstáculo, e o topo dela fica na base do 1º degrau: ela impede entrar por baixo da
+  // escada sem nunca barrar quem está subindo, porque fica sempre abaixo dos pés de quem está nela.
+  const saiaMundo=localParaMundo(lx,lzInicio+corrida/2);
+  const meiaLarg=largura/2,meiaCorr=corrida/2;
+  const ex=Math.abs(cosR)*meiaLarg+Math.abs(sinR)*meiaCorr;
+  const ez=Math.abs(sinR)*meiaLarg+Math.abs(cosR)*meiaCorr;
+  const caixaSaia=new THREE.Box3(
+    new THREE.Vector3(saiaMundo.x-ex,yBase-saiaAlt,saiaMundo.z-ez),
+    new THREE.Vector3(saiaMundo.x+ex,yBase,saiaMundo.z+ez));
+  obstaculos.push(caixaSaia);
+  // Os degraus entram na lista de PEDESTRE: moradores e policiais continuam enxergando a escada como
+  // volume, sem que ela vire parede pro jogador.
+  for(let i=0;i<numDegraus;i++){
+    const c=localParaMundo(lx,lzInicio+i*pisada+pisada/2);
+    const px=Math.abs(cosR)*meiaLarg+Math.abs(sinR)*(pisada/2);
+    const pz=Math.abs(sinR)*meiaLarg+Math.abs(cosR)*(pisada/2);
+    obstaculosPedestres.push(new THREE.Box3(
+      new THREE.Vector3(c.x-px,yBase,c.z-pz),
+      new THREE.Vector3(c.x+px,yBase+(i+1)*alturaDegrau,c.z+pz)));
+  }
   return grupoEscada
 }
 export const casasPos=[];// footprints pro radar mostrar o traçado das ruas, não só pontos soltos

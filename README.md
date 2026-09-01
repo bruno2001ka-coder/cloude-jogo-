@@ -42,6 +42,14 @@ Jogo 3D em Three.js — bairro brasileiro estilizado, com cultivo/economia, bots
   fecha o FOV, aproxima por cima do ombro, fecha o cone de dispersão a 30% e reduz giro e velocidade
   — precisão custa mobilidade. O movimento tem **step offset**: a colisão horizontal ignora a faixa
   dos pés até 24% da altura do corpo, então degrau é degrau e parede é parede, sem caso especial.
+- **Escadaria de viela** (`src/WorldGenerator.js`) — uma por beco, só onde há viela ao lado E beco na
+  frente do primeiro degrau. Degraus todos da mesma altura (divisão exata da subida, com o alvo em 70%
+  do step-up) e da mesma pisada, terminando rente à laje. Três decisões sustentam ela: a escada inteira
+  é **uma malha fundida** (eram 136 malhas em 6 escadarias, hoje são 6); **degrau não é obstáculo do
+  jogador** — quem o sustenta é a superfície andável, e pôr cada degrau em `obstaculos` era o que fazia
+  a rede anti-travamento entender "encurralado" e teleportar o jogador; e **nada é enterrado além da
+  saia**, um bloco único que fecha do terreno até a base do primeiro degrau (antes cada degrau descia
+  ao subsolo e, onde o terreno caía, virava uma laje de 2 m saindo do chão no lote do vizinho).
 - **4 polos econômicos** (`src/Poles.js`) — cada insumo tem UM ponto de venda, pra o ciclo obrigar a
   travessia do bairro patrulhado: Fazenda (oeste) é a única fonte de vaso e terra, Mercado (centro) a
   única de semente, Loja de Armas (nordeste) vende armas/munição/colete e o Receptador (sudeste) só
