@@ -10,6 +10,20 @@
 import*as THREE from'three';
 import{GLTFLoader}from'three/addons/loaders/GLTFLoader.js';
 
+// ===== AJUSTES DO MODELO — MEXA AQUI =====
+// Tudo que alinha o GLB com a caixa de colisão invisível fica nesta tabela, e em nenhum outro lugar.
+// O encaixe é MEDIDO automaticamente (o boneco entra com a altura do jogo e os pés no chão), então
+// estes valores são só o retoque fino por cima da medição: o padrão de todos é "não mexe em nada".
+// Unidades: metros de jogo e radianos. O personagem tem 0,90 m de altura.
+export const AJUSTE={
+  escala:1,        // multiplica a altura final. 1 = exatamente a altura do jogo (PLAYER_HEIGHT)
+  alturaPes:0,     // sobe (+) ou desce (-) o boneco inteiro, em metros
+  // Posição e giro da ARMA na mão. Ela já nasce alinhada aos eixos do corpo; isto é o ajuste fino.
+  arma:{x:0,y:0,z:0,giroX:0,giroY:0,giroZ:0},
+  // COLETE: escala relativa ao tronco medido, e deslocamento em metros a partir do centro do peito.
+  colete:{escala:1,x:0,y:0,z:0},
+};
+
 // Nomes das animações dentro do GLB. Ficam aqui em cima porque são o contrato com o arquivo: trocar o
 // modelo é trocar esta tabela, não caçar string no meio da lógica.
 const ANIM={andar:'Walking',correr:'Running',andarAtirando:'Walk_Forward_While_Shooting'};
@@ -151,13 +165,13 @@ function normalizar(){
   raiz.updateMatrixWorld(true);
   const f=alturaDaMalha(malhaPele);
   if(f.altura>0){
-    raiz.scale.multiplyScalar(alvoAltura/f.altura);
+    raiz.scale.multiplyScalar(alvoAltura*AJUSTE.escala/f.altura);
     raiz.updateMatrixWorld(true);
   }
   // Pés na base do personagem (a origem do player), que é onde o boneco de caixas apoia.
   const escalaPlayer=new THREE.Vector3();playerRef.getWorldScale(escalaPlayer);
   if(escalaPlayer.y>0){
-    raiz.position.y+=(playerRef.position.y-alturaDaMalha(malhaPele).pes)/escalaPlayer.y;
+    raiz.position.y+=(playerRef.position.y+AJUSTE.alturaPes-alturaDaMalha(malhaPele).pes)/escalaPlayer.y;
     raiz.updateMatrixWorld(true);
   }
   raiz.visible=true;
@@ -230,7 +244,7 @@ function tentarVestirColete(){
   // FUNDO que largo, e escalar pelo maior encolhia a largura (saiu 0,179 quando o alvo era 0,206).
   // A largura do tronco vem da profundidade medida, e não da medida em X, porque na altura do peito
   // os braços entram na conta. O 1,08 é a folga de vestir por cima da roupa.
-  const alvo=m.profundidade*1.5*1.08;
+  const alvo=m.profundidade*1.5*1.08*AJUSTE.colete.escala;
   if(larg>0)coleteModelo.scale.multiplyScalar(alvo/larg);
 
   // Centra no tronco. O deslocamento é medido em MUNDO e `position` vive no espaço do PAI, então quem
@@ -239,7 +253,8 @@ function tentarVestirColete(){
   coleteGrupo.updateWorldMatrix(true,true);
   caixa.setFromObject(coleteModelo);
   const centro=new THREE.Vector3();caixa.getCenter(centro);
-  coleteModelo.position.add(m.centro.clone().sub(centro).divideScalar(escalaDe(coleteGrupo)));
+  const destino=m.centro.clone().add(new THREE.Vector3(AJUSTE.colete.x,AJUSTE.colete.y,AJUSTE.colete.z));
+  coleteModelo.position.add(destino.sub(centro).divideScalar(escalaDe(coleteGrupo)));
 }
 // Escala de mundo acumulada num objeto: converter um deslocamento de mundo pra local pede dividir por ela.
 function escalaDe(obj){const e=new THREE.Vector3();obj.getWorldScale(e);return e.x||1}

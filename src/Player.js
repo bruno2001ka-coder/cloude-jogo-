@@ -4,7 +4,7 @@ import{scene}from'./core.js';
 import{obterElevacao}from'./Terrain.js';
 import{obstaculos,superficiesAndaveis,caixaColideComObstaculos,buscarPosicaoLivre}from'./Physics.js';
 import{criarSombraContato,coleteMat,coleteFaixaMat}from'./Materials.js';
-import{carregarPersonagem,atualizarAnimacaoPersonagem,personagemCarregado,ossoDaMao,ossoDoTronco,medidasTronco,esconderBonecoAntigo,carregarColete,coleteVestido}from'./Personagem.js';
+import{carregarPersonagem,atualizarAnimacaoPersonagem,personagemCarregado,ossoDaMao,ossoDoTronco,medidasTronco,esconderBonecoAntigo,carregarColete,coleteVestido,AJUSTE}from'./Personagem.js';
 
 export const EYE_HEIGHT=0.8;
 export const PLAYER_HEIGHT=0.9;
@@ -80,6 +80,10 @@ carregarPersonagem(player,PLAYER_HEIGHT,()=>{
     const qOsso=new THREE.Quaternion(),qPlayer=new THREE.Quaternion();
     osso.getWorldQuaternion(qOsso);player.getWorldQuaternion(qPlayer);
     maoDireita.quaternion.copy(qOsso.invert().multiply(qPlayer));
+    // Retoque fino do programador (ver AJUSTE em Personagem.js). Padrão: zero em tudo.
+    maoDireita.rotateX(AJUSTE.arma.giroX);maoDireita.rotateY(AJUSTE.arma.giroY);maoDireita.rotateZ(AJUSTE.arma.giroZ);
+    // O deslocamento é dado em METROS DE JOGO; a âncora vive no espaço do osso, daí a conversão.
+    if(eOsso.x>0)maoDireita.position.set(AJUSTE.arma.x/eOsso.x,AJUSTE.arma.y/eOsso.x,AJUSTE.arma.z/eOsso.x);
   }
   ajustarColeteAoCorpo();
   esconderBonecoAntigo(bonecoCaixas);
