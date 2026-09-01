@@ -1,0 +1,26 @@
+{
+  "name": "Quintal 3D - Bairro, Casa, Histórias",
+  "short_name": "Quintal 3D",
+  "description": "Construa seu lar em um bairro brasileiro cheio de cor.",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "orientation": "landscape",
+  "background_color": "#10160f",
+  "theme_color": "#e7c568",
+  "icons": [
+    {
+      "src": "./assets/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "./assets/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["games", "entertainment"],
+  "lang": "pt-BR"
+}

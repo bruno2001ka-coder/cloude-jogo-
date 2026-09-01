@@ -3,6 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="theme-color" content="#e7c568">
+<link rel="manifest" href="./manifest.json">
 <title>Quintal 3D</title>
 <script type="importmap">
 {"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"}}
@@ -101,5 +103,19 @@ body.debug #debugBtn{display:block}
 <div id="vinheta"></div>
 <div id="danoFlash"></div>
 <script type="module" src="./src/main.js"></script>
+<script>
+  // Registro do Service Worker para PWA
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./sw.js')
+        .then((registration) => {
+          console.log('[PWA] Service Worker registrado com sucesso:', registration.scope);
+        })
+        .catch((error) => {
+          console.error('[PWA] Falha ao registrar Service Worker:', error);
+        });
+    });
+  }
+</script>
 </body>
 </html>
