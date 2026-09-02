@@ -82,23 +82,80 @@ def salvar(nome, albedo, h, rough, metal=None, forca_normal=2.0, ao_raio=8):
 def cinza(v):
     return np.stack([v, v, v], -1)
 
-# ============================ REBOCO PINTADO ============================
-# É a parede das casas. Fica QUASE BRANCO de propósito: a cor de cada casa entra por material.color,
-# e o mapa só carrega a textura. Um albedo colorido aqui multiplicaria as duas cores e sujaria o tom.
+# ============================ REBOCO DESCASCADO ============================
+# É a parede das casas, e o traço mais forte da referência de favela: o reboco cai em placas e o
+# CIMENTO CRU aparece por baixo, com sujeira escorrendo do telhado pra baixo.
+#
+# UMA RESTRIÇÃO MANDA NO DESENHO DESTA TEXTURA: a cor de cada casa entra por `material.color`, que
+# MULTIPLICA o mapa inteiro. Então não dá pra pintar tijolo vermelho no descascado — numa casa azul o
+# tijolo sairia azul. O que aparece na falha é cimento DESSATURADO (cinza), que multiplicado por
+# qualquer tinta continua lendo como cimento. Tijolo aparente de verdade existe no jogo, mas como
+# geometria separada com o material `tijolo` sem tinta (ver a faixa de embasamento no WorldGenerator).
 def reboco():
-    base = ruido_tileavel(RES, 3, 6, .55)
-    poro = ruido_tileavel(RES, 40, 3, .5)
-    manchas = ruido_tileavel(RES, 13, 4, .6)   # blobs menores: a 6 viravam borroes do tamanho da parede
-    h = base * .45 + poro * .55
-    # descascados: manchas onde o reboco caiu e aparece o cimento por baixo
-    casca = (manchas > .80).astype(float)      # menos cobertura: reboco descascado e ponto, nao parede podre
-    casca = blur(casca, 2)
-    h = h * (1 - casca * .5) - casca * .18
-    v = .82 + base * .12 + poro * .09 - casca * .12
+    base   = ruido_tileavel(RES,  3, 6, .55)   # ondulação larga da parede
+    poro   = ruido_tileavel(RES, 40, 3, .50)   # grão fino do reboco
+    # Frequência BAIXA é o que define a leitura: a 9 as falhas saíam do tamanho de moedas e a parede
+    # lia como mofo pintado de cinza. A 3,5 cada placa tem quase um metro, que é o tamanho de reboco
+    # que cai de verdade — e é o que aparece na referência.
+    # A FORMA DA PLACA foi o que mais custou a acertar, e as duas tentativas erradas ensinam o porquê:
+    #  · frequência baixa (3) com UMA oitava: falhas de quase um metro, todas do mesmo tamanho e
+    #    arredondadas — a casa virava CAMUFLAGEM de manchas escuras;
+    #  · frequência alta (7) com UMA oitava: falhas de 30 cm, mas de novo todas iguais e redondas —
+    #    a parede virava MEDIDA, um chuvisco de pintinhas espalhado por igual.
+    # O defeito comum é a oitava única: uma banda de frequência só devolve bolhas de UM tamanho.
+    # Reboco caído de verdade tem placa grande com borda rasgada e placa pequena ao lado. Isso é um
+    # campo multi-escala com a escala GRANDE dominando: 3 oitavas com persistência .45 (amplitudes
+    # 1 / .45 / .20) dão a mancha grande, o recorte irregular e a variação de tamanho de uma vez só.
+    placas = ruido_tileavel(RES,  5, 3, .45)   # onde a placa de reboco se soltou
+    borda  = ruido_tileavel(RES, 26, 2, .50)   # morde a borda da placa pra não virar bolha lisa
+
+    # A PLACA. Limiar sobre o ruído, mordido pelo ruído fino: é o recorte irregular que faz parecer
+    # reboco arrancado em vez de mancha pintada. ~28% da parede descasca.
+    # ~15% da parede descasca. A 28% o olho via DUAS cores em partes quase iguais e lia camuflagem:
+    # o que faz ler como favela é a falha ser EXCEÇÃO sobre a pintura, não metade dela.
+    caiu = ((placas + borda * .12 - .06) > .60).astype(float)
+    caiu_suave = blur(caiu, 2)
+    # Anel de borda: a beirada da placa é mais alta que o miolo, e é ela que pega a luz raspante.
+    beirada = np.clip(blur(caiu, 3) - caiu_suave, 0, 1) * 2.2
+
+    # SUJEIRA ESCORRIDA. Faixas verticais estreitas, de comprimento variado, que é como a água suja
+    # desce da laje. Feitas por ruído esticado em Y: um ruído de frequência alta em X e baixa em Y já
+    # é um escorrido, sem precisar de desenho.
+    faixaX = ruido_tileavel(RES, 30, 2, .5)
+    faixaY = ruido_tileavel(RES,  2, 3, .6)
+    escorrido = np.clip((faixaX * .80 + faixaY * .40 - .58) * 3.8, 0, 1)
+    # Estica em Y: a média corrida na vertical transforma a mancha em RASTRO, que é o que o escorrido
+    # de água suja é. Sem isto ficava um chuvisco, invisível na parede.
+    for _ in range(3):
+        escorrido = (escorrido + np.roll(escorrido, 1, 0) + np.roll(escorrido, 2, 0)
+                     + np.roll(escorrido, 4, 0) + np.roll(escorrido, 7, 0)) / 5
+    escorrido = np.clip(escorrido * 2.6, 0, 1) * (.5 + faixaY * .5)
+
+    # RELEVO. O reboco é uma casca POR CIMA do cimento: onde ele caiu, o nível baixa de verdade.
+    # ...mas POUCO. Com o degrau em .32 a oclusão calculada por `ocl` enegrecia a falha inteira e,
+    # somada ao aoMap do material no jogo, a placa saía quase PRETA na tela. O degrau real entre
+    # reboco e cimento é de milímetros, não de um palmo.
+    h = base * .40 + poro * .60
+    h = h * (1 - caiu_suave * .30) - caiu_suave * .05 + beirada * .12
+
+    # COR. Reboco quase branco (a tinta da casa entra por fora); o cimento exposto é mais escuro e
+    # mais neutro. O escorrido escurece os dois por igual, que é o que dá o aspecto encardido.
+    # O cimento a .52 contra reboco a .86 virava buraco preto depois de a tinta da casa multiplicar
+    # tudo. A .71 a falha continua legível e a parede segue lendo como UMA parede encardida.
+    reboco_v = .86 + base * .10 + poro * .08
+    cimento_v = .74 + poro * .09 + borda * .05
+    v = reboco_v * (1 - caiu_suave) + cimento_v * caiu_suave
+    v = v - escorrido * .30 - beirada * .05
     alb = cinza(v.clip(0, 1))
-    alb[..., 2] *= .985  # um fio mais quente que neutro
-    r = (.86 + poro * .10 + casca * .06).clip(.3, 1)
-    salvar("reboco", alb, h, r, forca_normal=1.4, ao_raio=6)
+    # O cimento puxa pro frio e o reboco pintado pro quente: a diferença de TEMPERATURA é o que separa
+    # os dois mesmo depois de a tinta da casa multiplicar tudo.
+    alb[..., 0] *= 1 - caiu_suave * .06
+    alb[..., 2] *= .985 + caiu_suave * .07
+
+    rough = (.84 + poro * .10 + caiu_suave * .10 + escorrido * .05).clip(.3, 1)
+    # forca_normal baixa (era 1,9): o degrau da placa entrava no normal e a luz do jogo sombreava a
+    # falha inteira; junto com o aoMap, a placa saía quase preta. O relevo do reboco é de milímetros.
+    salvar("reboco", alb, h, rough, forca_normal=1.4, ao_raio=6)
 
 # ============================ TIJOLO APARENTE ============================
 def tijolo():
@@ -116,30 +173,54 @@ def tijolo():
     gr = ruido_tileavel(RES, 30, 3, .5)
     h = (1 - massa) * (.72 + gr * .28) + massa * .12
     # tijolo avermelhado, argamassa cinza
-    r_ = .52 + tom * .22 + gr * .10
-    g_ = .26 + tom * .13 + gr * .09
-    b_ = .19 + tom * .09 + gr * .08
-    alb = np.stack([r_, g_, b_], -1)
-    cinzaM = cinza(np.full((RES, RES), .62) + gr * .12)
+    # Tijolo VELHO, não tijolo de loja: o laranja saturado que estava aqui (.52/.26/.19 com +.22 de
+    # variação) lia como parede de brinquedo. Tom mais baixo, menos separação entre tijolos e uma
+    # camada de encardido por cima é o que faz ler como embasamento exposto há anos.
+    encardido = ruido_tileavel(RES, 6, 2, .55)
+    r_ = .28 + tom * .09 + gr * .06
+    g_ = .17 + tom * .05 + gr * .05
+    b_ = .14 + tom * .04 + gr * .04
+    alb = np.stack([r_, g_, b_], -1) * (.62 + encardido * .34)[..., None]
+    # Argamassa suja, não branca: a .62 ela virava a cor DOMINANTE da parede (é uma grade contínua) e
+    # o tijolo aparecia como quadradinhos soltos dentro dela.
+    cinzaM = cinza(np.full((RES, RES), .34) + gr * .09)
     alb = alb * (1 - massa[..., None]) + cinzaM * massa[..., None]
     rough = (.88 + gr * .10 - massa * .04).clip(.4, 1)
     salvar("tijolo", alb, h, rough, forca_normal=3.2, ao_raio=5)
 
-# ============================ TELHA / LAJE ============================
-# Laje de cobertura com ondulação de fibrocimento: é o telhado mais comum de favela.
+# ============================ TELHA / ZINCO OXIDADO ============================
+# Telhado de favela é chapa ondulada enferrujando, não laje cinza. A ferrugem entra no ALBEDO e as
+# tintas de telhado (WorldGenerator) são claras de propósito, pra multiplicar sem matar o tom — cada
+# casa fica com um nível de oxidação diferente sem custar uma textura por casa.
 def telha():
     x = np.linspace(0, 1, RES, endpoint=False)[None, :] * np.ones((RES, 1))
-    # 16 ondas por ladrilho de 2 m davam 12 cm de passo: a essa densidade a telha vira ruido na tela.
-    # 10 ondas dao 20 cm, que e o passo da telha ondulada de verdade e le como telha a distancia.
+    # 10 ondas por ladrilho de 2 m = 20 cm de passo, que é o da telha ondulada de verdade. A 16 o
+    # passo caía pra 12 cm e a telha virava ruído na tela.
     onda = (np.sin(x * np.pi * 2 * 10) * .5 + .5) ** 1.4
-    sujeira = ruido_tileavel(RES, 8, 5, .6)
-    gr = ruido_tileavel(RES, 45, 2, .5)
-    h = onda * .7 + gr * .3
-    v = .58 + onda * .16 + sujeira * .22 - gr * .06
-    alb = cinza(v.clip(0, 1))
-    alb[..., 0] *= 1.02; alb[..., 2] *= .97
-    rough = (.90 + sujeira * .08).clip(.5, 1)
-    salvar("telha", alb, h, rough, forca_normal=2.6, ao_raio=7)
+
+    manchaFerrugem = ruido_tileavel(RES,  7, 5, .60)
+    pontos         = ruido_tileavel(RES, 30, 3, .50)
+    gr             = ruido_tileavel(RES, 45, 2, .50)
+
+    # A ferrugem se instala nas CALHAS da onda, onde a água para — por isso a máscara é multiplicada
+    # por (1-onda). É esse detalhe que faz a chapa parecer chapa e não uma textura de ruído listrada.
+    # O -.66 é o que deixa CHAPA à mostra. A .52 a ferrugem cobria quase tudo e o telhado virava uma
+    # mancha laranja uniforme — some a ondulação, some a leitura de metal, e sobra ruído colorido.
+    ferrugem = np.clip((manchaFerrugem * .8 + pontos * .35 - .66) * 3.0, 0, 1)
+    ferrugem = np.clip(ferrugem * (.55 + (1 - onda) * .75), 0, 1)
+
+    h = onda * .70 + gr * .22 + ferrugem * .08   # a ferrugem empola um pouco a chapa
+
+    zinco_v = .60 + onda * .17 - gr * .05
+    r_ = zinco_v * (1 - ferrugem) + (.52 + pontos * .16) * ferrugem
+    g_ = zinco_v * (1 - ferrugem) + (.30 + pontos * .11) * ferrugem
+    b_ = zinco_v * (1 - ferrugem) + (.20 + pontos * .07) * ferrugem
+    alb = np.stack([r_, g_, b_], -1).clip(0, 1)
+
+    # Chapa nova reflete; ferrugem é fosca e áspera. A diferença de roughness é metade da leitura.
+    rough = (.62 + ferrugem * .34 + gr * .06).clip(.4, 1)
+    metal = (1 - ferrugem) * .55
+    salvar("telha", alb, h, rough, metal, forca_normal=2.6, ao_raio=7)
 
 # ============================ CHÃO DE TERRA / VIELA ============================
 def chao():
@@ -192,7 +273,66 @@ def madeira():
     # forca_normal baixa: o veio é DESENHO, não sulco. A 2.0 a porta ganhava relevo de tronco lavrado.
     salvar("madeira", alb, h, rough, forca_normal=.9, ao_raio=4)
 
-for f in (reboco, tijolo, telha, chao, madeira):
+# ============================ GRAFFITE ============================
+# NÃO é tileável, e é o único mapa aqui que não é: graffite é uma peça única colada numa parede, não um
+# padrão que se repete. Sai como RGBA — o alfa é o traço, e o resto é transparente — pra entrar como
+# decalque num plano colado na fachada, sem precisar de uma segunda textura por casa.
+#
+# São quatro peças num atlas 2x2. Cada parede sorteia uma pelo deslocamento da UV, então quatro
+# graffites diferentes custam UMA textura e UM material no jogo inteiro.
+def graffite():
+    import math
+    from PIL import ImageDraw
+    lado = 512
+    im = Image.new("RGBA", (lado, lado), (0, 0, 0, 0))
+    d = ImageDraw.Draw(im)
+    r = np.random.default_rng(11)
+    # Cores de lata, um tom abaixo do puro: spray saturado contra reboco sujo lia como caneta
+    # fluorescente. E o traço leva CONTORNO ESCURO por baixo (ver `tag`), que é o que faz pichação
+    # parecer pichação e não rabisco — de longe o olho pega a massa escura, não a cor.
+    cores = [(198, 62, 54), (222, 186, 68), (66, 146, 190), (226, 224, 214), (118, 74, 156)]
+    TINTA_CONTORNO = (26, 22, 20)
+
+    def tag(ox, oy, w, hh, cor, traco):
+        """Um rabisco contínuo: pontos de controle sorteados, ligados por linha grossa. Não tenta
+        desenhar letra — de longe, numa parede de jogo, o que lê é o GESTO e a cor."""
+        n = r.integers(7, 12)
+        px = [ox + w * (.1 + .8 * (i / (n - 1))) for i in range(n)]
+        py = [oy + hh * (.25 + .5 * r.random()) for _ in range(n)]
+        # sobe e desce alternado: dá o zigue-zague de tag em vez de uma linha reta ondulada
+        for i in range(n):
+            py[i] += (hh * .22) * (1 if i % 2 else -1) * r.random()
+        pts = list(zip(px, py))
+        # Contorno primeiro, cor por cima: o traço fino de antes (5% da largura da tag) sumia na
+        # parede e lia como risco de caneta. Grosso e contornado é o que se enxerga do outro lado da rua.
+        d.line(pts, fill=TINTA_CONTORNO + (255,), width=traco + int(traco * .55), joint="curve")
+        d.line(pts, fill=cor + (255,), width=traco, joint="curve")
+        # respingo e contorno: o que separa "linha desenhada" de "spray"
+        for _ in range(int(w * .25)):
+            sx = ox + r.random() * w; sy = oy + r.random() * hh
+            if r.random() < .5: continue
+            rr = r.integers(1, 3)
+            d.ellipse([sx - rr, sy - rr, sx + rr, sy + rr], fill=cor + (int(60 + r.random() * 90),))
+        return pts
+
+    meio = lado // 2
+    for cx in (0, meio):
+        for cy in (0, meio):
+            cor = cores[int(r.integers(0, len(cores)))]
+            pts = tag(cx + meio * .07, cy + meio * .16, meio * .86, meio * .68, cor, int(meio * .12))
+            # segundo traço mais fino por cima, de outra cor: graffite raramente é de uma cor só
+            cor2 = cores[int(r.integers(0, len(cores)))]
+            d.line([(x + r.random() * 6 - 3, y + r.random() * 8 - 4) for x, y in pts],
+                   fill=cor2 + (210,), width=max(3, int(meio * .035)), joint="curve")
+
+    # Desfoca de leve o ALFA: borda de spray não é recorte de tesoura.
+    a = np.asarray(im.split()[3], dtype=float) / 255
+    a = blur(a, 1)
+    rgb = np.asarray(im.convert("RGB"), dtype=float) / 255
+    saida = np.dstack([rgb, np.clip(a * 1.15, 0, 1)])
+    Image.fromarray((saida * 255).astype(np.uint8)).save(f"{SAIDA}/graffite.png")
+
+for f in (reboco, tijolo, telha, chao, madeira, graffite):
     f()
     print("ok:", f.__name__)
 
