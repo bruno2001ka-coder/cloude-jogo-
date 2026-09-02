@@ -37,12 +37,19 @@ const colete=new THREE.Group();colete.visible=false;
   for(const m of colete.children){m.castShadow=true;m.receiveShadow=true}
 }
 player.add(colete);
-// Pede o colete 3D. Se ele chegar, troca estas caixas pelo modelo dentro do MESMO grupo — o liga/
-// desliga continua sendo um `.visible` só. Se falhar, as caixas ficam e o jogador vê o colete simples.
-carregarColete(colete);
+// ===== O MODELO 3D SÓ BAIXA QUANDO FOR APARECER =====
+// `carregarColete` e `pendurarMochila` eram chamados AQUI, no topo do módulo, incondicionalmente.
+// Medido pela auditoria: 1,79 MB de download e 35 MB de VRAM (a mochila sozinha traz uma textura
+// 2048x2048 = 22,4 MB, mais que o bairro inteiro) — para dois objetos que nascem `visible=false` e
+// que a maioria das partidas nunca mostra. No celular isso é memória de vídeo e tempo de carregamento
+// pagos adiantado por nada.
+// Agora o download acontece na primeira vez que a peça é LIGADA. As caixas simples continuam sendo
+// o que aparece até o modelo chegar, exatamente como antes.
+let coletePedido=false;
+function garantirColete(){if(coletePedido)return;coletePedido=true;carregarColete(colete)}
 // API mínima pro combate/save: quem decide se o jogador ESTÁ com colete é a economia (inventario.colete),
 // não este módulo — daí só expormos o liga/desliga em vez de ler estado de fora.
-export function definirColeteVisivel(v){colete.visible=!!v}
+export function definirColeteVisivel(v){if(v)garantirColete();colete.visible=!!v}
 export function coleteEstaVisivel(){return colete.visible}
 
 // ===== MOCHILA DOS PACOTES =====
@@ -67,8 +74,9 @@ const mochila=new THREE.Group();mochila.visible=false;
 player.add(mochila);
 // Pendura no osso do tronco quando o boneco 3D chega, pra ela acompanhar a animação em vez de ficar
 // rígida. Se o modelo não carregar, ela fica onde está e o jogador vê a mochila simples.
-pendurarMochila(mochila);
-export function definirMochilaVisivel(v){mochila.visible=!!v}
+let mochilaPedida=false;
+function garantirMochila(){if(mochilaPedida)return;mochilaPedida=true;pendurarMochila(mochila)}
+export function definirMochilaVisivel(v){if(v)garantirMochila();mochila.visible=!!v}
 
 // ===== MÃO QUE SEGURA A ARMA =====
 // As armas (Weapons.js) são penduradas aqui pra acompanharem a animação de caminhada sem código
@@ -298,7 +306,14 @@ export function atualizarMovimentoJogador(dt,keys,joyX,joyY,yaw,fatorVelocidade=
   let x=(keys.KeyD?1:0)-(keys.KeyA?1:0)+joyX,z=(keys.KeyS?1:0)-(keys.KeyW?1:0)+joyY;
   const m=Math.hypot(x,z);
   desired.set(0,0,0);
-  if(m){
+  // ZONA MORTA. O joystick da tela mede a posição ABSOLUTA do dedo em relação ao centro fixo do
+  // círculo, então um polegar apoiado a 2 mm do centro já produzia joyX de 0,02 e o personagem
+  // escorregava sozinho — a sensação de "ele anda sem eu mandar". 0,14 é o suficiente pra matar o
+  // tremor do dedo sem tirar o andar devagar (a normalização abaixo mantém a analogia acima disso).
+  // O detector de travamento (main.js) já usava 0,2 como limiar de "querendo andar"; o movimento em
+  // si não usava nenhum, e essa incoerência é que deixava o jogador "escorregando" parado.
+  if(m>0&&m<.14){desired.set(0,0,0);}
+  else if(m){
     // Normaliza só quando passa de 1: o joystick analógico tem que conseguir andar devagar, e
     // dividir sempre pela magnitude transformava qualquer inclinação do dedo em velocidade máxima.
     const escala=(m>1?1/m:1)*VELOCIDADE*fatorVelocidade;

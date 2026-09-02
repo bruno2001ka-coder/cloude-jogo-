@@ -61,7 +61,13 @@ stickBase.addEventListener('pointercancel',releaseJoy);
 
 // Mouse (desktop): Pointer Lock dá o giro livre estilo GTA SA, sem precisar segurar o botão depois do 1º clique (exigência do navegador).
 // Touch (celular): mantém o arrastar-pra-olhar de sempre, sem mudança nenhuma.
-let drag=false,lastX=0,lastY=0;
+// UM DEDO POR VEZ GIRA A CÂMERA. Isto era `drag` booleano com um `lastX/lastY` global, sem olhar o
+// `pointerId`: no celular, encostar um segundo dedo na tela (comum — polegar mirando e outro dedo
+// apoiado) fazia o giro passar a ser calculado com o `lastX` do PRIMEIRO dedo, e a câmera dava um
+// salto violento. Pior: levantar o segundo dedo zerava `drag` e a câmera PARAVA de girar até
+// levantar e reencostar o dedo que estava girando.
+// Guardando o id, o canvas ignora qualquer ponteiro que não seja o que começou o arraste.
+let dragId=null,lastX=0,lastY=0;
 // Faixa vertical da mira. Era [-.12,.7]: com o mínimo em -0,12 rad dava pra apontar no máximo ~7°
 // acima da horizontal, ou seja, era IMPOSSÍVEL mirar no helicóptero (38 m de altura) ou em alguém em
 // cima de uma laje. Abrir o lado negativo é o que devolve a pontaria pra cima.
@@ -69,7 +75,9 @@ const PITCH_MIN=-.6,PITCH_MAX=.85;
 const limitarPitch=v=>Math.max(PITCH_MIN,Math.min(PITCH_MAX,v));
 export function initDragLook(rendererDomElement){
   rendererDomElement.addEventListener('pointerdown',e=>{
-    drag=true;lastX=e.clientX;lastY=e.clientY;
+    // O segundo dedo no canvas não rouba o arraste do primeiro.
+    if(dragId!==null&&e.pointerId!==dragId)return;
+    dragId=e.pointerId;lastX=e.clientX;lastY=e.clientY;
     // No desktop, com o mouse já travado, o clique é tiro — antes só a tecla F atirava, e com o
     // ponteiro travado o cursor nem alcançava o botão 🔫 na tela.
     if(e.pointerType==='mouse'){
@@ -105,7 +113,7 @@ export function initDragLook(rendererDomElement){
   // pitch: camGoal.y = alvo.y + sin(pitch)*dist, ou seja pitch POSITIVO ergue a câmera e olha PRA BAIXO.
   //   Mouse pra cima dá movementY NEGATIVO e tem que olhar pra cima, isto é, DIMINUIR o pitch →
   //   o certo é `+= movementY`. O `-=` de antes era o eixo vertical invertido.
-  rendererDomElement.addEventListener('pointermove',e=>{sincronizarBotoesMouse(e);if(document.pointerLockElement===rendererDomElement){const s=sens();inputState.targetYaw-=e.movementX*SENSIBILIDADE_MOUSE*s;inputState.targetPitch=limitarPitch(inputState.targetPitch+e.movementY*SENSIBILIDADE_MOUSE_VERTICAL*s)}else if(drag){const s=sens(),dx=e.clientX-lastX,dy=e.clientY-lastY;lastX=e.clientX;lastY=e.clientY;inputState.targetYaw-=dx*SENSIBILIDADE_TOQUE*s;inputState.targetPitch=limitarPitch(inputState.targetPitch+dy*SENSIBILIDADE_TOQUE_VERTICAL*s)}});
+  rendererDomElement.addEventListener('pointermove',e=>{sincronizarBotoesMouse(e);if(document.pointerLockElement===rendererDomElement){const s=sens();inputState.targetYaw-=e.movementX*SENSIBILIDADE_MOUSE*s;inputState.targetPitch=limitarPitch(inputState.targetPitch+e.movementY*SENSIBILIDADE_MOUSE_VERTICAL*s)}else if(e.pointerId===dragId){const s=sens(),dx=e.clientX-lastX,dy=e.clientY-lastY;lastX=e.clientX;lastY=e.clientY;inputState.targetYaw-=dx*SENSIBILIDADE_TOQUE*s;inputState.targetPitch=limitarPitch(inputState.targetPitch+dy*SENSIBILIDADE_TOQUE_VERTICAL*s)}});
   // Rodinha do mouse troca de arma: a mão direita nunca sai do mouse durante o tiroteio.
   rendererDomElement.addEventListener('wheel',e=>{if(document.pointerLockElement===rendererDomElement){trocarArma();e.preventDefault()}},{passive:false});
   // Só o mouse solta o gatilho aqui: no celular o tiro é o botão 🔫 (com captura de ponteiro própria),
@@ -113,7 +121,11 @@ export function initDragLook(rendererDomElement){
   // câmera, saísse da tela.
   // Soltar um dos dois botões também passa pelo bitmask: soltar o esquerdo com o direito ainda
   // apertado tem que parar o tiro e MANTER a mira, e o `button` sozinho não sabe disso.
-  const soltar=e=>{drag=false;if(e.pointerType==='mouse'){
+  const soltar=e=>{
+    // Só o dedo que estava girando encerra o giro. Antes qualquer pointerup zerava o arraste.
+    if(dragId!==null&&e.pointerId!==dragId)return;
+    dragId=null;
+    if(e.pointerType==='mouse'){
     if(e.type==='pointercancel'){definirGatilho(false);definirMira(false)}else sincronizarBotoesMouse(e);
   }};
   rendererDomElement.addEventListener('pointerup',soltar);
