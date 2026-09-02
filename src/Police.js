@@ -49,6 +49,7 @@ import{aplicarDano,renderizarVidaJogador,criarBarraMundo}from'./HealthBar.js';
 import{droneState,miraState}from'./Camera.js';
 
 const HELI_ALTURA=38,HELI_VELOCIDADE=12,MAPA_LIMITE=95;
+const SALDO_RESPAWN=300;
 // Raio de detecção dimensionado pra funcionar em SOBREVOO, agora que o heli não vai mais direto na
 // coordenada da muda: mapa de 190x190 = 36.100 m², heli a 12 m/s, faixa varrida = 2R x v.
 //   R=10 →  240 m²/s → mapa inteiro em 150 s → na prática a polícia nunca achava nada
@@ -427,11 +428,13 @@ function renderJogador(){
   mostrarAviso('Você foi rendido pela polícia — plantação perdida e multa aplicada.',3400);
   if(policia.alvoPlanta&&!policia.alvoPlanta.colhida)confiscarPlanta(policia.alvoPlanta);
   aplicarMulta(MULTA_RENDICAO);
+  // Define o saldo no início da rendição para o HUD e o autosave já refletirem a reserva de respawn.
+  definirDinheiro(SALDO_RESPAWN);
   transitar('recuando');
   setTimeout(()=>{
     player.position.set(SPAWN_X,obterElevacao(SPAWN_X,SPAWN_Z),SPAWN_Z);
-    // A rendição reinicia o jogador com uma reserva mínima para ele poder voltar ao jogo.
-    definirDinheiro(300);
+    // Reaplica a reserva no instante exato em que o personagem nasce no spawn.
+    definirDinheiro(SALDO_RESPAWN);
     saudeJogador=JOGADOR_HP_MAX;jogadorRendido=false;atualizarHudSaude();
   },1400);
 }
