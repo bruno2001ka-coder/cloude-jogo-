@@ -16,7 +16,11 @@
 //
 // A versão no nome do cache é o que expulsa o cache velho: mudou o número, `activate` apaga tudo que
 // não é dele. Sem isso, arquivo removido do projeto continuaria vivo no celular de quem já instalou.
-const VERSAO='quintal3d-v1';
+// A versão ficou congelada em v1 por 8 commits de código, e o comentário acima descrevia uma
+// disciplina que ninguém seguia. Agora ela não depende mais de eu lembrar: o que decide se o jogador
+// recebe código novo é a estratégia de rede-primeiro pro `src/` lá embaixo, e este número serve só
+// pra faxina do cache velho quando a CASCA muda.
+const VERSAO='quintal3d-v2';
 const CASCA=[
   './',
   './index.html',
@@ -60,6 +64,23 @@ self.addEventListener('fetch',ev=>{
     ev.respondWith((async()=>{
       try{return await guardar(req,await fetch(req))}
       catch(e){return (await caches.match(req))||(await caches.match('./index.html'))||Response.error()}
+    })());
+    return;
+  }
+
+  // ===== O CÓDIGO VEM DA REDE PRIMEIRO. O RESTO, DO CACHE. =====
+  // Isto era stale-while-revalidate pra TUDO, e o efeito no celular era brutal: os arquivos de
+  // `src/` não têm hash no nome, então o jogador recebia sempre o JS da sessão ANTERIOR e só via uma
+  // correção depois de abrir o jogo duas vezes. O sintoma foi notado ("corrigi e continua igual") e
+  // até ganhou um `VERSAO_JOGO` no main.js pra diagnosticar — mas a causa estava aqui.
+  //
+  // Código é pequeno (todo o `src/` são ~200 KB) e muda toda hora; asset é grande e quase nunca muda.
+  // Então cada um recebe a estratégia que lhe cabe, em vez de uma só pra todo mundo.
+  const ehCodigo=/\.(js|css|webmanifest)$/i.test(new URL(req.url).pathname);
+  if(ehCodigo){
+    ev.respondWith((async()=>{
+      try{return await guardar(req,await fetch(req))}
+      catch(e){return (await caches.match(req))||Response.error()}// offline: o de ontem serve
     })());
     return;
   }

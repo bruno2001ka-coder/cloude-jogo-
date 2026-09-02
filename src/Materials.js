@@ -95,8 +95,12 @@ export function uvPorMetro(geo,metrosPorLado=2){
 }
 // Materiais dedicados (fora do cache genérico) pra cada objeto reagir à luz do seu jeito: vidro brilha, metal reflete, concreto é fosco.
 export const concreto=pbr('reboco',0xb9b3a1,{aoMapIntensity:1});
-export const janela=new THREE.MeshPhysicalMaterial({color:0x0c2430,roughness:.08,metalness:.1,clearcoat:.55,clearcoatRoughness:.12,emissive:0x1c3d4d,emissiveIntensity:.12});
-export const janelaAcesa=new THREE.MeshPhysicalMaterial({color:0x2c3d20,roughness:.1,metalness:.05,clearcoat:.4,clearcoatRoughness:.15,emissive:0xffcf7a,emissiveIntensity:.85});
+// VIDRO SEM CLEARCOAT. Eram MeshPhysicalMaterial com clearcoat — o shader mais caro da cena, um
+// segundo lóbulo especular completo por fragmento — aplicado a 208 retângulos escuros de 1 x 0,85 m.
+// O brilho que o clearcoat dava vem igual de roughness baixa com metalness: num vidro pequeno e
+// escuro, visto de longe, a diferença não existe, e o custo por pixel cai à metade.
+export const janela=new THREE.MeshStandardMaterial({color:0x0c2430,roughness:.09,metalness:.5,emissive:0x1c3d4d,emissiveIntensity:.14});
+export const janelaAcesa=new THREE.MeshStandardMaterial({color:0x2c3d20,roughness:.12,metalness:.35,emissive:0xffcf7a,emissiveIntensity:.9});
 export const molduraJanela=new THREE.MeshStandardMaterial({color:0x4a4038,roughness:.85});
 export const porta=pbr('madeira',0xffffff);
 export const agua=new THREE.MeshStandardMaterial({color:0x2f7fae,roughness:.3,metalness:.45});
@@ -132,4 +136,8 @@ export const mochilaFaixaMat=new THREE.MeshStandardMaterial({color:0x55613f,roug
 // Sombra de contato falsa (blob radial suave): ajuda a "grudar" objetos no chão sem custo de mais uma luz/sombra real.
 function criarTexturaSombra(){const s=128,cv=document.createElement('canvas');cv.width=cv.height=s;const ctx=cv.getContext('2d');const grad=ctx.createRadialGradient(s/2,s/2,0,s/2,s/2,s/2);grad.addColorStop(0,'rgba(0,0,0,.45)');grad.addColorStop(.7,'rgba(0,0,0,.16)');grad.addColorStop(1,'rgba(0,0,0,0)');ctx.fillStyle=grad;ctx.fillRect(0,0,s,s);return new THREE.CanvasTexture(cv)}
 const sombraTex=criarTexturaSombra();
-export function criarSombraContato(raio,parent,x=0,z=0){const mat=new THREE.MeshBasicMaterial({map:sombraTex,transparent:true,depthWrite:false});const m=new THREE.Mesh(new THREE.PlaneGeometry(raio*2,raio*2),mat);m.rotation.x=-Math.PI/2;m.position.set(x,.02,z);m.renderOrder=1;parent.add(m);return m}
+// UM material pra todas as sombras de contato. Era um MeshBasicMaterial NOVO por chamada, todos com
+// parâmetros idênticos e a mesma textura — 16 fixos mais um por planta plantada, sem teto. Material
+// transparente entra na fila ordenada sem early-z, então cada duplicata é um grupo de draw call a mais.
+const sombraContatoMat=new THREE.MeshBasicMaterial({map:sombraTex,transparent:true,depthWrite:false});
+export function criarSombraContato(raio,parent,x=0,z=0){const mat=sombraContatoMat;const m=new THREE.Mesh(new THREE.PlaneGeometry(raio*2,raio*2),mat);m.rotation.x=-Math.PI/2;m.position.set(x,.02,z);m.renderOrder=1;parent.add(m);return m}

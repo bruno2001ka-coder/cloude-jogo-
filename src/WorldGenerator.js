@@ -47,7 +47,25 @@ function graffite(parent,indice,x,y,z,larg){
   return m;
 }
 
-function bloco(geo,material,x,y,z,parent=bairro){if(material&&material.map)uvPorMetro(geo);const m=new THREE.Mesh(geo,material);m.position.set(x,y,z);m.castShadow=true;m.receiveShadow=true;parent.add(m);return m}
+// ===== QUEM PROJETA SOMBRA =====
+// Isto marcava `castShadow=true` em TODA malha, sem exceção: peitoril de 7 cm, balaústre de 6 cm,
+// moldura de janela, mureta decorativa do andar de cima do sobrado. O efeito é que o passe de sombra
+// redesenha praticamente o bairro inteiro dentro da caixa de 68x68 m que segue o jogador — medido
+// pela auditoria em ~800 a 1.400 draw calls EXTRAS por quadro, ou seja, o custo de geometria do jogo
+// dobrado pra desenhar sombra de peça que ninguém enxerga.
+//
+// A regra é dimensional e conservadora: só projeta sombra quem tem espessura (>= 12 cm no menor lado)
+// E tamanho (>= 60 cm no maior). Parede, laje, mureta e porta passam; peitoril, moldura, balaústre e
+// ripa não. Todo mundo continua RECEBENDO sombra — receber é praticamente de graça, é o que faz a
+// peça pequena ficar escura quando está na sombra da casa, e é aí que o olho percebe.
+const SOMBRA_MIN_ESPESSURA=.12,SOMBRA_MIN_TAMANHO=.6;
+function projetaSombra(geo){
+  const p=geo.parameters;
+  if(!p)return true;// geometria sem parâmetros (mesclada, importada): não arrisca, projeta
+  const d=[p.width??p.radiusTop*2??1,p.height??1,p.depth??p.radiusBottom*2??1];
+  return Math.min(...d)>=SOMBRA_MIN_ESPESSURA&&Math.max(...d)>=SOMBRA_MIN_TAMANHO;
+}
+function bloco(geo,material,x,y,z,parent=bairro){if(material&&material.map)uvPorMetro(geo);const m=new THREE.Mesh(geo,material);m.position.set(x,y,z);m.castShadow=projetaSombra(geo);m.receiveShadow=true;parent.add(m);return m}
 
 // ===== ESCADARIA DE VIELA =====
 // Escada exterior colada na parede lateral (eixo X local da casa), filha do grupo da casa.
