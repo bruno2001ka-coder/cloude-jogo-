@@ -571,9 +571,13 @@ function construirCasa(l){
       {giro:l.giro+Math.PI/2,eixo:'x',sinal: 1,vao:prof,rua:false},// lateral direita
       {giro:l.giro-Math.PI/2,eixo:'x',sinal:-1,vao:prof,rua:false},// lateral esquerda
     ];
+    // Os andares superiores recuam para o fundo. Todas as peças aplicadas na fachada precisam usar
+    // exatamente o mesmo deslocamento; sem isso janelas, molduras e remendos ficam suspensos à frente
+    // da parede recuada, sobretudo no terceiro andar.
+    const recuoDaFace=-recuoAcumulado/2;
     const pontoDaFace=(f,u,fora)=>f.eixo==='z'
-      ? noLote(l,u*f.sinal,f.sinal*(prof/2+fora))
-      : noLote(l,f.sinal*(larg/2+fora),-u*f.sinal);
+      ? noLote(l,u*f.sinal,f.sinal*(prof/2+fora)+recuoDaFace)
+      : noLote(l,f.sinal*(larg/2+fora),-u*f.sinal+recuoDaFace);
 
     // REMENDOS. Numa parede rebocada é o tijolo aparecendo onde o reboco caiu; numa parede crua é o
     // contrário, a mancha de reboco de quem começou a rebocar e parou. Os dois lados da mesma moeda,
@@ -640,10 +644,10 @@ function construirCasa(l){
     for(const f of faces){
       const posicoes=f.rua?[-.28,.28]:(((hashInt(l.sem+andar,Math.round(f.giro*10))%100)<58&&f.vao>2.6)?[0]:[]);
       for(const frac of posicoes){
-        const p=pontoDaFace(f,frac*f.vao,.04);
+        const p=pontoDaFace(f,frac*f.vao,.025);
         const acesa=((hashInt(l.sem+andar,Math.round(f.giro*10)+(frac>0?1:0)))%100)<22;
         instanciar('moldura',GEO_MOLDURA,molduraJanela,matrizEm(p.x,y+alt*.62,p.z,f.giro));
-        const v=pontoDaFace(f,frac*f.vao,.07);
+        const v=pontoDaFace(f,frac*f.vao,.035);
         instanciar(acesa?'janelaAcesa':'janela',GEO_JANELA,acesa?janelaAcesa:janela,
           matrizEm(v.x,y+alt*.62,v.z,f.giro));
       }
