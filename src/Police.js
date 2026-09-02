@@ -215,7 +215,9 @@ const skinPolicial=[0xc79067,0x8a5a3c,0xe0b088,0x6b4a30];
 const uniformeMat=new THREE.MeshStandardMaterial({color:0x232c3d,roughness:.7}),
   coleteMat=new THREE.MeshStandardMaterial({color:0x14181f,roughness:.75}),
   boneMat=new THREE.MeshStandardMaterial({color:0x14181f,roughness:.8}),
-  armaMat=new THREE.MeshStandardMaterial({color:0x2a2a2a,roughness:.4,metalness:.6});
+  armaMat=new THREE.MeshStandardMaterial({color:0x2a2a2a,roughness:.4,metalness:.6}),
+  // Mesmo tom do rosto do morador (NPCs.js), de propósito: os dois são gente do mesmo mundo.
+  rostoMat=new THREE.MeshStandardMaterial({color:0x171712,roughness:.8});
 function blocoP(geo,mat,x,y,z,parent){const m=new THREE.Mesh(geo,mat);m.position.set(x,y,z);m.castShadow=true;m.receiveShadow=true;parent.add(m);return m}
 
 // A malha crua do policial mede 1,78 nesta escala — dividindo por PLAYER_HEIGHT dá a escala que
@@ -244,6 +246,11 @@ const GEO_POL={
   cabeca:new THREE.BoxGeometry(.37,.37,.35),
   bone:new THREE.BoxGeometry(.4,.14,.38),
   perna:new THREE.BoxGeometry(.13,.55,.16),
+  // O policial não tinha ROSTO: cabeça lisa, enquanto o morador (NPCs.js) sempre teve olhos e boca.
+  // De perto, numa troca de tiros, quem está atirando em você ser um boneco sem cara é o detalhe que
+  // mais quebra a cena. Duas caixinhas e um traço, geometria compartilhada como o resto.
+  olho:new THREE.BoxGeometry(.06,.06,.03),
+  boca:new THREE.BoxGeometry(.13,.03,.02),
   braco:new THREE.BoxGeometry(.13,.58,.16),
   arma:new THREE.BoxGeometry(.08,.1,.42),
 };
@@ -255,6 +262,10 @@ function criarPolicial(indice,tipo='rapel'){
   blocoP(GEO_POL.tronco,uniformeMat,0,.87,0,g);
   blocoP(GEO_POL.colete,coleteMat,0,1.02,0,g);
   blocoP(GEO_POL.cabeca,skinMat,0,1.48,0,g);
+  // Rosto na frente da cabeça (+z local, que é pra onde o policial olha). As medidas são as mesmas do
+  // morador, pra os dois lerem como gente do mesmo mundo.
+  for(const ox of[-.07,.07])blocoP(GEO_POL.olho,rostoMat,ox,1.53,.175,g);
+  blocoP(GEO_POL.boca,rostoMat,0,1.4,.18,g);
   blocoP(GEO_POL.bone,boneMat,0,1.7,0,g);
   const pernas=[-.14,.14].map(lx=>blocoP(GEO_POL.perna,uniformeMat,lx,.29,0,g));
   const bracos=[-.37,.37].map(lx=>blocoP(GEO_POL.braco,skinMat,lx,.9,0,g));
