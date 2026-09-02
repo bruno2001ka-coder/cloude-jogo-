@@ -13,7 +13,51 @@ const cameraSafeGoalTemp=new THREE.Vector3();
 // Com 0,9 m, esse piso deixa a câmera longe demais pra encostar na parede sem atravessar, e o recuo
 // grande faz ela pular pra frente cedo demais. Margem menor = a câmera chega perto da parede e para.
 const CAM_MARGEM=.18,CAM_MIN=.4;
-export function cameraSemClipping(target,goal){const distancia=target.distanceTo(goal);cameraDirectionTemp.subVectors(goal,target).normalize();cameraRaycaster.set(target,cameraDirectionTemp);let menor=distancia;for(const box of obstaculos){const hit=cameraRaycaster.ray.intersectBox(box,cameraHitTemp);if(hit){const d=hit.distanceTo(target);if(d>0&&d<menor)menor=d}}if(menor<distancia){cameraSafeGoalTemp.copy(cameraDirectionTemp).multiplyScalar(Math.max(CAM_MIN,menor-CAM_MARGEM)).add(target);return cameraSafeGoalTemp}return goal}
+// ===== E DEPOIS DO RAIO, A CONFERÊNCIA =====
+// O raio sozinho não basta, e o Bruno fotografou o resultado: a tela inteira preta, com o mundo
+// aparecendo só numa faixa nas bordas — que é a cara de uma câmera parada DENTRO de uma parede.
+//
+// São duas frestas por onde ela passa. A primeira é `CAM_MIN`: quando a parede está a menos de 40 cm
+// do jogador, o piso força a câmera pra 40 cm, ou seja, pra dentro dela. A segunda é o próprio raio —
+// `intersectBox` disparado de DENTRO de uma caixa devolve distância zero, e o `d>0` descarta esse
+// caso; a câmera então recua livre, atravessando tudo.
+//
+// A conferência fecha as duas de uma vez: se o ponto escolhido estiver dentro de alguma caixa, a
+// câmera é puxada pro jogador até sair. Ela é o ÚLTIMO passo de propósito — não importa por qual
+// motivo o ponto ficou ruim, ele não sai daqui ruim.
+const RECUO_TESTE=.12;// passo com que a câmera é puxada pro jogador
+export function dentroDeParede(p){
+  for(const box of obstaculos)
+    if(p.x>box.min.x&&p.x<box.max.x&&p.y>box.min.y&&p.y<box.max.y&&p.z>box.min.z&&p.z<box.max.z)return true;
+  return false;
+}
+// Puxa `ponto` na direção de `alvo` até ele sair de dentro de qualquer caixa. Devolve o próprio ponto
+// quando ele já está livre, e o alvo quando nem isso resolve — a cabeça do jogador é o último recurso,
+// e primeira pessoa por um instante é infinitamente melhor que tela preta.
+const escapeTemp=new THREE.Vector3(),escapeDir=new THREE.Vector3();
+export function desencravarCamera(alvo,ponto){
+  if(!dentroDeParede(ponto))return ponto;
+  escapeDir.subVectors(alvo,ponto);
+  const total=escapeDir.length();
+  if(!(total>0))return escapeTemp.copy(alvo);
+  escapeDir.divideScalar(total);
+  for(let d=RECUO_TESTE;d<=total;d+=RECUO_TESTE){
+    escapeTemp.copy(ponto).addScaledVector(escapeDir,d);
+    if(!dentroDeParede(escapeTemp))return escapeTemp;
+  }
+  return escapeTemp.copy(alvo);
+}
+export function cameraSemClipping(target,goal){const distancia=target.distanceTo(goal);cameraDirectionTemp.subVectors(goal,target).normalize();cameraRaycaster.set(target,cameraDirectionTemp);let menor=distancia;for(const box of obstaculos){const hit=cameraRaycaster.ray.intersectBox(box,cameraHitTemp);if(hit){const d=hit.distanceTo(target);if(d>0&&d<menor)menor=d}}
+  let dist=menor<distancia?Math.max(CAM_MIN,menor-CAM_MARGEM):distancia;
+  cameraSafeGoalTemp.copy(cameraDirectionTemp).multiplyScalar(dist).add(target);
+  if(!dentroDeParede(cameraSafeGoalTemp))return menor<distancia?cameraSafeGoalTemp:goal;
+  // Puxa até sair. O piso é zero: colada na nuca do jogador é feio, mas é jogável — tela preta não é.
+  for(dist-=RECUO_TESTE;dist>0;dist-=RECUO_TESTE){
+    cameraSafeGoalTemp.copy(cameraDirectionTemp).multiplyScalar(dist).add(target);
+    if(!dentroDeParede(cameraSafeGoalTemp))return cameraSafeGoalTemp;
+  }
+  return cameraSafeGoalTemp.copy(target);
+}
 
 // ===== MODO DE MIRA (ADS) =====
 // `fator` é o 0→1 suavizado da transição: trocar distância e FOV de um frame pro outro dá um
@@ -53,6 +97,17 @@ export function atualizarCameraSeguidora(dt,playerPos,yaw,pitch,eyeHeight){
   const pisoFinal=obterElevacao(camGoalSeguro.x,camGoalSeguro.z)+eyeHeight*.25;
   if(camGoalSeguro.y<pisoFinal)camGoalSeguro.y=pisoFinal;
   camera.position.lerp(camGoalSeguro,camSmooth);
+  // ===== E A CONFERÊNCIA É A ÚLTIMA COISA, DEPOIS DO LERP =====
+  // Ela já foi feita lá dentro do `cameraSemClipping`, e mesmo assim a tela do Bruno ficou preta. O
+  // motivo é que DEPOIS dela ainda acontecem duas coisas que podem enfiar a câmera na parede de novo:
+  //   · a trava de chão logo acima, que EMPURRA a câmera pra cima — e pra cima, num barranco, é
+  //     exatamente onde está a casa;
+  //   · o próprio `lerp`, que caminha em linha reta até a posição nova e passa por dentro do que
+  //     estiver no meio.
+  // Verificar cedo e mexer depois é o padrão que produz este defeito. Agora a última palavra é desta
+  // linha, e o que ela julga é a posição que vai ser DESENHADA.
+  const livre=desencravarCamera(alvoTemp,camera.position);
+  if(livre!==camera.position)camera.position.copy(livre);
   lookGoal.lerp(alvoTemp,camSmooth);
   camera.lookAt(lookGoal);
   const fovAlvo=FOV_NORMAL+(FOV_MIRA-FOV_NORMAL)*f;
