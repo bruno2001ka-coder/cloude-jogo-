@@ -3,7 +3,7 @@ import*as THREE from'three';
 import{mergeGeometries}from'three/addons/utils/BufferGeometryUtils.js';
 import{scene}from'./core.js';
 import{obterElevacao}from'./Terrain.js';
-import{registrarObstaculo,superficiesAndaveis,obstaculos,obstaculosPedestres,marcarObstaculoMovel,marcarSemFusao}from'./Physics.js';
+import{registrarObstaculo,registrarCaixa,superficiesAndaveis,obstaculosPedestres,marcarObstaculoMovel,marcarSemFusao}from'./Physics.js';
 import{bmat,matReboco,matTelha,matConcreto,matMadeira,matTerraArada,matTerraBatida,graffiteMat,uvPorMetro,tijolo,concreto,janela,janelaAcesa,molduraJanela,porta,agua,posteMat,folhaMat,folhaClara,criarSombraContato}from'./Materials.js';
 import{POLOS}from'./Poles.js';
 // O degrau da escadaria é derivado do step-up do jogador: um número solto aqui viraria escada
@@ -153,7 +153,7 @@ function criarEscadariaViela(casaGrupo,alturaTotal,w=6,d=4.8,lado=1){
   const caixaSaia=new THREE.Box3(
     new THREE.Vector3(saiaMundo.x-ex,yBase-saiaAlt,saiaMundo.z-ez),
     new THREE.Vector3(saiaMundo.x+ex,yBase,saiaMundo.z+ez));
-  obstaculos.push(caixaSaia);
+  registrarCaixa(caixaSaia,'escada');
   // Os degraus entram na lista de PEDESTRE: moradores e policiais continuam enxergando a escada como
   // volume, sem que ela vire parede pro jogador.
   for(let i=0;i<numDegraus;i++){
@@ -243,7 +243,7 @@ if(bordas.frente)poeMureta(new THREE.BoxGeometry(muretaLargura,.5,.12),muretaCen
 if(bordas.tras)poeMureta(new THREE.BoxGeometry(muretaLargura,.5,.12),muretaCentroX,-d/2);
 if(bordas.dir&&ladoEscada!==1)poeMureta(new THREE.BoxGeometry(.12,.5,d+.12),w/2,0);
 if(bordas.esq&&ladoEscada!==-1)poeMureta(new THREE.BoxGeometry(.12,.5,d+.12),-w/2,0);
-g.userData.muretas=muretas;casasPos.push({x,z,w,d});// Varanda de MADEIRA (era laje de concreto com grade de metal): a referência tem sacada de tábua, e o
+g.userData.muretas=muretas;casasPos.push({x,z,w,d,h,laje:terrenoY+h+.12});// Varanda de MADEIRA (era laje de concreto com grade de metal): a referência tem sacada de tábua, e o
 // conjunto de madeira já existe pro celeiro e as portas — reaproveitar custa zero textura nova. O
 // corrimão é 1 malha a mais e só nas casas tipo 2 (~19 no bairro), o que cabe no orçamento do celular.
 if(tipo===2){const mad=matMadeira(0x6b4a30);bloco(new THREE.BoxGeometry(w*.62,.1,.8),mad,0,h*.62,d/2+.44,g);for(const xx of [-w*.3,-w*.1,w*.1,w*.3])bloco(new THREE.BoxGeometry(.06,.85,.06),mad,xx,h*.62+.42,d/2+.8,g);bloco(new THREE.BoxGeometry(w*.62,.07,.07),mad,0,h*.62+.82,d/2+.8,g)}
@@ -254,8 +254,14 @@ if(tipo===1&&!refugio){const telheiro=bloco(new THREE.BoxGeometry(1.9,.07,.8),ma
 if(tipo!==1){const tank=bloco(new THREE.CylinderGeometry(.38,.38,.62,10),agua,w*.22,h+.55,-d*.12,g);tank.castShadow=true}g.userData.paredeMesh=paredeMesh;if(registrar){
   // A casca do refúgio é registrada SEM FUSÃO: ela tem vão de porta, e fundir a verga com as
   // laterais da fachada emparedaria a entrada (ver `caixasSemFusao` em Physics.js).
-  if(casca)casca.forEach(m=>marcarSemFusao(registrarObstaculo(m)));else registrarObstaculo(paredeMesh);muretas.forEach(registrarObstaculo)}return g}
-function sobrado(x,z,w,d,h,cor,ladoEscada=0,corTelhado=0x888888,bordas=BORDAS_TODAS){const g=casaBairro(x,z,w,d,h,cor,2,true,ladoEscada,corTelhado,false,true,bordas);const up=casaBairro(x,z,w*.86,d*.82,h*.72,cor===tijolo.color?.getHex?.()?0xd87957:0xe8c45d,1,false,0,corTelhado,false,false);up.position.y=obterElevacao(x,z)+h+.18;registrarObstaculo(up.userData.paredeMesh);up.userData.muretas.forEach(registrarObstaculo);return g}
+  if(casca)casca.forEach(m=>marcarSemFusao(registrarObstaculo(m,'parede')));else registrarObstaculo(paredeMesh,'parede');muretas.forEach(m=>registrarObstaculo(m,'mureta'))}return g}
+function sobrado(x,z,w,d,h,cor,ladoEscada=0,corTelhado=0x888888,bordas=BORDAS_TODAS){const g=casaBairro(x,z,w,d,h,cor,2,true,ladoEscada,corTelhado,false,true,bordas);const up=casaBairro(x,z,w*.86,d*.82,h*.72,cor===tijolo.color?.getHex?.()?0xd87957:0xe8c45d,1,false,0,corTelhado,false,false);up.position.y=obterElevacao(x,z)+h+.18;registrarObstaculo(up.userData.paredeMesh,'parede');
+  // AS MURETAS DO ANDAR DE CIMA NÃO VIRAM COLISOR. A laje do segundo andar fica .18+.72h acima da
+  // primeira — 2,77 m no sobrado mais alto. O salto do jogador alcança v²/2g = 8,2²/48 = 1,40 m, e o
+  // passo, 0,22 m. Ninguém nunca vai pisar lá em cima, então o parapeito de lá é PURA DECORAÇÃO:
+  // continua desenhado, e some da física. São ~60 caixas, a maior sobra que a auditoria achou.
+  // A parede do andar de cima continua registrada: essa o jogador ENCOSTA, andando na laje de baixo.
+  return g}
 // A árvore nasce NO TERRENO. Ela ficava em y=0 fixo, e o terreno do mapa vai de -2,5 a +3,8 m: as 11
 // árvores estavam todas fora do chão — a de (-18,72) enterrada 3,8 m e as das bordas boiando 2,5 m no ar.
 function arvore(x,z,s=1){const g=new THREE.Group();g.position.set(x,obterElevacao(x,z),z);bairro.add(g);bloco(new THREE.CylinderGeometry(.16*s,.22*s,1.5*s,6),posteMat,0,.75*s,0,g);
@@ -285,7 +291,7 @@ function registrarRefugio(g,x,z,w,d,pecaPorta){
   const caixaFechada=new THREE.Box3().setFromObject(folha);
   pivo.rotation.y=PORTA_ABERTA_RAD;// a casa nasce com a porta aberta
   const caixa=new THREE.Box3();sumirCaixa(caixa);
-  obstaculos.push(caixa);// a MESMA Box3 fica na lista pra sempre; o que muda é o conteúdo dela
+  registrarCaixa(caixa,'porta');// a MESMA Box3 fica na lista pra sempre; o que muda é o conteúdo dela
   marcarObstaculoMovel(caixa);// fora da grade espacial: o conteúdo muda, o índice ficaria errado
   // O recuo precisa cobrir a parede MAIS a meia-largura do corpo (≈0,19 m): com o recuo justo da
   // parede, um ponto do "interior" colado na lateral já deixava a hitbox dentro do tijolo, e fechar
@@ -324,7 +330,7 @@ export function atualizarRefugios(dt){
 function poste(x,z){const g=new THREE.Group();g.position.set(x,obterElevacao(x,z),z);bairro.add(g);
   const tronco=bloco(new THREE.CylinderGeometry(.09,.13,6.3,6),posteMat,0,3.15,0,g);
   bloco(new THREE.BoxGeometry(1.2,.08,.08),posteMat,0,6.1,0,g);
-  registrarObstaculo(tronco)}
+  registrarObstaculo(tronco,'poste')}
 function fio(a,b){const pts=[new THREE.Vector3(a[0],6.05,a[1]),new THREE.Vector3((a[0]+b[0])/2,5.35,(a[1]+b[1])/2),new THREE.Vector3(b[0],6.05,b[1])];const line=new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),new THREE.LineBasicMaterial({color:0x252321}));bairro.add(line)}
 // ===== BAR E BIQUEIRA: os dois pontos do morro =====
 // Ficam no bairro, dentro do perímetro que a polícia patrulha — é isso que impede virarem atalho
@@ -339,11 +345,11 @@ function construirBar(x,z){
   const mad=matMadeira(0x7a5334);
   // Balcão em L com cobertura de zinco em dois postes. O botequim de esquina não tem parede: é o que
   // deixa ver de fora que ali tem gente, e o que o diferencia de mais uma casa fechada.
-  registrarObstaculo(bloco(new THREE.BoxGeometry(4.2,1.05,.5),mad,0,.52,-.9,g));
-  registrarObstaculo(bloco(new THREE.BoxGeometry(.5,1.05,2.2),mad,-1.85,.52,.45,g));
+  registrarObstaculo(bloco(new THREE.BoxGeometry(4.2,1.05,.5),mad,0,.52,-.9,g),'bar');
+  registrarObstaculo(bloco(new THREE.BoxGeometry(.5,1.05,2.2),mad,-1.85,.52,.45,g),'bar');
   for(const bx of[-1.2,0,1.2])bloco(new THREE.CylinderGeometry(.16,.18,.62,8),mad,bx,.31,.1,g);// banquetas
   bloco(new THREE.BoxGeometry(5,.08,3.4),matTelha(0xb0a08c),0,2.3,0,g).rotation.x=.1;
-  for(const[px,pz]of[[2.2,1.5],[-2.2,1.5]])registrarObstaculo(bloco(new THREE.BoxGeometry(.14,2.3,.14),posteMat,px,1.15,pz,g));
+  for(const[px,pz]of[[2.2,1.5],[-2.2,1.5]])registrarObstaculo(bloco(new THREE.BoxGeometry(.14,2.3,.14),posteMat,px,1.15,pz,g),'bar');
   bloco(new THREE.BoxGeometry(2.6,.5,.1),bmat(0xe9d16a),0,2.05,-1.65,g);// letreiro
   // Lâmpada quente: o bar precisa se achar de longe no morro, e uma PointLight barata faz isso sem
   // sombra (sombra de luz pontual custa um render de cubemap por quadro).
@@ -358,7 +364,7 @@ function construirBiqueira(x,z){
   // 60 cm do chão e barrar o jogador neles só o faria esbarrar no ar.
   for(const[ex,ez,ey]of[[0,0,0],[.62,.1,0],[.3,.05,.46],[-.6,.25,0]]){
     const c=bloco(new THREE.BoxGeometry(.56,.44,.42),mad,ex,.22+ey,ez,g);
-    if(ey===0)registrarObstaculo(c);
+    if(ey===0)registrarObstaculo(c,'biqueira');
   }
   // Tambor com fogo: o ponto de referência visual, e o que diz "tem alguém aqui à noite".
   bloco(new THREE.CylinderGeometry(.36,.36,.82,10),posteMat,1.9,.41,-.5,g);
@@ -399,6 +405,14 @@ const telhados=[0xb8b2a8,0xa8a49c,0xc0b09c,0x9e9a92,0xb0a08c,0xaaa5a0];
 // Separar o CÁLCULO da CONSTRUÇÃO é o que deixa perguntar "esta casa tem beco à esquerda?" sem
 // depender de aritmética de coluna espalhada pelo laço — que era de onde vinham as regras frágeis do
 // tipo `col%4===0&&col>0`.
+// ===== ONDE PASSA GENTE =====
+// Morador (NPCs.js) e polícia de rua (Police.js) rondavam QUATRO CORREDORES COM COORDENADA FIXA no
+// código, tiradas da grade regular antiga. Quando o traçado virou fileira empacotada com becos
+// sorteados, esses corredores deixaram de ser becos — e os dois passaram a rondar linhas que só
+// existiam no arquivo. Agora o beco se registra no momento em que é aberto, e quem ronda lê daqui.
+//   · `eixo:'z'` — beco entre colunas, corre no sentido Z (sobe o morro).
+//   · `eixo:'x'` — a rua entre blocos de fileiras, corre no sentido X (atravessa o morro).
+export const BECOS=[];
 const FILEIRAS=[];
 {
   let z=-42;
@@ -413,9 +427,16 @@ const FILEIRAS=[];
       const larg=LARG_MIN+(hashInt(row,col)%1000)/1000*(LARG_MAX-LARG_MIN);
       const becoDepois=(col===becoA||col===becoB);
       casas.push({col,larg,x:x+larg/2,z,becoDepois,becoAntes:col>0&&casas[col-1].becoDepois});
+      // Centro do beco, guardado na hora em que ele é aberto. É a única fonte confiável de "onde
+      // passa gente": derivar isso depois, por aritmética de coluna, é exatamente o erro que deixou
+      // morador e polícia rondando corredor que não existe mais (ver BECOS abaixo).
+      if(becoDepois)BECOS.push({x:x+larg+BECO/2,z,eixo:'z'});
       x+=larg+(becoDepois?BECO:0);
     }
     FILEIRAS.push({row,z,casas});
+    // A rua entre blocos de fileiras: amostrada ao longo do X pra ronda ter destino em toda a
+    // extensão dela, e não só no meio.
+    if(row%3===2)for(let bx=-34;bx<=34;bx+=7)BECOS.push({x:bx,z:z+CELL_D/2+BECO/2,eixo:'x'});
     z+=CELL_D+((row%3===2)?BECO:0);
   }
 }
@@ -483,6 +504,71 @@ const mercado=casaBairro(0,-18,9,7,3.1,0xd98545,0);bloco(new THREE.BoxGeometry(7
 // ===== PORTEIRA DA FAZENDA =====
 // Declarada FORA de criarFazenda pra quem consome (Economy, testes) importar um objeto estável, e
 // preenchida lá dentro. `raio` é a distância em que a tecla E passa a valer pra ela.
+// ===== CLIENTE NA LAJE: a entrega =====
+// De tempos em tempos um cliente aparece EM CIMA de um telhado e o radar marca. Entregar paga mais
+// que o Receptador (ver PRECOS.entregaLaje) porque o preço é o risco: pra chegar nele você atravessa
+// os telhados e fica de pé no lugar mais visível do morro, que é onde o helicóptero enxerga.
+//
+// É o que dá função ao telhado. Antes ele era só um lugar por onde dava pra andar; agora existe um
+// motivo pra subir — e as lajes viraram um caminho contínuo justamente porque a mureta parou de ser
+// construída em divisa que não guarda nada.
+export const clienteLaje={ativo:false,x:0,y:0,z:0,raio:2.6,pacotesPedidos:0};
+const CLIENTE_ESPERA_MIN=40,CLIENTE_ESPERA_MAX=85,CLIENTE_DURACAO=80,CLIENTE_DIST_MIN=25;
+let grupoCliente=null,esperaCliente=18,tempoCliente=0;
+function corpoDoCliente(){
+  // Corpo simples e PARADO: o cliente não anda, então não precisa das pernas animadas do morador.
+  // Cinco malhas, criadas UMA vez e reposicionadas — criar e descartar a cada aparição vazaria
+  // geometria na GPU do mesmo jeito que os policiais vazavam antes de compartilharem GEO_POL.
+  const g=new THREE.Group();bairro.add(g);
+  const pele=bmat(0xc79067),roupa=bmat(0x2e4a6b),calca=bmat(0x2a2a26);
+  bloco(new THREE.BoxGeometry(.5,.72,.3),roupa,0,.78,0,g);
+  bloco(new THREE.BoxGeometry(.34,.34,.32),pele,0,1.32,0,g);
+  bloco(new THREE.BoxGeometry(.36,.09,.33),bmat(0x171712),0,1.52,0,g);
+  for(const lx of[-.13,.13])bloco(new THREE.BoxGeometry(.12,.5,.15),calca,lx,.26,0,g);
+  g.scale.setScalar(.52);
+  criarSombraContato(.5,g);
+  // Marcador vertical: sem ele o cliente some entre as caixas d'água quando visto do chão.
+  bloco(new THREE.BoxGeometry(.14,.5,.14),bmat(0x63d16a),0,2.3,0,g);
+  return g;
+}
+function sortearLaje(jogador){
+  // Longe do jogador na hora de nascer, pelo mesmo motivo do spawn da polícia: cliente que aparece
+  // do lado não lê como cliente, lê como bug.
+  for(let t=0;t<24;t++){
+    const c=casasPos[Math.floor(Math.random()*casasPos.length)];
+    if(Math.hypot(c.x-jogador.x,c.z-jogador.z)<CLIENTE_DIST_MIN)continue;
+    return c;
+  }
+  return null;
+}
+export function atualizarClienteLaje(dt,jogador){
+  if(clienteLaje.ativo){
+    tempoCliente-=dt;
+    if(tempoCliente<=0||clienteLaje.pacotesPedidos<=0){
+      clienteLaje.ativo=false;
+      if(grupoCliente)grupoCliente.visible=false;
+      esperaCliente=CLIENTE_ESPERA_MIN+Math.random()*(CLIENTE_ESPERA_MAX-CLIENTE_ESPERA_MIN);
+    }
+    return;
+  }
+  esperaCliente-=dt;
+  if(esperaCliente>0)return;
+  const c=sortearLaje(jogador);
+  if(!c){esperaCliente=6;return}// nenhuma laje longe o bastante: tenta de novo daqui a pouco
+  if(!grupoCliente)grupoCliente=corpoDoCliente();
+  clienteLaje.x=c.x;clienteLaje.z=c.z;clienteLaje.y=c.laje;
+  clienteLaje.pacotesPedidos=2+Math.floor(Math.random()*3);
+  clienteLaje.ativo=true;tempoCliente=CLIENTE_DURACAO;
+  grupoCliente.position.set(c.x,c.laje,c.z);grupoCliente.visible=true;
+}
+export function pertoDoCliente(pos){
+  return clienteLaje.ativo&&Math.hypot(pos.x-clienteLaje.x,pos.z-clienteLaje.z)<clienteLaje.raio
+    // Tem que estar EM CIMA da laje, não embaixo dela: sem a checagem de altura dava pra entregar da
+    // rua, e aí a entrega deixava de custar a subida, que é a coisa toda.
+    &&Math.abs(pos.y-clienteLaje.y)<1.6;
+}
+export function entregouAoCliente(n){clienteLaje.pacotesPedidos=Math.max(0,clienteLaje.pacotesPedidos-n)}
+
 export const porteiraFazenda={x:0,y:0,z:0,aberta:true,raio:3.6,pivos:[],caixa:null,caixaFechada:null};
 const PORTEIRA_ABERTA_RAD=Math.PI*.55;// abre pra dentro do sítio, encostando na cerca
 function aplicarPorteira(){
@@ -538,7 +624,7 @@ function criarFazenda(cx,cz){
   // que `dentroDoCurral` usa pra manter os bichos do lado de fora. Mudar a medida mexeria nos dois.
   bloco(new THREE.BoxGeometry(6.3,.3,5.3),matConcreto(),bx,by+.15,bz);// base: tira o celeiro do barro
   const paredeCeleiro=bloco(new THREE.BoxGeometry(6,3.2,5),madeiraCeleiro,bx,by+1.6,bz);
-  registrarObstaculo(paredeCeleiro);
+  registrarObstaculo(paredeCeleiro,'celeiro');
   // Telhado de duas águas. A inclinação sai da geometria (meia largura x altura do cume), não de um
   // ângulo escolhido no olho: a empena logo abaixo é montada com a MESMA conta, e foi assim que ela
   // parou de furar o telhado. Antes o ângulo era .55 rad chutado e a empena vinha de larguras fixas —
@@ -621,9 +707,9 @@ function criarFazenda(cx,cz){
       const t=i/passos,e=obterElevacao(a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t);
       yMin=Math.min(yMin,e);yMax=Math.max(yMax,e);
     }
-    obstaculos.push(new THREE.Box3(
+    registrarCaixa(new THREE.Box3(
       new THREE.Vector3(Math.min(a[0],b[0])-ESPESSURA_CERCA/2,yMin-.6,Math.min(a[1],b[1])-ESPESSURA_CERCA/2),
-      new THREE.Vector3(Math.max(a[0],b[0])+ESPESSURA_CERCA/2,yMax+ALTURA_MOURAO,Math.max(a[1],b[1])+ESPESSURA_CERCA/2)));
+      new THREE.Vector3(Math.max(a[0],b[0])+ESPESSURA_CERCA/2,yMax+ALTURA_MOURAO,Math.max(a[1],b[1])+ESPESSURA_CERCA/2)),'cerca');
   }
   const mesaMourao=new THREE.InstancedMesh(uvPorMetro(new THREE.BoxGeometry(.13,ALTURA_MOURAO,.13)),madeiraCerca,mouroes.length);
   mesaMourao.castShadow=true;mesaMourao.receiveShadow=true;
@@ -733,7 +819,7 @@ function criarFazenda(cx,cz){
     new THREE.Vector3(porteiraX-.2,yPorteira-.6,vaoZ0),
     new THREE.Vector3(porteiraX+.2,yPorteira+ALTURA_PORTEIRA,vaoZ1));
   const caixaPorteira=new THREE.Box3();sumirCaixa(caixaPorteira);
-  obstaculos.push(caixaPorteira);marcarObstaculoMovel(caixaPorteira);
+  registrarCaixa(caixaPorteira,'porteira');marcarObstaculoMovel(caixaPorteira);
   // Nasce ABERTA pelo mesmo motivo que as casas-refúgio: a NavMesh é rasterizada uma vez, depois que
   // todos os obstáculos entraram, e se o vão estivesse fechado nessa hora a polícia nunca acharia
   // caminho pra dentro do sítio — nem depois de o jogador abrir a porteira.
@@ -775,7 +861,7 @@ function criarLojaArmas(x,z){
   const g=new THREE.Group();const y=obterElevacao(x,z);g.position.set(x,y,z);scene.add(g);
   const chapa=bmat(0x4d5358),chapaEscura=bmat(0x353b40),ferrugem=bmat(0x7a4a34);
   const parede=bloco(new THREE.BoxGeometry(6.4,3.4,4.6),chapa,0,1.7,-1.6,g);
-  registrarObstaculo(parede);
+  registrarObstaculo(parede,'loja');
   bloco(new THREE.BoxGeometry(6.9,.16,5.1),chapaEscura,0,3.48,-1.6,g);
   // Marquise laranja sobre o balcão: é a cor do polo no radar, pra o jogador reconhecer de longe.
   const marquise=bloco(new THREE.BoxGeometry(6.2,.14,2.2),bmat(0xd4762a),0,2.85,1.05,g);
@@ -851,6 +937,6 @@ export function criarEsconderijo(x,z){
   bloco(new THREE.SphereGeometry(.09,8,8),new THREE.MeshStandardMaterial({color:0xffcf8a,emissive:0xffb066,emissiveIntensity:1.4}),0,2,1.4,g);
   bloco(new THREE.CylinderGeometry(.28,.32,.5,8),bmat(0x4a4034),1.6,.25,1.2,g);
   criarSombraContato(2.2,g,0,.2);
-  registrarObstaculo(parede);
+  registrarObstaculo(parede,'loja');
   return g;
 }

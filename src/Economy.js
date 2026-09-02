@@ -5,7 +5,7 @@ import{scene,camera}from'./core.js';
 import{ground}from'./Terrain.js';
 import{obstaculos,superficiesAndaveis}from'./Physics.js';
 import{criarSombraContato,folhaMat,folhaClara}from'./Materials.js';
-import{criarEsconderijo,refugioEmQueEsta,alternarPortaRefugio,porteiraFazenda,alternarPorteira,pertoDaPorteira,BAR,BIQUEIRA}from'./WorldGenerator.js';
+import{criarEsconderijo,refugioEmQueEsta,alternarPortaRefugio,porteiraFazenda,alternarPorteira,pertoDaPorteira,BAR,BIQUEIRA,clienteLaje,pertoDoCliente,entregouAoCliente}from'./WorldGenerator.js';
 import{player}from'./Player.js';
 import{POLOS,PRECOS}from'./Poles.js';
 import{ARMAS,ORDEM_ARMAS,equiparArma}from'./Weapons.js';
@@ -123,7 +123,9 @@ export function contextoAtual(){
   // A porteira vem antes dos polos: ela fica a 21 m do Depósito Rural, então não disputam contexto —
   // a ordem aqui é só pra deixar as duas ações de abrir/fechar juntas no topo.
   if(pertoDaPorteira(p))return{tipo:'porteira',chave:'porteira'+(porteiraFazenda.aberta?'A':'F')};
-  if(distXZ(p,lojaPos)<POLOS.sementes.raio)return{tipo:'loja'};
+  // A chave carrega se precisa curar: o painel só se redesenha quando ela muda, e sem isso o botão
+  // continuaria escrito "Você está inteiro" depois de levar tiro parado no balcão.
+  if(distXZ(p,lojaPos)<POLOS.sementes.raio)return{tipo:'loja',chave:'loja'+(jogadorPrecisaCurar()?'F':'C')};
   if(distXZ(p,receptadorPos)<POLOS.receptador.raio)return{tipo:'receptador'};
   // A chave inclui a espera da diária: o painel só se redesenha quando a chave muda, e sem isso o
   // "volte em 45s" ficava congelado no número do momento do clique. Redesenha uma vez por segundo,
@@ -135,6 +137,7 @@ export function contextoAtual(){
   // A chave do bar carrega a vida porque o botão muda de "cheio" pra vendável quando o jogador apanha.
   if(distXZ(p,{x:BAR.x,z:BAR.z})<BAR.raio)return{tipo:'bar',chave:'bar'+(jogadorPrecisaCurar()?'F':'C')};
   if(distXZ(p,{x:BIQUEIRA.x,z:BIQUEIRA.z})<BIQUEIRA.raio)return{tipo:'biqueira',chave:'biqueira'+inventario.pacote};
+  if(pertoDoCliente(p))return{tipo:'entrega',chave:'entrega'+inventario.pacote+'x'+clienteLaje.pacotesPedidos};
   const plantaProxima=plantas.find(pl=>!pl.colhida&&Math.hypot(pl.x-p.x,pl.z-p.z)<1.6);
   if(plantaProxima)return{tipo:'planta',planta:plantaProxima};
   return null;
@@ -190,6 +193,21 @@ export function venderNaBiqueira(){
 // A regeneração normal só corre em patrulha (Police.js), então quem apanha no meio de uma
 // perseguição não tem como sarar. R$30 é acima da diária da roça de propósito: apanhar precisa
 // custar mais que um turno de trabalho, senão levar tiro vira pedágio.
+// Comida e água do Mercado: cura parcial, pelo mesmo caminho de cura que o bar usa.
+// Entrega na laje: paga mais que o Receptador, e o cliente só leva o que pediu.
+export function entregarNaLaje(){
+  const quantos=Math.min(inventario.pacote,clienteLaje.pacotesPedidos);
+  if(quantos<=0)return;
+  inventario.pacote-=quantos;dinheiro+=quantos*PRECOS.entregaLaje;
+  entregouAoCliente(quantos);
+  atualizarStatusEconomia();renderizarAcoes();renderizarInventario();
+}
+export function comer(preco,cura){
+  if(dinheiro<preco||!jogadorPrecisaCurar())return;
+  if(!ganchosPolicia.curar(cura))return;
+  dinheiro-=preco;
+  atualizarStatusEconomia();renderizarAcoes();
+}
 export function beberNoBar(){
   if(dinheiro<PRECOS.barDose||!jogadorPrecisaCurar())return;
   if(!ganchosPolicia.curar())return;
@@ -314,10 +332,14 @@ export function renderizarAcoes(){
     acaoPanel.appendChild(b);
     acaoPanel.style.display='flex';
   }else if(tipo==='loja'){
-    // Mercado de Sementes: o ÚNICO ponto de semente do mapa. Vaso e terra saíram daqui de propósito —
-    // com os dois polos vendendo tudo, dava pra fechar o ciclo inteiro sem sair do centro e a
-    // travessia do bairro patrulhado, que é o miolo do risco do jogo, virava opcional.
-    botaoLoja(`Comprar Semente (R$${PRECOS.mercadoSemente})`,PRECOS.mercadoSemente,()=>comprar('semente',PRECOS.mercadoSemente));
+    // O Mercado virou o que mercadinho é: COMIDA E ÁGUA. A semente foi pra biqueira — semente se
+    // compra na boca. Aqui a cura é barata e PARCIAL, e é o contraponto da dose do bar (cura tudo,
+    // R$30): quem está quase cheio come, quem está quase morto bebe no bar.
+    const b1=botaoLoja(`🍱 Marmita (R$${PRECOS.mercadoMarmita}) +${PRECOS.mercadoMarmitaCura} de vida`,
+      PRECOS.mercadoMarmita,()=>comer(PRECOS.mercadoMarmita,PRECOS.mercadoMarmitaCura));
+    const b2=botaoLoja(`💧 Água (R$${PRECOS.mercadoAgua}) +${PRECOS.mercadoAguaCura} de vida`,
+      PRECOS.mercadoAgua,()=>comer(PRECOS.mercadoAgua,PRECOS.mercadoAguaCura));
+    if(!jogadorPrecisaCurar()){b1.disabled=b2.disabled=true;b1.textContent='🍱 Você está inteiro'}
     acaoPanel.style.display='flex';
   }else if(tipo==='fazenda'){
     // Depósito Rural (oeste, longe): a ÚNICA fonte de vaso e terra.
@@ -358,6 +380,9 @@ export function renderizarAcoes(){
     b.onclick=beberNoBar;acaoPanel.appendChild(b);
     acaoPanel.style.display='flex';
   }else if(tipo==='biqueira'){
+    // A boca é COMPRA e venda: semente na mão e escoamento na hora. É o ponto do morro.
+    botaoLoja(`🌱 Comprar Semente (R$${PRECOS.biqueiraSemente})`,PRECOS.biqueiraSemente,
+      ()=>comprar('semente',PRECOS.biqueiraSemente));
     const b=document.createElement('button');
     b.textContent=`📦 Vender ${inventario.pacote} na boca (+R$${inventario.pacote*PRECOS.biqueiraPacote}) ⚠`;
     b.disabled=inventario.pacote<=0;
@@ -366,6 +391,14 @@ export function renderizarAcoes(){
     aviso.textContent=`Paga menos que o receptador (R$${PRECOS.receptadorPacote}) e a polícia fica sabendo.`;
     aviso.style.cssText='font-size:11px;opacity:.75;align-self:center';
     acaoPanel.appendChild(aviso);
+    acaoPanel.style.display='flex';
+  }else if(tipo==='entrega'){
+    const quantos=Math.min(inventario.pacote,clienteLaje.pacotesPedidos);
+    const b=document.createElement('button');
+    b.textContent=quantos>0
+      ?`📦 Entregar ${quantos} (+R$${quantos*PRECOS.entregaLaje})`
+      :`Ele quer ${clienteLaje.pacotesPedidos} pacote(s) — você tem ${inventario.pacote}`;
+    b.disabled=quantos<=0;b.onclick=entregarNaLaje;acaoPanel.appendChild(b);
     acaoPanel.style.display='flex';
   }else if(tipo==='planta'){
     const nomes=['Broto','Vegetativa','Flora (pronta)'],pronta=ctx.planta.estagio===2;

@@ -2,8 +2,8 @@
 import*as THREE from'three';
 import{obterElevacao}from'./Terrain.js';
 import{colidePedestreXZ,buscarPosicaoLivre}from'./Physics.js';
-import{distanciaLivreHorizontal}from'./NavMesh.js';
-import{bairro}from'./WorldGenerator.js';
+import{distanciaLivreHorizontal,encontrarCaminho}from'./NavMesh.js';
+import{bairro,BECOS}from'./WorldGenerator.js';
 import{PLAYER_HEIGHT}from'./Player.js';
 
 function bloco(geo,material,x,y,z,parent){const m=new THREE.Mesh(geo,material);m.position.set(x,y,z);m.castShadow=true;m.receiveShadow=true;parent.add(m);return m}
@@ -16,35 +16,25 @@ export const PEDESTRE_MEIA_LARG=.45*ESCALA_NPC,PEDESTRE_MEIA_PROF=.22*ESCALA_NPC
 // Alcance do raycast horizontal de antecipação: pouco mais que um passo de 1 s na velocidade máxima.
 const LOOKAHEAD=2.2;
 
-// Centro da faixa LIVRE da viela, não o centro da viela: as escadarias ocupam o lado colado na casa,
-// então andar pelo meio da viela faria o morador atravessar os degraus.
-const CORREDOR_X1=-14.3,CORREDOR_X2=12.1,CORREDOR_Z1=-28.8,CORREDOR_Z2=-12;
+// ===== POR ONDE O MORADOR ANDA =====
+// Aqui existiam QUATRO CORREDORES COM COORDENADA FIXA (`CORREDOR_X1=-14.3` e companhia), tirados da
+// grade regular que o bairro tinha. Quando o traçado virou fileira empacotada com becos sorteados por
+// fileira, esses corredores deixaram de ser becos: o morador passou a andar contra parede, e a
+// polícia de rua — que rondava os mesmos pontos — também.
+//
+// Junto com as coordenadas foi embora todo o roteamento por corredor (`corredorDoPonto`,
+// `INTERSECOES`, `construirRota`). Ele só sabia dobrar numa esquina entre quatro linhas conhecidas,
+// e generalizar isso pra N becos tortos seria reescrever, mal, o A* que a NavMesh já tem e a polícia
+// já usa. Agora o destino sai dos becos DE VERDADE (`BECOS`, registrados no momento em que o traçado
+// os abre) e o caminho vem de `encontrarCaminho`.
+export const waypointsVielas=BECOS;
+// Replanejar A* custa ~0,6 ms. Oito moradores replanejando à vontade apareceriam como engasgo no
+// celular, então cada um só recalcula ao chegar no destino — e o destino é longe.
+function rotaAteDestino(npc,destino){
+  const caminho=encontrarCaminho(npc.pos.x,npc.pos.z,destino.x,destino.z);
+  return caminho&&caminho.length?caminho:[destino];
+}
 
-export const waypointsVielas=[];
-for(const vx of[CORREDOR_X1,CORREDOR_X2])for(let vz=-42;vz<=-4;vz+=6)waypointsVielas.push({x:vx,z:vz});
-for(const vz of[CORREDOR_Z1,CORREDOR_Z2])for(let vx=-36;vx<=36;vx+=8)waypointsVielas.push({x:vx,z:vz});
-// A "rota" segue as vielas de verdade (anda pela rua até o cruzamento, dobra, continua) em vez de andar
-// em linha reta e raspar diagonal pelas casas — as vielas formam uma grade de só 4 corredores fixos.
-function corredorDoPonto(p){
-  if(!p)return null;
-  if(Math.abs(p.x-CORREDOR_X1)<.1)return'x1';
-  if(Math.abs(p.x-CORREDOR_X2)<.1)return'x2';
-  if(Math.abs(p.z-CORREDOR_Z1)<.1)return'z1';
-  if(Math.abs(p.z-CORREDOR_Z2)<.1)return'z2';
-  return null;
-}
-const INTERSECOES={
-  'x1,z1':{x:CORREDOR_X1,z:CORREDOR_Z1},'x1,z2':{x:CORREDOR_X1,z:CORREDOR_Z2},
-  'x2,z1':{x:CORREDOR_X2,z:CORREDOR_Z1},'x2,z2':{x:CORREDOR_X2,z:CORREDOR_Z2}
-};
-function pontoIntersecao(a,b){return INTERSECOES[a+','+b]||INTERSECOES[b+','+a]||null}
-function construirRota(corredorOrigem,destino){
-  const corredorDestino=corredorDoPonto(destino);
-  if(!corredorOrigem||!corredorDestino||corredorOrigem===corredorDestino)return[destino];
-  if(corredorOrigem[0]!==corredorDestino[0])return[pontoIntersecao(corredorOrigem,corredorDestino),destino];
-  const cruzado=corredorOrigem[0]==='x'?'z1':'x1';
-  return[pontoIntersecao(corredorOrigem,cruzado),pontoIntersecao(corredorDestino,cruzado),destino];
-}
 export const npcs=[];const CORES_ROUPA_NPC=[0x8b5a3c,0x3c5a8b,0x8b3c5a,0x5a8b3c,0x6b6b6b,0xb08040,0x4a4a5a,0x7a3c3c];
 const CORES_PELE_NPC=[0xc79067,0x8a5a3c,0xe0b088,0x6b4a30];
 // Corpo com o mesmo padrão do personagem principal (cabeça, cabelo, rosto, braços, pernas) — não é mais uma caixa simplificada.
@@ -60,14 +50,13 @@ function criarNPC(corRoupa,corPele){
   const pernas=[-.14,.14].map(lx=>bloco(new THREE.BoxGeometry(.13,.55,.16),calcaNpc,lx,.29,0,g));
   const bracos=[-.37,.37].map(lx=>bloco(new THREE.BoxGeometry(.13,.58,.16),skinNpc,lx,.9,0,g));
   g.scale.setScalar(escalaEscolhida);
-  return{grupo:g,pernas,bracos,pos:new THREE.Vector3(),alvo:null,rota:[],corredorAtual:null,velocidade:1.4+Math.random()*.6,caminhando:Math.random()*10};
+  return{grupo:g,pernas,bracos,pos:new THREE.Vector3(),alvo:null,rota:[],velocidade:1.4+Math.random()*.6,caminhando:Math.random()*10};
 }
-for(let i=0;i<8;i++){const wp=waypointsVielas[Math.floor(Math.random()*waypointsVielas.length)];const npc=criarNPC(CORES_ROUPA_NPC[i%CORES_ROUPA_NPC.length],CORES_PELE_NPC[i%CORES_PELE_NPC.length]);npc.pos.set(wp.x,0,wp.z);npc.corredorAtual=corredorDoPonto(wp);npcs.push(npc)}
+for(let i=0;i<8;i++){const wp=waypointsVielas[Math.floor(Math.random()*waypointsVielas.length)];const npc=criarNPC(CORES_ROUPA_NPC[i%CORES_ROUPA_NPC.length],CORES_PELE_NPC[i%CORES_PELE_NPC.length]);npc.pos.set(wp.x,0,wp.z);npcs.push(npc)}
 function escolherProximoAlvo(npc){
   if(npc.rota.length){npc.alvo=npc.rota.shift();return}
   const destino=waypointsVielas[Math.floor(Math.random()*waypointsVielas.length)];
-  npc.rota=construirRota(npc.corredorAtual,destino);
-  npc.corredorAtual=corredorDoPonto(destino);
+  npc.rota=rotaAteDestino(npc,destino);
   npc.alvo=npc.rota.shift();
 }
 // Teste de colisão do corpo do pedestre na altura do chão daquele ponto.

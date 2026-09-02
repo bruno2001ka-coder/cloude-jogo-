@@ -2,10 +2,11 @@
 import*as THREE from'three';
 import{scene}from'./core.js';
 import{player,jogadorBoxDebugTemp}from'./Player.js';
-import{obstaculos,superficiesAndaveis}from'./Physics.js';
-import{casasPos,refugios}from'./WorldGenerator.js';
+import{obstaculos,superficiesAndaveis,contarColisores}from'./Physics.js';
+import{casasPos,refugios,BAR,BIQUEIRA,clienteLaje}from'./WorldGenerator.js';
 import{plantas,lojaPos,receptadorPos,fazendaPos,armasPos}from'./Economy.js';
 import{POLOS}from'./Poles.js';
+import{npcs}from'./NPCs.js';
 import{amostrarCelulasBloqueadas}from'./NavMesh.js';
 import{heli,policiais,policia}from'./Police.js';
 
@@ -47,6 +48,12 @@ export function atualizarRadar(){
   desenharPontoRadar(fazendaPos.x,fazendaPos.z,POLOS.fazenda.cor,5,true);
   desenharPontoRadar(armasPos.x,armasPos.z,POLOS.armas.cor,5,true);
   for(const r of refugios)desenharPontoRadar(r.x,r.z,'#c23a3a',4,false);
+  // A boca e o bar: são pontos do morro, dentro do alcance do radar quase sempre, então não grudam
+  // na borda — encher a borda de marcador tira a leitura dos quatro polos, que são os que ficam fora.
+  desenharPontoRadar(BIQUEIRA.x,BIQUEIRA.z,'#c86bff',4.5,false);
+  desenharPontoRadar(BAR.x,BAR.z,'#ffc14d',4.5,false);
+  // O cliente da laje gruda na borda: ele é um prazo, e o jogador precisa saber pra onde correr.
+  if(clienteLaje.ativo)desenharPontoRadar(clienteLaje.x,clienteLaje.z,'#63d16a',5.5,true);
   for(const pl of plantas)if(!pl.colhida)desenharPontoRadar(pl.x,pl.z,'#7cfc00',3.5,false);
   // helicóptero e policiais só ficam "acesos" no radar quando a polícia está de olho em algo — senão
   // some, já que patrulhando bem longe não é uma ameaça que o jogador precise rastrear o tempo todo.
@@ -65,6 +72,21 @@ export function atualizarRadar(){
 const debugGroup=new THREE.Group();debugGroup.visible=false;scene.add(debugGroup);
 let debugConstruido=false,navPontos=null;
 const navMat=new THREE.PointsMaterial({color:0xb066ff,size:.22,sizeAttenuation:true});
+// ===== A CONTA DOS COLISORES, NA TELA =====
+// "Tem colisor demais" só vira trabalho quando dá pra ver ONDE eles estão. Cada caixa carrega uma
+// categoria desde que é registrada (Physics.js), então o painel mostra a origem, não só o total —
+// é o que transformou "363 colisores" em "174 são mureta, e 60 delas estão num telhado onde ninguém
+// consegue subir". Ligar e desligar não mexe na física: o debug só DESENHA.
+function textoDoPainel(){
+  const c=contarColisores();
+  const linhas=Object.entries(c.por).sort((a,b)=>b[1]-a[1]).map(([k,n])=>`${String(n).padStart(4)}  ${k}`);
+  return[`COLISORES: ${c.total}`,'',
+    ...linhas,'',
+    `${String(c.pedestres).padStart(4)}  degraus (só NPC)`,
+    `${String(c.andaveis).padStart(4)}  superfícies andáveis`,
+    '',`${String(policiais.length).padStart(4)}  policiais em campo`,
+    `${String(npcs.length).padStart(4)}  moradores`].join('\n');
+}
 function construirDebugColisao(){
   if(debugConstruido)return;debugConstruido=true;
   for(const box of obstaculos)debugGroup.add(new THREE.Box3Helper(box,0xff2222));
@@ -84,5 +106,16 @@ export function atualizarDebugNavMesh(){
   navPontos.geometry=new THREE.BufferGeometry().setFromPoints(amostrarCelulasBloqueadas(player.position.x,player.position.z,20));
 }
 const debugBtn=document.getElementById('debugBtn');
-export function alternarDebug(){construirDebugColisao();debugGroup.visible=!debugGroup.visible;debugBtn.classList.toggle('on',debugGroup.visible);debugBtn.textContent=debugGroup.visible?'DEBUG ON':'DEBUG'}
+const painelColisores=document.createElement('pre');
+painelColisores.style.cssText='position:fixed;left:8px;bottom:8px;margin:0;padding:8px 10px;'+
+  'background:rgba(12,14,18,.82);color:#9ff;font:11px/1.35 ui-monospace,monospace;'+
+  'border-radius:8px;pointer-events:none;z-index:60;display:none;white-space:pre';
+document.body.appendChild(painelColisores);
+export function alternarDebug(){
+  construirDebugColisao();debugGroup.visible=!debugGroup.visible;
+  debugBtn.classList.toggle('on',debugGroup.visible);
+  debugBtn.textContent=debugGroup.visible?'DEBUG ON':'DEBUG';
+  painelColisores.style.display=debugGroup.visible?'block':'none';
+  if(debugGroup.visible)painelColisores.textContent=textoDoPainel();
+}
 debugBtn.addEventListener('click',alternarDebug);
