@@ -47,4 +47,13 @@ export const PRECOS={
   },
   armasColete:70,
   receptadorPacote:40,
+  // ===== BIQUEIRA E BAR (no morro) =====
+  // A biqueira paga MENOS que o Receptador e sobe o procurado: é a troca "não atravessa o mapa, mas
+  // a polícia fica sabendo". O número não é solto — um ciclo custa R$48 (vaso 8 + terra 6 + semente
+  // 34) e rende 2-3 pacotes. A R$26, dois pacotes dão R$52: lucro de R$4, o mínimo que ainda é lucro.
+  // Subir isso mataria o Receptador, que é o pagamento de verdade e o que obriga a travessia.
+  biqueiraPacote:26,
+  // O bar cura por inteiro. R$30 é acima da diária da roça (R$25) de propósito: apanhar tem que
+  // custar mais que um turno de trabalho, senão levar tiro vira só um pedágio.
+  barDose:30,
 };

@@ -62,6 +62,14 @@ function eixoDeFusao(a,b){
   for(let e=0;e<3;e++){
     const k=EIXOS[e];
     if(Math.abs(a.min[k]-b.min[k])<=TOL_FACE&&Math.abs(a.max[k]-b.max[k])<=TOL_FACE)continue;
+    // COLISOR DE PAREDE PODE DESCER, NUNCA SUBIR. Duas paredes vizinhas de mesma altura tinham a
+    // base em cotas diferentes — cada casa se assenta no terreno esticando a parede pra BAIXO até o
+    // canto mais fundo do lote (ver `afundar`), e no morro isso muda de casa pra casa. Exigir as
+    // duas faces em Y impedia a fusão de um quarteirão inteiro por causa de uma diferença que está
+    // toda ENTERRADA. Casar só o topo e unir pra baixo resolve, e é seguro: o volume extra fica
+    // dentro do terreno. Unir pra CIMA é que não pode — subiria acima da laje da casa mais baixa e
+    // prenderia quem estivesse andando no telhado dela.
+    if(k==='y'&&Math.abs(a.max.y-b.max.y)<=TOL_FACE)continue;
     if(solto>=0)return null;// dois eixos soltos: juntar criaria volume que não existe
     solto=e;
   }

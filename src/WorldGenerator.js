@@ -323,6 +323,47 @@ function poste(x,z){const g=new THREE.Group();g.position.set(x,obterElevacao(x,z
   bloco(new THREE.BoxGeometry(1.2,.08,.08),posteMat,0,6.1,0,g);
   registrarObstaculo(tronco)}
 function fio(a,b){const pts=[new THREE.Vector3(a[0],6.05,a[1]),new THREE.Vector3((a[0]+b[0])/2,5.35,(a[1]+b[1])/2),new THREE.Vector3(b[0],6.05,b[1])];const line=new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),new THREE.LineBasicMaterial({color:0x252321}));bairro.add(line)}
+// ===== BAR E BIQUEIRA: os dois pontos do morro =====
+// Ficam no bairro, dentro do perímetro que a polícia patrulha — é isso que impede virarem atalho
+// grátis. O bar cura, a biqueira compra pacote na hora por menos e sobe o procurado (ver PRECOS).
+// As coordenadas nascem de um vão REAL do traçado, não de um número escolhido a olho: os dois
+// ocupam lotes que a fileira deixou livres, então nenhuma casa é atropelada.
+export const BAR={x:0,y:0,z:0,raio:3.4};
+export const BIQUEIRA={x:0,y:0,z:0,raio:3.0};
+function construirBar(x,z){
+  BAR.x=x;BAR.z=z;BAR.y=obterElevacao(x,z);
+  const g=new THREE.Group();g.position.set(x,BAR.y,z);bairro.add(g);
+  const mad=matMadeira(0x7a5334);
+  // Balcão em L com cobertura de zinco em dois postes. O botequim de esquina não tem parede: é o que
+  // deixa ver de fora que ali tem gente, e o que o diferencia de mais uma casa fechada.
+  registrarObstaculo(bloco(new THREE.BoxGeometry(4.2,1.05,.5),mad,0,.52,-.9,g));
+  registrarObstaculo(bloco(new THREE.BoxGeometry(.5,1.05,2.2),mad,-1.85,.52,.45,g));
+  for(const bx of[-1.2,0,1.2])bloco(new THREE.CylinderGeometry(.16,.18,.62,8),mad,bx,.31,.1,g);// banquetas
+  bloco(new THREE.BoxGeometry(5,.08,3.4),matTelha(0xb0a08c),0,2.3,0,g).rotation.x=.1;
+  for(const[px,pz]of[[2.2,1.5],[-2.2,1.5]])registrarObstaculo(bloco(new THREE.BoxGeometry(.14,2.3,.14),posteMat,px,1.15,pz,g));
+  bloco(new THREE.BoxGeometry(2.6,.5,.1),bmat(0xe9d16a),0,2.05,-1.65,g);// letreiro
+  // Lâmpada quente: o bar precisa se achar de longe no morro, e uma PointLight barata faz isso sem
+  // sombra (sombra de luz pontual custa um render de cubemap por quadro).
+  const luz=new THREE.PointLight(0xffcf7a,2.4,11,2);luz.position.set(0,2.1,0);g.add(luz);
+  return g;
+}
+function construirBiqueira(x,z){
+  BIQUEIRA.x=x;BIQUEIRA.z=z;BIQUEIRA.y=obterElevacao(x,z);
+  const g=new THREE.Group();g.position.set(x,BIQUEIRA.y,z);bairro.add(g);
+  const mad=matMadeira(0x6b4a30);
+  // Engradados empilhados: é o "balcão" da boca. Só os de baixo viram colisor — os de cima estão a
+  // 60 cm do chão e barrar o jogador neles só o faria esbarrar no ar.
+  for(const[ex,ez,ey]of[[0,0,0],[.62,.1,0],[.3,.05,.46],[-.6,.25,0]]){
+    const c=bloco(new THREE.BoxGeometry(.56,.44,.42),mad,ex,.22+ey,ez,g);
+    if(ey===0)registrarObstaculo(c);
+  }
+  // Tambor com fogo: o ponto de referência visual, e o que diz "tem alguém aqui à noite".
+  bloco(new THREE.CylinderGeometry(.36,.36,.82,10),posteMat,1.9,.41,-.5,g);
+  const brasa=new THREE.PointLight(0xff7a2a,1.9,7,2);brasa.position.set(1.9,1.0,-.5);g.add(brasa);
+  bloco(new THREE.CylinderGeometry(.3,.3,.14,10),bmat(0xff8a3a),1.9,.88,-.5,g);
+  return g;
+}
+
 // ===== TRAÇADO DO MORRO =====
 // O bairro era um LOTEAMENTO, não uma favela: passo fixo de 6 m, todas as casas com a mesma largura,
 // beco caindo sempre na mesma coluna. Da laje dava pra ver o resultado — casas pareadas e coladas, e
@@ -376,6 +417,12 @@ const FILEIRAS=[];
   }
 }
 
+// Dois lotes viram VAGA: o bar e a biqueira ocupam o buraco de uma casa que não é construída, em
+// vez de nascerem numa coordenada escolhida a olho que atropelaria uma parede. As fileiras 1 e 4 não
+// têm frente livre, então nenhum refúgio se perde nisso.
+const LOTE_BAR={row:4,col:3},LOTE_BIQUEIRA={row:1,col:8};
+const ehLote=(l,fila,casa)=>fila.row===l.row&&casa.col===l.col;
+
 // --- 2. construção ---
 for(const fila of FILEIRAS){
   // Refúgio só onde a PORTA dá pra ser alcançada: as fileiras são coladas fundo-com-frente, e só há
@@ -392,6 +439,8 @@ for(const fila of FILEIRAS){
     const corTelhado=telhados[i%telhados.length];
     // Lote engolido pela praça do Mercado: não constrói nada aqui.
     if(naPraca(x,z,w))continue;
+    if(ehLote(LOTE_BAR,fila,casa)){construirBar(x,z);continue}
+    if(ehLote(LOTE_BIQUEIRA,fila,casa)){construirBiqueira(x,z);continue}
     // Escada precisa de beco nos DOIS lados que importam, e antes só o primeiro era checado:
     //  · AO LADO — é onde a escadaria encosta (agora vem do traçado: `becoAntes`);
     //  · À FRENTE DO 1º DEGRAU — é por onde se chega nela.
@@ -404,7 +453,8 @@ for(const fila of FILEIRAS){
     const ladoEscada=(casa.becoAntes&&peDesobstruido)?-1:0;
     // Qual borda do telhado dá pra um vão de verdade. `vizinha` cobre o caso do lote engolido pela
     // praça do Mercado: a casa ao lado do buraco precisa de mureta mesmo sem beco ali.
-    const vizinha=k=>{const c=fila.casas[k];return c&&!naPraca(c.x,c.z,c.larg)};
+    const vizinha=k=>{const c=fila.casas[k];
+      return !!c&&!naPraca(c.x,c.z,c.larg)&&!ehLote(LOTE_BAR,fila,c)&&!ehLote(LOTE_BIQUEIRA,fila,c)};
     const bordas={
       frente:fila.row===BLOCK_ROWS-1||fila.row%3===2,
       tras:fila.row===0||fila.row%3===0,
