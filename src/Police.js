@@ -41,8 +41,10 @@ import{player,zonasDeAcertoJogador,PLAYER_HEIGHT,encararDirecao,definirAnimacaoT
 import{ORDEM_ARMAS,armaEquipada,idArmaEquipada,equiparArma,obterBocaDaArma,direcaoComDispersao}from'./Weapons.js';
 import{estaEscondido,refugioEmQueEsta,refugios}from'./WorldGenerator.js';
 import{colidePedestre,waypointsVielas}from'./NPCs.js';
+import{ALT_TORSO,ALT_OLHO,ALT_CANO,atualizarCombate,espalhamentoDoTiro,tempoDeReacao,
+  distribuirPapeis,destinoDoPapel,procurarCobertura,PAPEL,velJogador,LEAD_FATOR,LEAD_RUIDO}from'./Combate.js';
 import{plantas,confiscarPlanta,aplicarMulta,inventario,atualizarStatusEconomia,isInventarioAberto,registrarGanchosPolicia}from'./Economy.js';
-import{dispararBala,atualizarBalas,limparBalas}from'./Bullets.js';
+import{dispararBala,atualizarBalas,limparBalas,VELOCIDADE_BALA}from'./Bullets.js';
 import{aplicarDano,renderizarVidaJogador,criarBarraMundo}from'./HealthBar.js';
 import{droneState,miraState}from'./Camera.js';
 
@@ -262,6 +264,9 @@ function criarPolicial(indice,tipo='rapel'){
   return{
     grupo:g,pernas,bracos,arma,hp:POLICIAL_HP,vivo:true,caindo:false,quedaT:0,tipo,
     pos:new THREE.Vector3(),proximoTiro:0,caminhando:0,
+    // Estado da trocação (ver Combate.js): relógio da mira, papel na equipe e cobertura escolhida.
+    viuDesde:0,viuPor:0,prontoEm:0,tiros:0,hpAnterior:POLICIAL_HP,papel:null,papelAte:0,ladoFlanco:1,
+    cobertura:null,proximaCobertura:0,faseCobertura:0,pressionadoAte:0,ultimoEspalhamento:0,
     // Percepção: `proximaVisao` defasa a checagem entre policiais (ver comentário do custo por frame);
     // `viu` é o resultado da última avaliação, reaproveitado pelos frames intermediários.
     proximaVisao:indice*VISAO_DEFASAGEM,viu:false,olharY:0,
@@ -499,8 +504,11 @@ function perceber(pol,agora){
   pol.proximaVisao=agora+VISAO_INTERVALO;
   // Escondido de verdade (dentro da casa E porta fechada) é invisível por definição, sem gastar raycast.
   if(jogadorEscondido()||jogadorRendido){pol.viu=false;return false}
-  const ox=pol.pos.x,oy=pol.grupo.position.y+1.55,oz=pol.pos.z;// olho, não peito
-  pol.viu=veAlvo(ox,oy,oz,pol.olharY,player.position.x,player.position.y+1.1,player.position.z,
+  // ALTURAS DERIVADAS DO CORPO (ver Combate.js). Eram 1,55 e 1,10 — números da época em que o
+  // personagem media 1,75 m. Com 0,9 m, o "olho" ficava 80 cm acima da cabeça do policial e o alvo
+  // 29 cm acima da do jogador: a linha de visão passava por cima de mureta que deveria escondê-lo.
+  const ox=pol.pos.x,oy=pol.grupo.position.y+ALT_OLHO,oz=pol.pos.z;
+  pol.viu=veAlvo(ox,oy,oz,pol.olharY,player.position.x,player.position.y+ALT_TORSO,player.position.z,
     meiaAberturaCone(policia.procurado),alcanceVisao(policia.procurado),temLinhaDeVisao);
   if(pol.viu){
     // FLAGRANTE. Ver alguém carregando pacote é o que dá causa pra abordagem — é o único jeito de a
@@ -515,7 +523,7 @@ function perceber(pol,agora){
 // Perseguição híbrida: reta quando a visão horizontal está limpa (custo zero), A* quando não está.
 // Sem isso o policial anda contra a quina da casa até o desencravador cuspir ele pra fora.
 function alvoDeMovimento(pol,agora,destX,destZ){
-  const alturaPeito=pol.grupo.position.y+1.1;
+  const alturaPeito=pol.grupo.position.y+ALT_TORSO;
   if(visaoHorizontalLivre(pol.pos.x,pol.pos.z,destX,destZ,alturaPeito)){
     pol.rota=null;pol.destinoRota=null;
     return{x:destX,z:destZ};
@@ -582,21 +590,58 @@ function cooldownTiro(){
 }
 function aproxMinima(){return Math.max(3,POLICIAL_APROX_MIN-AGRESSAO_APROX_POR_ESTRELA*policia.procurado)}
 
-// Tiro: só sai quando o policial ENXERGA o jogador de fato — o mesmo `viu` do cone, não um teste
-// separado. Antes bastava distância + parede livre, então ele acertava alvo que estava nas costas dele.
-function tentarAtirar(pol,agora,viu){
-  if(!viu||agora<pol.proximoTiro)return;
+// ===== O DISPARO, UM LUGAR SÓ =====
+// Havia DUAS cópias deste código (a de rua e a de combate), com as mesmas alturas erradas e o mesmo
+// modelo de espalhamento copiado. Duas cópias do mesmo cálculo divergem na primeira correção — e
+// divergiram: a de rua nem checava linha de visão antes de puxar o gatilho.
+//
+// A cadeia agora é a de um atirador de verdade, e não "viu → acerta":
+//   DETECÇÃO → REAÇÃO (0,28-0,70 s, sorteada por policial) → MIRA QUE ASSENTA (1,4 s) → DISPARO.
+// `pol.viuDesde` é o relógio dessa cadeia, e ele ZERA quando a linha de visão quebra: quem se
+// esconde e reaparece força o cara a começar de novo, que é o que dá função a usar cobertura.
+const _origem=new THREE.Vector3(),_dir=new THREE.Vector3();
+// Quanto tempo o policial mantém a mira depois de PERDER o alvo de vista. Zerar na hora era punição
+// dupla: um jogador andando de lado sai e entra do cone o tempo todo, e a cada saída a mira voltava a
+// ficar fria (2,2x de erro). Medido: 7% de acerto contra alvo em movimento a 9 m, quase inatingível.
+// Meio segundo de tolerância é o que um atirador humano tem — ele não esquece onde você estava.
+const GRACA_MIRA=.6;
+function tentarAtirar(pol,agora,viu,andando){
+  if(!viu){
+    // Perdeu de vista: a mira só zera se ficar perdida além da graça.
+    if(pol.viuDesde&&agora-(pol.viuPor||agora)>GRACA_MIRA)pol.viuDesde=0;
+    return false;
+  }
+  pol.viuPor=agora;
+  if(!pol.viuDesde){pol.viuDesde=agora;pol.prontoEm=agora+tempoDeReacao();return false}
+  if(agora<pol.prontoEm||agora<pol.proximoTiro)return false;
+  if(jogadorEscondido()||jogadorRendido)return false;
   const dist=distXZ(pol.pos,player.position);
-  if(dist>POLICIAL_ALCANCE_TIRO)return;
-  const ox=pol.pos.x,oy=pol.grupo.position.y+1.15,oz=pol.pos.z;
-  const ax=player.position.x,ay=player.position.y+1.1,az=player.position.z;
+  if(dist>POLICIAL_ALCANCE_TIRO)return false;
+  const ox=pol.pos.x,oy=pol.grupo.position.y+ALT_CANO,oz=pol.pos.z;
+  // ANTECIPAÇÃO: mira onde o alvo VAI estar quando a bala chegar, não onde ele está. Sem isto, um
+  // jogador andando de lado a 9 m era inatingível — medido, 0% de acerto em 24 s. O fator é 0,62 com
+  // ruído, não 1: um atirador humano lê o movimento, mas não resolve a equação — e é essa imperfeição
+  // que mantém correr e trocar de direção sendo defesa de verdade.
+  const voo=dist/VELOCIDADE_BALA;
+  const lead=voo*(LEAD_FATOR+(Math.random()*2-1)*LEAD_RUIDO);
+  const ax=player.position.x+velJogador.x*lead,
+        ay=player.position.y+ALT_TORSO,
+        az=player.position.z+velJogador.z*lead;
+  // A linha é medida do CANO ao TRONCO, que é por onde a bala passa. Medir de outro par de alturas
+  // deixava o policial atirar na parede achando que tinha caminho.
+  if(!temLinhaDeVisao(ox,oy,oz,player.position.x,player.position.y+ALT_TORSO,player.position.z))return false;
   pol.proximoTiro=agora+cooldownTiro();
-  const espalhamento=THREE.MathUtils.clamp(dist/POLICIAL_ALCANCE_TIRO,.05,1)*.13;
-  const dir=new THREE.Vector3(ax-ox,ay-oy,az-oz).normalize();
-  dir.x+=(Math.random()*2-1)*espalhamento;
-  dir.y+=(Math.random()*2-1)*espalhamento*.5;
-  dir.z+=(Math.random()*2-1)*espalhamento;
-  dispararBala(new THREE.Vector3(ox,oy,oz),dir,false);
+  const espalhamento=espalhamentoDoTiro({
+    dist,tempoMirando:agora-pol.viuDesde,policialAndando:andando,procurado:policia.procurado});
+  pol.ultimoEspalhamento=espalhamento;
+  _dir.set(ax-ox,ay-oy,az-oz).normalize();
+  _dir.x+=(Math.random()*2-1)*espalhamento;
+  _dir.y+=(Math.random()*2-1)*espalhamento*.6;
+  _dir.z+=(Math.random()*2-1)*espalhamento;
+  _origem.set(ox,oy,oz);
+  dispararBala(_origem,_dir,false);
+  pol.tiros=(pol.tiros||0)+1;
+  return true;
 }
 
 function atualizarPolicialCombate(pol,dt,agora){
@@ -613,18 +658,71 @@ function atualizarPolicialCombate(pol,dt,agora){
   // trabalha com o rastro do rádio — a última posição avistada por alguém da equipe. Sem nenhum dos
   // dois ele fica no lugar, olhando em volta. É o que separa "IA que persegue pelas coordenadas" de
   // "IA que procura".
+  // ===== PERCEPÇÃO ANTES DE TUDO =====
+  // O policial não sabe onde o jogador está por decreto: ou ele VÊ (cone + linha de visão), ou
+  // trabalha com o rastro do rádio — a última posição avistada por alguém da equipe.
   const vendo=perceber(pol,agora);
   const dist=distXZ(pol.pos,player.position);
-  let destino=null;
-  if(vendo)destino={x:player.position.x,z:player.position.z};
-  else if(rastroValido(agora))destino={x:rastro.x,z:rastro.z};
-  else if(emBusca(agora))destino=pontoDeBusca(pol,agora);
-  const aproxMin=aproxMinima();
-  if(destino&&(vendo?dist>aproxMin:distXZ(pol.pos,destino)>RUA_CHEGADA)){
+
+  // ===== ONDE ELE ACHA QUE O ALVO ESTÁ =====
+  // Vendo, é o jogador. Sem ver, é a ÚLTIMA POSIÇÃO CONHECIDA — nunca a atual. É o que impede o
+  // policial de continuar apontando pra alguém que já dobrou a esquina.
+  let alvoX=null,alvoZ=null;
+  if(vendo){alvoX=player.position.x;alvoZ=player.position.z}
+  else if(rastroValido(agora)){alvoX=rastro.x;alvoZ=rastro.z}
+
+  // ===== REAÇÃO A LEVAR TIRO =====
+  // Quem está apanhando não fica plantado. Perder vida liga uma janela de "pressionado", e nela o
+  // policial passa a procurar cobertura independente do papel que tinha.
+  if(pol.hp<pol.hpAnterior){pol.pressionadoAte=agora+3;pol.cobertura=null}
+  pol.hpAnterior=pol.hp;
+  const pressionado=agora<(pol.pressionadoAte||0);
+
+  // ===== PARA ONDE ELE VAI =====
+  let destino=null,querParar=false;
+  if(alvoX!==null){
+    const buscandoCobertura=pressionado||pol.papel===PAPEL.COBERTURA;
+    if(buscandoCobertura){
+      // Recalcula cobertura no máximo a cada 1,2 s: a varredura são 30 testes de ponto navegável
+      // mais linha de visão, e fazer isso por quadro por policial é o tipo de coisa que engasga no
+      // celular sem melhorar nada — cobertura não muda de lugar em 16 ms.
+      if(!pol.cobertura||agora>pol.proximaCobertura){
+        pol.proximaCobertura=agora+1.2;
+        pol.faseCobertura=Math.random()*Math.PI*2;
+        pol.cobertura=procurarCobertura(pol,alvoX,alvoZ,
+          (px,py,pz,ax,az)=>temLinhaDeVisao(px,py,pz,ax,obterElevacao(ax,az)+ALT_TORSO,az),
+          (px,pz)=>obterElevacao(px,pz));
+      }
+      if(pol.cobertura){
+        // Colado na cobertura ele ESPIA: sai pro ponto de tiro, dá o tiro, volta. Sem isso a
+        // "cobertura" vira o policial escondido pra sempre e a troca morre de tédio.
+        const naCobertura=Math.hypot(pol.pos.x-pol.cobertura.x,pol.pos.z-pol.cobertura.z)<1.1;
+        const espiando=naCobertura&&agora>=pol.proximoTiro-.45;
+        destino=espiando?{x:pol.cobertura.saidaX,z:pol.cobertura.saidaZ}
+                        :{x:pol.cobertura.x,z:pol.cobertura.z};
+      }
+    }
+    if(!destino){
+      const p=destinoDoPapel(pol,alvoX,alvoZ);
+      destino=p;
+      // Chegou na distância que o papel quer: para de andar e trabalha a mira. Atirar parado é mais
+      // preciso (ver Combate.js), então parar é uma decisão tática, não uma pausa de animação.
+      querParar=Math.abs(dist-(pol.papel===PAPEL.AVANCO?aproxMinima():9))<1.4;
+    }
+  }else if(emBusca(agora)){
+    destino=pontoDeBusca(pol,agora);
+  }
+
+  // ===== MOVIMENTO =====
+  let andando=false;
+  if(destino&&!querParar&&!pol.fixo&&distXZ(pol.pos,destino)>RUA_CHEGADA){
     const alvo=alvoDeMovimento(pol,agora,destino.x,destino.z);
     passoPolicial(pol,dt,alvo.x,alvo.z,velocidadePolicial(POLICIAL_VELOCIDADE));
+    andando=true;
   }else if(vendo){
     encararPonto(pol,player.position.x,player.position.z);
+  }else if(alvoX!==null){
+    encararPonto(pol,alvoX,alvoZ);// olhando pra última posição conhecida
   }else{
     // Perdeu o rastro: varre o olhar devagar em vez de congelar encarando o nada — e é esse giro que
     // dá ao jogador a chance de contornar por trás, que é o ponto do cone de visão existir.
@@ -640,23 +738,7 @@ function atualizarPolicialCombate(pol,dt,agora){
   assentarPolicial(pol,dt,vendo);
   pol.barra.posicionar(pol.pos.x,pol.grupo.position.y,pol.pos.z);
   pol.barra.mostrar(pol.hp<POLICIAL_HP);
-  // Só atira em quem ESTÁ VENDO. Antes bastava distância + linha de visão, então levava tiro de
-  // policial que estava de costas.
-  if(vendo&&dist<=POLICIAL_ALCANCE_TIRO&&agora>=pol.proximoTiro&&!jogadorEscondido()){
-    const ox=pol.pos.x,oy=pol.grupo.position.y+1.15,oz=pol.pos.z;
-    const ax=player.position.x,ay=player.position.y+1.1,az=player.position.z;
-    // só atira se realmente enxerga o jogador — nada de tiro atravessando casa
-    if(temLinhaDeVisao(ox,oy,oz,ax,ay,az)){
-      pol.proximoTiro=agora+cooldownTiro();
-      // erro de pontaria cresce com a distância: a bala sai torta, e é a física dela que decide o acerto
-      const espalhamento=THREE.MathUtils.clamp(dist/POLICIAL_ALCANCE_TIRO,.05,1)*.13;
-      const dir=new THREE.Vector3(ax-ox,ay-oy,az-oz).normalize();
-      dir.x+=(Math.random()*2-1)*espalhamento;
-      dir.y+=(Math.random()*2-1)*espalhamento*.5;
-      dir.z+=(Math.random()*2-1)*espalhamento;
-      dispararBala(new THREE.Vector3(ox,oy,oz),dir,false);
-    }
-  }
+  tentarAtirar(pol,agora,vendo,andando);
 }
 
 // ===== Tiro do jogador =====
@@ -1030,6 +1112,56 @@ function pontoDeNascimento(){
 // Exposto só pro teste de spawn: ele precisa sortear centenas de nascimentos sem esperar os 70-140 s
 // da janela real, e sem policial de verdade entrando em cena a cada sorteio.
 export function __pontoDeNascimentoParaTeste(){return pontoDeNascimento()}
+// ===== GANCHOS DA BANCADA DE TESTE DA TROCAÇÃO =====
+// A troca é um sistema de tempo real com sorteio dentro: a única forma honesta de saber se ela está
+// boa é rodar centenas de segundos dela e CONTAR. Estes ganchos deixam o teste montar um policial
+// isolado, a uma distância escolhida, e rodar o passo de combate sem esperar um encontro de verdade.
+export function __policialDeTeste(x,z){
+  const pol=criarPolicial(policiais.length,'rapel');
+  pol.pos.set(x,0,z);pol.alturaAtual=obterElevacao(x,z);
+  pol.grupo.position.set(x,pol.alturaAtual,z);
+  pol.papel='avanco';pol.papelAte=0;
+  // `fixo` prega o policial no lugar. Sem isso ele avança até a distância do papel e TODA medição de
+  // pontaria acaba acontecendo a 3 m — o teste mediria sempre o mesmo caso achando que mede quatro.
+  pol.fixo=false;
+  // Já olhando pro jogador: sem isto o teste gastaria os primeiros segundos esperando o giro de
+  // varredura encontrar o alvo, e mediria a varredura em vez da pontaria.
+  pol.olharY=Math.atan2(player.position.x-x,player.position.z-z);
+  pol.grupo.rotation.y=pol.olharY;
+  policiais.push(pol);
+  return pol;
+}
+export function __removerPolicialDeTeste(pol){
+  const i=policiais.indexOf(pol);
+  if(i>=0){scene.remove(pol.grupo);pol.barra.descartar();policiais.splice(i,1)}
+}
+export function __passoDeCombateParaTeste(pol,dt){
+  const agora=performance.now()/1000;
+  atualizarCombate(dt);
+  // Os papéis são distribuídos em `atualizarPolicia`, que o teste não chama — sem isto os quatro
+  // ficavam com o papel de partida e o teste "provava" que a equipe toda faz a mesma coisa.
+  distribuirPapeis(policiais,agora,player.position.x,player.position.z);
+  atualizarPolicialCombate(pol,dt,agora);
+}
+// As balas só avançam dentro de `atualizarPolicia`, com a lista de alvos daquele quadro. O teste
+// precisa do mesmo par (bala + alvos), senão mede tiro que sai e nunca chega em ninguém.
+export function __passoDeBalasParaTeste(dt){
+  // `montarAlvosDoFrame` roda dentro de `atualizarPolicia`, que o teste não chama. Sem ela a lista de
+  // alvos fica vazia e TODA bala passa reto — foi o que fez a primeira medição dar 15 tiros e 0 dano.
+  montarAlvosDoFrame();
+  atualizarBalas(dt,alvosDaBala);
+}
+export function __vidaJogadorParaTeste(){return saudeJogador}
+export function __curarJogadorParaTeste(){
+  // Zera TAMBÉM o rendido: sem isso, o primeiro caso do teste matava o jogador, ele ficava rendido, e
+  // todos os casos seguintes mediam zero — porque policial não atira em quem já se entregou.
+  saudeJogador=JOGADOR_HP_MAX;armaduraJogador=0;jogadorRendido=false;atualizarHudSaude();
+}
+export function __estadoDeCombate(){
+  return policiais.filter(p=>p.vivo).map(p=>({papel:p.papel,tiros:p.tiros,
+    espalhamento:+(p.ultimoEspalhamento||0).toFixed(4),temCobertura:!!p.cobertura,
+    dist:+distXZ(p.pos,player.position).toFixed(1)}));
+}
 function nascerDupla(agora,base){
   for(let i=0;i<2;i++){
     const pol=criarPolicial(policiaisRua.length+i,'rua');
@@ -1086,10 +1218,12 @@ function atualizarPoliciaDeRua(dt,agora){
       if(distXZ(pol.pos,destino)<RUA_CHEGADA)pol.destinoRonda=pontoDeRonda();
     }
     const perto=deOlho&&distXZ(pol.pos,player.position)<=aproxMinima();
+    let andandoRua=false;
     if(perto)encararPonto(pol,player.position.x,player.position.z);
     else{
       const alvo=alvoDeMovimento(pol,agora,destino.x,destino.z);
       passoPolicial(pol,dt,alvo.x,alvo.z,velocidadePolicial(RUA_VELOCIDADE));
+      andandoRua=true;
     }
     if(colidePedestre(pol.pos.x,pol.pos.z)){
       const livre=buscarPosicaoLivre(pol.pos.x,pol.pos.z,colidePedestre);
@@ -1099,18 +1233,10 @@ function atualizarPoliciaDeRua(dt,agora){
     pol.barra.posicionar(pol.pos.x,pol.grupo.position.y,pol.pos.z);
     pol.barra.mostrar(pol.hp<POLICIAL_HP);
     // Polícia de rua só abre fogo com ficha suja: patrulha de rotina não fuzila quem passa na rua.
-    const dist=distXZ(pol.pos,player.position);
-    if(deOlho&&policia.procurado>0&&dist<=POLICIAL_ALCANCE_TIRO&&agora>=pol.proximoTiro&&!jogadorEscondido()){
-      const ox=pol.pos.x,oy=pol.grupo.position.y+1.15,oz=pol.pos.z;
-      const ax=player.position.x,ay=player.position.y+1.1,az=player.position.z;
-      if(temLinhaDeVisao(ox,oy,oz,ax,ay,az)){
-        pol.proximoTiro=agora+cooldownTiro();
-        const esp=THREE.MathUtils.clamp(dist/POLICIAL_ALCANCE_TIRO,.05,1)*.13;
-        const dir=new THREE.Vector3(ax-ox,ay-oy,az-oz).normalize();
-        dir.x+=(Math.random()*2-1)*esp;dir.y+=(Math.random()*2-1)*esp*.5;dir.z+=(Math.random()*2-1)*esp;
-        dispararBala(new THREE.Vector3(ox,oy,oz),dir,false);
-      }
-    }
+    // Era uma SEGUNDA CÓPIA do disparo, com as mesmas alturas erradas e o espalhamento copiado. Duas
+    // cópias do mesmo cálculo divergem na primeira correção, e tinham divergido. Agora a rua usa o
+    // mesmo `tentarAtirar` da guarnição — com a mesma cadeia de reação e mira.
+    tentarAtirar(pol,agora,deOlho&&policia.procurado>0,andandoRua);
   }
 }
 // Alvos das balas do jogador incluem a polícia de rua — sem isso ela seria invulnerável.
@@ -1157,6 +1283,13 @@ export function aplicarEstadoPoliciaDoSave(s){
 export function atualizarPolicia(dt){
   const agora=performance.now()/1000;
   caminhosNesteQuadro=0;// zera o orçamento de A* deste quadro
+  // Velocidade do jogador, usada pela pontaria: alvo correndo é mais difícil de acertar.
+  atualizarCombate(dt);
+  // Papéis da equipe. Reavaliados a cada ~5 s (o próprio distribuirPapeis segura o intervalo), e só
+  // quando há alvo: distribuir função sem ninguém pra cercar é gasto por nada.
+  if(policiais.length&&(policia.estado==='combate'||rastroValido(agora)))
+    distribuirPapeis(policiais,agora,
+      rastroValido(agora)?rastro.x:player.position.x,rastroValido(agora)?rastro.z:player.position.z);
   // Rotor sempre girando e luzes piscando, em qualquer estado — o helicóptero nunca "desliga".
   rotorPrincipal.rotation.y+=dt*26;rotorCauda.rotation.x+=dt*40;
   const pisca=Math.floor(agora*3)%2===0;luzV.material.emissiveIntensity=pisca?1.6:.1;luzA.material.emissiveIntensity=pisca?.1:1.6;

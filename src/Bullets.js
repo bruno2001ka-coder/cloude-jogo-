@@ -7,6 +7,10 @@ import{scene}from'./core.js';
 import{primeiroImpactoNoSegmento,intersectarSegmentoCaixa}from'./Physics.js';
 
 const VELOCIDADE=95,VIDA_MAX=1.6,RAIO_BALA=.045;
+// A polícia precisa do número pra ANTECIPAR o tiro (mirar onde o alvo vai estar). Exportado daqui, e
+// não copiado lá, porque duas cópias da velocidade da bala divergem na primeira vez que alguém
+// ajustar o balanceamento — e a divergência apareceria como pontaria misteriosamente pior.
+export const VELOCIDADE_BALA=VELOCIDADE;
 
 const balaGeo=new THREE.SphereGeometry(RAIO_BALA,6,5);
 const balaMatJogador=new THREE.MeshBasicMaterial({color:0x9be6ff});
