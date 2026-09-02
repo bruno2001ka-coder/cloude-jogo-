@@ -1093,15 +1093,22 @@ function fatiarRetangulo(cx,cz,w,d,giro){
   }
   return fatias;
 }
+// Calcula os colisores a partir do retângulo físico da casa, não de uma malha visual fundida.
+// `l.larg` e `l.prof` são as dimensões do lote/casa; `l.giro` é aplicado antes da divisão em fatias.
+// Assim, cada caixa representa uma faixa do volume real e não a AABB de uma geometria agregada.
+export function calcularColisoresCasa(l){
+  if(l.papel==='refugio')return [];// refúgios têm casca oca e colisores próprios.
+  const yBaixo=l.baseY-CHAO_PROFUNDIDADE;
+  const yAlto=(l.lajeY??l.baseY+2.5)-.02;
+  return fatiarRetangulo(l.x,l.z,l.larg,l.prof,l.giro).map(f=>
+    new THREE.Box3(new THREE.Vector3(f.x0,yBaixo,f.z0),
+                   new THREE.Vector3(f.x1,yAlto,f.z1)));
+}
+
 let colisoresCasa=0;
 for(const l of lotes){
-  if(l.papel==='refugio')continue;
-  // O topo para 2 cm ABAIXO da laje: a colisão horizontal do jogador começa em y+ALTURA_DEGRAU
-  // (0,216 m), então parado em cima da laje ele não encosta no próprio colisor da casa.
-  const yBaixo=l.baseY-CHAO_PROFUNDIDADE,yAlto=(l.lajeY??l.baseY+2.5)-.02;
-  for(const f of fatiarRetangulo(l.x,l.z,l.larg,l.prof,l.giro)){
-    registrarCaixa(new THREE.Box3(new THREE.Vector3(f.x0,yBaixo,f.z0),
-                                  new THREE.Vector3(f.x1,yAlto,f.z1)),'casa');
+  for(const box of calcularColisoresCasa(l)){
+    registrarCaixa(box,'casa');
     colisoresCasa++;
   }
 }
