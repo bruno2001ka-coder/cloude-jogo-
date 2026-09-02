@@ -346,6 +346,7 @@ let proximoTiroJogador=0;
 
 // ===== HUD: vida, alerta, esconderijo, mira de combate, botão de atirar, flash de dano =====
 const alertaEl=document.getElementById('alertaPolicia'),
+  atencaoEl=document.getElementById('atencaoPolicia'),
   refugioEl=document.getElementById('refugioIndicador'),miraCombateEl=document.getElementById('miraCombate'),
   fireBtn=document.getElementById('fireBtn'),danoFlash=document.getElementById('danoFlash'),
   avisoPolicia=document.getElementById('avisoPolicia'),municaoEl=document.getElementById('municaoHud'),
@@ -482,6 +483,7 @@ export function alcanceVisao(procurado){return VISAO_ALCANCE_BASE+VISAO_ALCANCE_
 // ===== RÁDIO: um viu, todos sabem =====
 // Guarda só a ÚLTIMA posição avistada, com validade. É o suficiente pra os outros convergirem sem
 // virarem teleguiados: ninguém recebe a posição atual do jogador, recebe onde ele estava.
+let atencaoCache=null;// o texto só volta pro DOM quando muda (ele muda a cada segundo, não a cada quadro)
 const rastro={ativo:false,x:0,z:0,ate:0,avisadoEm:-99,buscaAte:0};
 function compartilharAvistamento(x,z,agora){
   const novo=!rastro.ativo;
@@ -1149,14 +1151,30 @@ const ESTADOS={
 // isso as duplas têm VIDA ÚTIL: nascem, rondam, e vão embora sozinhas.
 const policiaisRua=[];
 let proximaDupla=RUA_INTERVALO_MIN;
-function pontoDeRonda(){
+// ===== RONDA SEM MOTIVO NÃO ANDA NA DIREÇÃO DO JOGADOR =====
+// Os pontos de ronda são os becos DE VERDADE — e o jogador também anda nos becos. Sorteando entre os
+// 125 pontos por igual, uma dupla que não tem nada com ele mira, com frequência, o beco em que ele
+// está: ela cruza o morro inteiro e para atrás dele. Do lado de dentro do jogo isso é
+// indistinguível de perseguição, e foi a segunda foto que o Bruno mandou dizendo "tão me seguindo".
+//
+// Então: enquanto a polícia não tem razão pra se interessar por ele (ficha fria, sem mochila, sem
+// rastro), o destino de ronda é sorteado LONGE dele. Ela continua patrulhando o morro todo — só não
+// escolhe justamente o pedaço onde ele está. Se em 10 tentativas não achar nada longe (o jogador está
+// no meio do morro), vale a última: polícia que some é pior que polícia que passa perto.
+const RONDA_LONGE_DO_JOGADOR=16;
+function pontoDeRonda(evitarJogador=false){
   // Com ficha suja eles vasculham os ESCONDERIJOS (é onde o jogador se enfia); limpos, andam pelas
   // vielas como qualquer ronda. É o "quando o jogador está procurado, vasculham os esconderijos".
   if(policia.procurado>0&&refugios.length&&Math.random()<.6){
     const r=refugios[Math.floor(Math.random()*refugios.length)];
     return{x:r.x+(Math.random()*2-1)*RUA_VASCULHAR_RAIO,z:r.z+RUA_VASCULHAR_RAIO};// na frente da porta
   }
-  const wp=waypointsVielas[Math.floor(Math.random()*waypointsVielas.length)];
+  let wp=null;
+  for(let t=0;t<10;t++){
+    wp=waypointsVielas[Math.floor(Math.random()*waypointsVielas.length)];
+    if(!evitarJogador)break;
+    if(Math.hypot(wp.x-player.position.x,wp.z-player.position.z)>=RONDA_LONGE_DO_JOGADOR)break;
+  }
   return{x:wp.x,z:wp.z};
 }
 // Onde o esconderijo mais próximo fica, visto do jogador. Serve pra não fechar a rota de fuga.
@@ -1188,6 +1206,9 @@ function pontoDeNascimento(){
 // Exposto só pro teste de spawn: ele precisa sortear centenas de nascimentos sem esperar os 70-140 s
 // da janela real, e sem policial de verdade entrando em cena a cada sorteio.
 export function __pontoDeNascimentoParaTeste(){return pontoDeNascimento()}
+// Exposto pro teste medir a ronda SEM MOTIVO: é a diferença entre "passou perto por acaso" e "veio
+// atrás de mim", e sem número isso vira discussão de sensação.
+export function __pontoDeRondaParaTeste(evitar){return pontoDeRonda(evitar)}
 // ===== GANCHOS DA BANCADA DE TESTE DA TROCAÇÃO =====
 // A troca é um sistema de tempo real com sorteio dentro: a única forma honesta de saber se ela está
 // boa é rodar centenas de segundos dela e CONTAR. Estes ganchos deixam o teste montar um policial
@@ -1247,7 +1268,9 @@ function nascerDupla(agora,base){
     pol.pos.set(base.x+(i?1.2:-1.2),0,base.z);
     pol.alturaAtual=obterElevacao(pol.pos.x,pol.pos.z);
     pol.grupo.position.set(pol.pos.x,pol.alturaAtual,pol.pos.z);
-    pol.expiraEm=agora+RUA_DUPLA_VIDA;pol.destinoRonda=pontoDeRonda();
+    // Longe do jogador também no primeiro destino: nascer a 20 m e mirar exatamente onde ele está
+    // é a mesma perseguição-sem-motivo, só que começando antes.
+    pol.expiraEm=agora+RUA_DUPLA_VIDA;pol.destinoRonda=pontoDeRonda(!chamaAtencao());
     policiaisRua.push(pol);
   }
 }
@@ -1294,7 +1317,9 @@ function atualizarPoliciaDeRua(dt,agora){
     else if(emBusca(agora))destino=pontoDeBusca(pol,agora);
     else{
       destino=pol.destinoRonda;
-      if(distXZ(pol.pos,destino)<RUA_CHEGADA)pol.destinoRonda=pontoDeRonda();
+      // `true`: aqui, por construção, não há deOlho, nem rastro, nem busca — ou seja, a polícia não
+      // tem razão nenhuma pra ir na direção do jogador.
+      if(distXZ(pol.pos,destino)<RUA_CHEGADA)pol.destinoRonda=pontoDeRonda(true);
     }
     const perto=deOlho&&distXZ(pol.pos,player.position)<=aproxMinima();
     let andandoRua=false;
@@ -1358,10 +1383,14 @@ export function aplicarEstadoPoliciaDoSave(s){
   try{
     const n=Math.floor(Number(s&&s.procurado));
     policia.procurado=Number.isFinite(n)?Math.min(PROCURADO_MAX,Math.max(0,n)):0;
-    // Save antigo só tem o booleano `jaFoiPreso`, que era permanente. Ele vira uma ficha quente
-    // cheia: quem já estava marcado continua marcado, mas agora com prazo pra esfriar.
+    // SAVE ANTIGO ENTRA LIMPO. O booleano `jaFoiPreso` era PERMANENTE e não guardava quando a prisão
+    // aconteceu — pode ter sido há três sessões. Convertê-lo numa ficha quente CHEIA (foi a primeira
+    // versão desta migração) faz o jogador abrir o jogo e levar cinco minutos de perseguição por algo
+    // que ele não fez nesta sessão e não tem como ver: é exatamente o "a polícia tá me seguindo sem eu
+    // ter feito nada" de novo, só que agora vindo do carregamento.
+    // Save novo traz o prazo restante e ele é respeitado; save velho começa do zero.
     const resto=Number(s&&s.fichaQuente);
-    const restante=Number.isFinite(resto)?Math.max(0,Math.min(FICHA_QUENTE,resto)):(s&&s.jaFoiPreso?FICHA_QUENTE:0);
+    const restante=Number.isFinite(resto)?Math.max(0,Math.min(FICHA_QUENTE,resto)):0;
     vigiadoAte=performance.now()/1000+restante;
   }catch(e){policia.procurado=0;vigiadoAte=0}
 }
@@ -1448,6 +1477,20 @@ export function atualizarPolicia(dt){
     const estrelas=`${'★'.repeat(policia.procurado)}${'☆'.repeat(PROCURADO_MAX-policia.procurado)}`;
     alertaEl.textContent=(procurando?`🔦 PROCURANDO ${estrelas}`:`🚁 PROCURADO ${estrelas}`)
       +(vivos?` · 👮${vivos}`:'');
+  }
+  // ===== POR QUE A POLÍCIA ESTÁ DE OLHO =====
+  // "A polícia tá me seguindo sem eu ter feito nada" foi relatado três vezes, e nas três a resposta
+  // teve que ser CAVADA no código, porque na tela não havia diferença nenhuma entre uma dupla que
+  // passa de ronda e uma que veio atrás dele. Agora existe: quando a polícia tem razão, ela é dita, e
+  // com o prazo. Quando este aviso está apagado, quem passou do lado estava de ronda — e isso é uma
+  // informação tão útil quanto a outra.
+  if(policia.procurado>0)atencaoEl.style.display='none';
+  else{
+    const seg=segundosDeFichaQuente();
+    const motivo=levandoPacote()
+      ?'🎒 Mochila à vista — a polícia repara'
+      :(seg>0?`👁 Ficha quente · ${Math.floor(seg/60)}:${String(Math.floor(seg%60)).padStart(2,'0')}`:'');
+    if(motivo!==atencaoCache){atencaoCache=motivo;atencaoEl.textContent=motivo;atencaoEl.style.display=motivo?'block':'none'}
   }
   // O indicador conta a diferença entre "dentro da casa" e "escondido de verdade": dentro com a porta
   // ABERTA não esconde ninguém, e sem esse aviso o jogador acharia que o esconderijo está quebrado.

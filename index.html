@@ -74,6 +74,11 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
 #alertaPolicia.procurando{background:rgba(120,72,10,.85);border-color:#f0b357;color:#ffe6bd;animation:pulsaBusca 1.15s ease-in-out infinite}
 @keyframes pulsaBusca{0%,100%{opacity:1;transform:translateX(-50%) scale(1)}50%{opacity:.45;transform:translateX(-50%) scale(.97)}}
 @keyframes piscaAlerta{0%,100%{opacity:1}50%{opacity:.45}}
+/* POR QUE A POLÍCIA ESTÁ DE OLHO. Sem isto, "a polícia está me seguindo" e "a polícia está passando"
+   são a mesma imagem na tela, e o jogador não tem como saber qual é — foi reclamado três vezes.
+   Só aparece quando ela REALMENTE tem motivo, e diz qual. Silêncio aqui significa: quem passou do
+   seu lado estava de ronda. */
+#atencaoPolicia{display:none;position:fixed;z-index:9;top:14px;left:50%;transform:translateX(-50%);padding:7px 14px;border-radius:18px;background:rgba(90,70,10,.88);border:1px solid #e0b45a;color:#ffeec2;font-size:11px;font-weight:800;letter-spacing:.06em;box-shadow:0 6px 18px rgba(0,0,0,.35)}
 #refugioIndicador{display:none;position:fixed;z-index:9;top:56px;left:50%;transform:translateX(-50%);padding:6px 14px;border-radius:16px;background:rgba(20,30,50,.85);border:1px solid #6ba0ff;color:#c6dcff;font-size:11px;font-weight:800;letter-spacing:.06em}
 #avisoPolicia{display:none;position:fixed;z-index:11;top:96px;left:50%;transform:translateX(-50%);max-width:88vw;text-align:center;padding:10px 16px;border-radius:12px;background:rgba(10,14,10,.92);border:1px solid #e7c568;color:#f4f0da;font-size:12px;font-weight:600;line-height:1.4;box-shadow:0 8px 24px rgba(0,0,0,.4);transition:opacity .3s}
 #miraCombate{display:none;position:fixed;z-index:6;top:50%;left:50%;transform:translate(-50%,-50%);width:26px;height:26px;pointer-events:none;transition:width .1s,height .1s}
@@ -131,6 +136,7 @@ body.debug #debugBtn{display:block}
 <button id="destravarBtn" aria-label="Destravar personagem">DESTRAVAR</button>
 <div id="hint"><span id="hintPC">WASD andar · Shift correr · Espaço pular · Mouse olhar · Botão esq. atirar · Botão dir. mirar · E colher/porta · Q inventário · Tab/X ou rodinha trocar arma · 1-4 arma · F rajada</span><span id="hintTouch">Joystick para andar · arraste para olhar · segure 🔫 pra rajada · 🎯 mira fechada · toque na arma pra trocar</span><br><span style="opacity:.8">🔵 sementes · 🟠 armas · 🟡 fazenda · 🔴 receptador · 🟢 sua muda · 🟥 refúgio (entre na casa)</span></div>
 <div id="alertaPolicia">🚁 ALERTA POLICIAL</div>
+<div id="atencaoPolicia"></div>
 <div id="refugioIndicador">🫥 ESCONDIDO</div>
 <div id="avisoPolicia"></div>
 <div id="miraCombate"></div>
