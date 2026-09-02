@@ -48,20 +48,50 @@ export const fazendaPos=new THREE.Vector3(POLOS.fazenda.x,0,POLOS.fazenda.z);
 export const armasPos=new THREE.Vector3(POLOS.armas.x,0,POLOS.armas.z);
 criarEsconderijo(receptadorPos.x,receptadorPos.z);
 
-// Planta em vaso, estilizada em 3 estágios (broto/vegetativa/flora), com a mesma técnica de aglomerados das árvores.
+// Planta em vaso com três estágios visuais: muda, vegetativa e floração.
+// As formas são deliberadamente de jogo, mas respeitam a leitura natural de caule, nós, folhas e flores.
+const GEO_FOLHA=new THREE.IcosahedronGeometry(.115,1);
+const GEO_BROTO=new THREE.SphereGeometry(.08,7,5);
+function folhaCannabis(parent,x,y,z,escala,rotacao,material,estagio){
+  const m=bloco(GEO_FOLHA,material,x,y,z,parent);
+  m.scale.set(.58*escala,.13*escala,1.45*escala);
+  m.rotation.set(.25+escala*.18,rotacao,.18);
+  m.userData.estagio=estagio;
+  return m;
+}
+function ramoCannabis(parent,x,y,z,escala,estagio,folhas){
+  const haste=bloco(new THREE.CylinderGeometry(.012*escala,.018*escala,.24*escala,5),caulePlantaMat,x,y,z,parent);
+  haste.rotation.z=.2;
+  for(let i=0;i<folhas;i++){
+    const ang=i*Math.PI*2/folhas+(estagio%2)*.22;
+    const raio=.10*escala,altura=y+.08*escala;
+    folhaCannabis(parent,x+Math.cos(ang)*raio,altura,z+Math.sin(ang)*raio,.72*escala,ang,estagio===2?floraMat:folhaMat,estagio);
+  }
+  return haste;
+}
 function criarPlanta(x,y,z){
   const g=new THREE.Group();g.position.set(x,y,z);scene.add(g);
   bloco(new THREE.CylinderGeometry(.2,.16,.26,8),potMat,0,.13,0,g);
-  const caule=bloco(new THREE.CylinderGeometry(.022,.032,.32,6),caulePlantaMat,0,.42,0,g);
-  const broto=bloco(new THREE.DodecahedronGeometry(.12,0),folhaClara,0,.42,0,g);
-  const vegFolhas=[[-.11,.5,.06,.15],[.11,.52,-.05,.14],[0,.58,.09,.13]].map(p=>{const m=bloco(new THREE.DodecahedronGeometry(p[3]+Math.random()*.02,0),Math.random()<.5?folhaMat:folhaClara,p[0],p[1],p[2],g);m.rotation.set(Math.random()*Math.PI,Math.random()*Math.PI,Math.random()*Math.PI);return m});
-  const florFolhas=[[0,.76,.1,.13],[-.15,.7,-.06,.12],[.15,.7,-.06,.12],[-.08,.83,.03,.1],[.08,.83,-.03,.1]].map(p=>{const m=bloco(new THREE.DodecahedronGeometry(p[3]+Math.random()*.02,0),floraMat,p[0],p[1],p[2],g);m.rotation.set(Math.random()*Math.PI,Math.random()*Math.PI,Math.random()*Math.PI);return m});
-  const florAcentos=[[0,.87,.12],[-.15,.79,-.04],[.15,.79,-.04]].map(p=>bloco(new THREE.SphereGeometry(.035,6,6),floraAcentoMat,p[0],p[1],p[2],g));
-  const revelaEm=[[caule,0],[broto,0],...vegFolhas.map(m=>[m,1]),...florFolhas.map(m=>[m,2]),...florAcentos.map(m=>[m,2])];
-  [...vegFolhas,...florFolhas,...florAcentos].forEach(m=>m.visible=false);
+  const revelaEm=[];
+  const registrar=(m,estagio)=>{m.visible=estagio===0;revelaEm.push([m,estagio]);return m};
+  registrar(bloco(new THREE.CylinderGeometry(.022,.032,.38,6),caulePlantaMat,0,.45,0,g),0);
+  // Estágio 1: muda vegetativa, mais alta, com nós e folhas em pares alternados.
+  for(const [yy,esc] of [[.58,.72],[.72,.62],[.86,.5]]){
+    const antes=g.children.length;
+    const ramo=ramoCannabis(g,0,yy,0,esc,1,5);registrar(ramo,1);
+    for(const m of g.children.slice(antes+1))registrar(m,1);
+  }
+  // Estágio 2: copa mais cheia, folhas estreitas e flores claras concentradas nos ápices.
+  for(const [yy,esc] of [[.62,.9],[.82,.8],[1.02,.68],[1.20,.5]]){
+    const antes=g.children.length;
+    const ramo=ramoCannabis(g,0,yy,0,esc,2,7);registrar(ramo,2);
+    for(const m of g.children.slice(antes+1))registrar(m,2);
+    registrar(bloco(GEO_BROTO,floraAcentoMat,0,yy+.13*esc,.02,g),2);
+  }
+  registrar(bloco(new THREE.ConeGeometry(.07,.22,7),floraAcentoMat,0,1.39,.02,g),2);
+  for(const [m] of revelaEm)if(m.userData.estagio===undefined&&m.position.y>.45)m.visible=false;
   criarSombraContato(.45,g,0,0);
-  const planta={grupo:g,x,y,z,plantadoEm:performance.now()/1000,estagio:0,revelaEm,colhida:false};
-  return planta;
+  return{grupo:g,x,y,z,plantadoEm:performance.now()/1000,estagio:0,revelaEm,colhida:false};
 }
 // Crescimento cumulativo: cada parte some visível a partir do seu próprio estágio e continua visível depois (a planta não "encolhe").
 function atualizarEstagioPlanta(planta){planta.revelaEm.forEach(([m,estagioMin])=>m.visible=planta.estagio>=estagioMin)}
