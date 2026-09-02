@@ -298,7 +298,14 @@ export function atualizarRefugios(dt){
     if(Math.abs(r.pivo.rotation.y-alvo)>.001)r.pivo.rotation.y+=(alvo-r.pivo.rotation.y)*k;
   }
 }
-function poste(x,z){const g=new THREE.Group();g.position.set(x,0,z);bairro.add(g);bloco(new THREE.CylinderGeometry(.09,.13,6.3,6),posteMat,0,3.15,0,g);bloco(new THREE.BoxGeometry(1.2,.08,.08),posteMat,0,6.1,0,g);registrarObstaculo(g)}
+// O colisor do poste é o TRONCO, não o grupo. Registrando o grupo, o braço transversal de 1,2 m
+// entrava na AABB e cada poste virava uma parede invisível de 1,2 m de largura no meio da rua — o
+// jogador esbarrava a meio metro do poste, sem nada visível ali. E o poste agora nasce NO TERRENO:
+// em y=0 fixo ele boiava ou enterrava conforme o relevo, o que fica gritante com o morro.
+function poste(x,z){const g=new THREE.Group();g.position.set(x,obterElevacao(x,z),z);bairro.add(g);
+  const tronco=bloco(new THREE.CylinderGeometry(.09,.13,6.3,6),posteMat,0,3.15,0,g);
+  bloco(new THREE.BoxGeometry(1.2,.08,.08),posteMat,0,6.1,0,g);
+  registrarObstaculo(tronco)}
 function fio(a,b){const pts=[new THREE.Vector3(a[0],6.05,a[1]),new THREE.Vector3((a[0]+b[0])/2,5.35,(a[1]+b[1])/2),new THREE.Vector3(b[0],6.05,b[1])];const line=new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),new THREE.LineBasicMaterial({color:0x252321}));bairro.add(line)}
 // Comunidade compacta: paredes coladas em blocos de quatro, com vielas de 2,4 m.
 const CELL_W=6,CELL_D=4.8,BECO=2.4,BLOCK_COLS=12,BLOCK_ROWS=8;let casaIndex=0;
