@@ -934,6 +934,19 @@ export function atualizarRefugios(dt){
 // tem porta escancarada nem fechada, tem a portinhola levantada até a altura do ombro), luz amarela
 // dura vazando por baixo, mesa e cadeira de plástico na calçada.
 export const BAR={x:0,y:0,z:0,raio:0};
+// Calcula quanto a fundação precisa descer para alcançar o relevo mais baixo sob a construção.
+// O topo permanece na cota da soleira; apenas a base é enterrada, sem mover balcão, porta ou telhado.
+function afundarEstrutura(l,larg,prof,y0){
+  let menor=y0;
+  for(const sx of[-1,1])for(const sz of[-1,1])for(const fora of[0,1.4]){
+    const p=noLote(l,sx*(larg/2+fora),sz*(prof/2+fora));
+    menor=Math.min(menor,obterElevacao(p.x,p.z));
+  }
+  for(const[dx,dz]of[[0,prof/2+1.4],[0,-prof/2-1.4],[larg/2+1.4,0],[-larg/2-1.4,0]]){
+    const p=noLote(l,dx,dz);menor=Math.min(menor,obterElevacao(p.x,p.z));
+  }
+  return Math.max(0,y0-menor)+.25;
+}
 const GEO_CADEIRA=new THREE.BoxGeometry(.42,.06,.42);
 const GEO_PERNA=new THREE.BoxGeometry(.05,.42,.05);
 const GEO_ENCOSTO=new THREE.BoxGeometry(.42,.42,.05);
@@ -941,13 +954,14 @@ const GEO_MESA=new THREE.CylinderGeometry(.36,.36,.05,8);
 function construirBar(l){
   const azulejo=matReboco(0xe6e2d6),telha=matTelha(0xa8a49c);
   MAT_SOMBRA.add(azulejo);MAT_SOMBRA.add(telha);
-  const larg=l.larg,prof=l.prof,y0=l.baseY,alt=2.9;
+  const larg=l.larg,prof=l.prof,y0=l.baseY,alt=2.9,afundar=afundarEstrutura(l,larg,prof,y0);
+  const yParede=y0+alt/2-afundar/2,altParede=alt+afundar;
   const P=(dx,dz)=>noLote(l,dx,dz);
-  // Caixa fechada nos três lados; a frente vira o vão da portinhola.
-  caixaNoLote(l,azulejo,larg,alt,ESP_PAREDE,0,-prof/2,y0+alt/2);
-  for(const sx of[-1,1])caixaNoLote(l,azulejo,ESP_PAREDE,alt,prof,sx*larg/2,0,y0+alt/2);
+  // Caixa fechada nos três lados; a frente vira o vão da portinhola. A fundação desce até o relevo.
+  caixaNoLote(l,azulejo,larg,altParede,ESP_PAREDE,0,-prof/2,yParede);
+  for(const sx of[-1,1])caixaNoLote(l,azulejo,ESP_PAREDE,altParede,prof,sx*larg/2,0,yParede);
   // Interior escuro atrás do vão: sem isto o bar é uma caixa vazia com o morro aparecendo do outro lado.
-  caixaNoLote(l,bmat(0x17140f),larg-.3,alt,.1,0,-prof/2+.5,y0+alt/2);
+  caixaNoLote(l,bmat(0x17140f),larg-.3,altParede,.1,0,-prof/2+.5,yParede);
   // Balcão.
   caixaNoLote(l,concreto,larg*.8,1.05,.55,0,prof/2-1.1,y0+.52);
   // A PORTA DE AÇO, meio levantada. Ela ocupa a metade de cima do vão; o resto é o vão por onde a luz
@@ -991,13 +1005,14 @@ export const BIQUEIRA={x:0,y:0,z:0,raio:0};
 function construirBiqueira(l){
   const reboco=matReboco(0x7d7466),telha=matTelha(0x9e9a92);
   MAT_SOMBRA.add(reboco);MAT_SOMBRA.add(telha);
-  const larg=l.larg,prof=l.prof,y0=l.baseY,alt=2.5;
+  const larg=l.larg,prof=l.prof,y0=l.baseY,alt=2.5,afundar=afundarEstrutura(l,larg,prof,y0);
+  const yParede=y0+alt/2-afundar/2,altParede=alt+afundar;
   const P=(dx,dz)=>noLote(l,dx,dz);
-  caixaNoLote(l,reboco,larg,alt,prof,0,0,y0+alt/2);
+  caixaNoLote(l,reboco,larg,altParede,prof,0,0,yParede);
   {const c=P(0,0);caixa(telha,larg+.16,.14,prof+.16,c.x,y0+alt+.07,c.z,l.giro,true)}
   // Muro baixo na frente: é atrás dele que a boca funciona, e é ele que dá o "canto" sem fechar o beco.
   {const p=P(-larg*.15,prof/2+1.25);
-   caixa(reboco,larg*.7,1.15,.2,p.x,y0+.58,p.z,l.giro);
+   caixa(reboco,larg*.7,1.15+afundar,.2,p.x,y0+.58-afundar/2,p.z,l.giro);
    // Pichação: geometria SEPARADA num material sem tinta, colada 2 cm à frente do muro.
    const q=P(-larg*.15,prof/2+1.37);
    caixa(graffiteMat,larg*.62,.85,.02,q.x,y0+.62,q.z,l.giro);}
