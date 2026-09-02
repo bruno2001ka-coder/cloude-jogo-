@@ -48,10 +48,10 @@ export const PRECOS={
   mercadoMarmita:12,mercadoMarmitaCura:40,
   mercadoAgua:5,mercadoAguaCura:15,
   armas:{
-    pistola:{arma:0,municao:35,qtd:12},// arma:0 — já vem com o jogador, nunca aparece à venda
-    rifle:{arma:420,municao:60,qtd:15},
-    escopeta:{arma:520,municao:70,qtd:8},
-    metralhadora:{arma:780,municao:95,qtd:40},
+    pistola:{arma:0,municao:20,qtd:12},// arma:0 — já vem com o jogador, nunca aparece à venda
+    rifle:{arma:420,municao:35,qtd:15},
+    escopeta:{arma:520,municao:45,qtd:8},
+    metralhadora:{arma:780,municao:60,qtd:40},
   },
   armasColete:70,
   receptadorPacote:40,
