@@ -215,7 +215,9 @@ const skinPolicial=[0xc79067,0x8a5a3c,0xe0b088,0x6b4a30];
 const uniformeMat=new THREE.MeshStandardMaterial({color:0x232c3d,roughness:.7}),
   coleteMat=new THREE.MeshStandardMaterial({color:0x14181f,roughness:.75}),
   boneMat=new THREE.MeshStandardMaterial({color:0x14181f,roughness:.8}),
-  armaMat=new THREE.MeshStandardMaterial({color:0x2a2a2a,roughness:.4,metalness:.6});
+  armaMat=new THREE.MeshStandardMaterial({color:0x2a2a2a,roughness:.4,metalness:.6}),
+  // Mesmo tom do rosto do morador (NPCs.js), de propósito: os dois são gente do mesmo mundo.
+  rostoMat=new THREE.MeshStandardMaterial({color:0x171712,roughness:.8});
 function blocoP(geo,mat,x,y,z,parent){const m=new THREE.Mesh(geo,mat);m.position.set(x,y,z);m.castShadow=true;m.receiveShadow=true;parent.add(m);return m}
 
 // A malha crua do policial mede 1,78 nesta escala — dividindo por PLAYER_HEIGHT dá a escala que
@@ -244,6 +246,11 @@ const GEO_POL={
   cabeca:new THREE.BoxGeometry(.37,.37,.35),
   bone:new THREE.BoxGeometry(.4,.14,.38),
   perna:new THREE.BoxGeometry(.13,.55,.16),
+  // O policial não tinha ROSTO: cabeça lisa, enquanto o morador (NPCs.js) sempre teve olhos e boca.
+  // De perto, numa troca de tiros, quem está atirando em você ser um boneco sem cara é o detalhe que
+  // mais quebra a cena. Duas caixinhas e um traço, geometria compartilhada como o resto.
+  olho:new THREE.BoxGeometry(.06,.06,.03),
+  boca:new THREE.BoxGeometry(.13,.03,.02),
   braco:new THREE.BoxGeometry(.13,.58,.16),
   arma:new THREE.BoxGeometry(.08,.1,.42),
 };
@@ -255,6 +262,10 @@ function criarPolicial(indice,tipo='rapel'){
   blocoP(GEO_POL.tronco,uniformeMat,0,.87,0,g);
   blocoP(GEO_POL.colete,coleteMat,0,1.02,0,g);
   blocoP(GEO_POL.cabeca,skinMat,0,1.48,0,g);
+  // Rosto na frente da cabeça (+z local, que é pra onde o policial olha). As medidas são as mesmas do
+  // morador, pra os dois lerem como gente do mesmo mundo.
+  for(const ox of[-.07,.07])blocoP(GEO_POL.olho,rostoMat,ox,1.53,.175,g);
+  blocoP(GEO_POL.boca,rostoMat,0,1.4,.18,g);
   blocoP(GEO_POL.bone,boneMat,0,1.7,0,g);
   const pernas=[-.14,.14].map(lx=>blocoP(GEO_POL.perna,uniformeMat,lx,.29,0,g));
   const bracos=[-.37,.37].map(lx=>blocoP(GEO_POL.braco,skinMat,lx,.9,0,g));
@@ -307,11 +318,25 @@ const policia={estado:'patrulha',alvoPlanta:null,pontoAlvo:{x:0,z:0},tempoEstado
 // jogador era caçado pra sempre sem ter feito nada além de plantar. Agora a polícia só se interessa
 // por duas razões, e as duas são coisas que o jogador FEZ:
 //   · está com a MOCHILA nas costas levando pacote (flagrante — dá pra ver de longe);
-//   · já foi preso alguma vez (tem ficha corrida, então fica marcado).
+//   · SAIU PRESO HÁ POUCO (ficha quente), e aí fica marcado por um tempo.
 // Fora isso ele é mais um morador: a batida vem pela PLANTA, confisca e vai embora.
-let jaFoiPreso=false;
+//
+// A FICHA ESQUENTA E ESFRIA — ANTES ELA SÓ ESQUENTAVA. `jaFoiPreso` era um booleano PERMANENTE: uma
+// prisão, uma única vez, e a partir dali toda dupla de ronda do mapa perseguia o jogador pelo resto
+// da partida. Não havia como limpar, salvo apagar o save. Era isso o "eles me seguem sem eu ter feito
+// nada" que o Bruno relatou três vezes, e nenhuma das vezes o problema estava no spawn.
+//
+// Agora a marca tem PRAZO. Sair preso deixa a polícia de olho por FICHA_QUENTE segundos de jogo; passado
+// isso, ele volta a ser mais um morador — e o que o marca de novo é o que ele FIZER, não o que já fez.
+// Cinco minutos é longo o bastante pra a prisão ter consequência e curto o bastante pra caber numa
+// sessão: dá pra sentir a diferença entre andar marcado e andar limpo dentro da mesma jogada.
+const FICHA_QUENTE=300;
+let vigiadoAte=0;
 function levandoPacote(){return inventario.pacote>0}
-export function chamaAtencao(){return levandoPacote()||jaFoiPreso}
+export function chamaAtencao(){return levandoPacote()||performance.now()/1000<vigiadoAte}
+// Quanto ainda falta da ficha quente, em segundos. A HUD mostra isso: marca sem prazo visível é
+// indistinguível de bug — foi assim que a versão permanente passou tanto tempo sem ser notada.
+export function segundosDeFichaQuente(){return Math.max(0,vigiadoAte-performance.now()/1000)}
 function elevarProcurado(n){if(n>policia.procurado)policia.procurado=Math.min(PROCURADO_MAX,n)}
 function somarProcurado(n){policia.procurado=Math.min(PROCURADO_MAX,policia.procurado+n)}
 const policiais=[];
@@ -389,9 +414,10 @@ function receberDanoJogador(dano){
 }
 function renderJogador(){
   jogadorRendido=true;
-  // Ficha corrida: a partir daqui a polícia passa a ficar de olho nele mesmo sem flagrante. É a
-  // segunda (e única outra) razão de a polícia se interessar por alguém — ver `chamaAtencao`.
-  jaFoiPreso=true;
+  // Ficha QUENTE: pelos próximos FICHA_QUENTE segundos a polícia fica de olho nele mesmo sem
+  // flagrante. É a segunda (e única outra) razão de a polícia se interessar por alguém — ver
+  // `chamaAtencao`. Depois disso esfria sozinha.
+  vigiadoAte=performance.now()/1000+FICHA_QUENTE;
   // O colete é apreendido junto: ser rendido é a "morte" deste jogo, e armadura que sobrevive à
   // rendição deixaria a placa no corpo depois do respawn sem o jogador ter pagado por ela.
   // A carga vai junto: ser rendido apreende os pacotes. Deixar a mochila cheia depois da prisão
@@ -567,6 +593,56 @@ function passoPolicial(pol,dt,alvoX,alvoZ,velocidade){
   return moveu;
 }
 function encararPonto(pol,x,z){pol.olharY=Math.atan2(x-pol.pos.x,z-pol.pos.z);pol.grupo.rotation.y=pol.olharY}
+
+// ===== NINGUÉM OCUPA O MESMO LUGAR =====
+// `passoPolicial` só testa colisão contra PAREDE. Policial não era obstáculo pra policial nem pro
+// jogador, então quatro deles convergindo no mesmo ponto de cobertura terminavam empilhados no mesmo
+// metro quadrado, e um que avançasse até a distância mínima entrava DENTRO do jogador. É o
+// "eles bugam, entram dentro do meu personagem, entram um dentro do outro".
+//
+// A separação roda DEPOIS de todo mundo andar, o que é o que a torna estável: resolver durante o
+// movimento faz A empurrar B, B empurrar A de volta, e os dois tremerem no lugar. Aqui cada par se
+// afasta metade da sobreposição, uma vez por quadro — e o empurrão passa pelo mesmo teste de parede
+// do passo normal, senão a separação enfiaria um deles dentro do muro.
+const RAIO_CORPO=.34;      // meio corpo no plano, com folga de ombro
+const RAIO_JOGADOR=.42;
+const _corpos=[];
+function empurrar(pol,dx,dz){
+  if(!colidePedestre(pol.pos.x+dx,pol.pos.z))pol.pos.x+=dx;
+  if(!colidePedestre(pol.pos.x,pol.pos.z+dz))pol.pos.z+=dz;
+}
+function separarCorpos(){
+  _corpos.length=0;
+  for(const p of policiais)if(p.vivo)_corpos.push(p);
+  for(const p of policiaisRua)if(p.vivo)_corpos.push(p);
+  const min=RAIO_CORPO*2,min2=min*min,minJ=RAIO_CORPO+RAIO_JOGADOR;
+  for(let i=0;i<_corpos.length;i++){
+    const a=_corpos[i];
+    for(let j=i+1;j<_corpos.length;j++){
+      const b=_corpos[j];
+      let dx=b.pos.x-a.pos.x,dz=b.pos.z-a.pos.z;
+      let d=Math.sqrt(dx*dx+dz*dz);
+      if(d*d>=min2)continue;
+      // Exatamente no mesmo ponto (dois nascendo na mesma coordenada, ou um rapel em cima do outro):
+      // sem direção pra separar, o ângulo áureo pelo índice desempata sem sorteio e sem divisão por
+      // zero — e dá direções diferentes pra cada par, em vez de jogar todo mundo pro mesmo lado.
+      if(d<1e-3){const ang=i*2.399963;dx=Math.cos(ang);dz=Math.sin(ang);d=1}
+      const meio=(min-d)/2,ux=dx/d*meio,uz=dz/d*meio;
+      empurrar(a,-ux,-uz);empurrar(b,ux,uz);
+    }
+    let dx=a.pos.x-player.position.x,dz=a.pos.z-player.position.z;
+    let d=Math.sqrt(dx*dx+dz*dz);
+    if(d<minJ){
+      if(d<1e-3){dx=Math.sin(a.olharY||0);dz=Math.cos(a.olharY||0);d=1}
+      const f=(minJ-d)/d;
+      empurrar(a,dx*f,dz*f);
+    }
+    // O corpo já foi assentado neste quadro; sem reescrever X/Z aqui o empurrão só apareceria no
+    // quadro seguinte, e a sobreposição piscaria a cada frame em vez de sumir.
+    a.grupo.position.x=a.pos.x;a.grupo.position.z=a.pos.z;
+    a.barra.posicionar(a.pos.x,a.grupo.position.y,a.pos.z);
+  }
+}
 
 // Assenta o corpo no chão — e sobe na laje quando o jogador está lá em cima. O A* é 2D e não conhece
 // escadaria, então a regra mais simples que funciona é esta: chegando embaixo do jogador elevado
@@ -1151,6 +1227,9 @@ export function __passoDeBalasParaTeste(dt){
   montarAlvosDoFrame();
   atualizarBalas(dt,alvosDaBala);
 }
+// A separação de corpos roda dentro de `atualizarPolicia`, que o teste não chama — sem este gancho o
+// teste montaria quatro policiais empilhados e "provaria" que eles ficam empilhados.
+export function __separarCorposParaTeste(){separarCorpos()}
 export function __vidaJogadorParaTeste(){return saudeJogador}
 export function __curarJogadorParaTeste(){
   // Zera TAMBÉM o rendido: sem isso, o primeiro caso do teste matava o jogador, ele ficava rendido, e
@@ -1271,13 +1350,20 @@ export function denunciarBoca(){somarProcurado(1);mostrarAviso('Venderam na tua 
 // dependência que já existia (Police -> Economy); o contrário fecharia ciclo e explodiria no TDZ
 // da const `inventario`.
 registrarGanchosPolicia({curar:curarJogador,precisaCurar:jogadorPrecisaCurar,denunciar:denunciarBoca});
-export function estadoPoliciaParaSave(){return{procurado:policia.procurado,jaFoiPreso}}
+// O save guarda o RESTO da ficha quente, em segundos — não um instante absoluto. `performance.now()`
+// zera a cada carregamento da página, então gravar o prazo em tempo de máquina faria toda ficha
+// salva vencer no instante em que o jogo reabre.
+export function estadoPoliciaParaSave(){return{procurado:policia.procurado,fichaQuente:segundosDeFichaQuente()}}
 export function aplicarEstadoPoliciaDoSave(s){
   try{
     const n=Math.floor(Number(s&&s.procurado));
     policia.procurado=Number.isFinite(n)?Math.min(PROCURADO_MAX,Math.max(0,n)):0;
-    jaFoiPreso=!!(s&&s.jaFoiPreso);
-  }catch(e){policia.procurado=0;jaFoiPreso=false}
+    // Save antigo só tem o booleano `jaFoiPreso`, que era permanente. Ele vira uma ficha quente
+    // cheia: quem já estava marcado continua marcado, mas agora com prazo pra esfriar.
+    const resto=Number(s&&s.fichaQuente);
+    const restante=Number.isFinite(resto)?Math.max(0,Math.min(FICHA_QUENTE,resto)):(s&&s.jaFoiPreso?FICHA_QUENTE:0);
+    vigiadoAte=performance.now()/1000+restante;
+  }catch(e){policia.procurado=0;vigiadoAte=0}
 }
 
 export function atualizarPolicia(dt){
@@ -1323,6 +1409,7 @@ export function atualizarPolicia(dt){
 
   ESTADOS[policia.estado].aoAtualizar(dt,agora);
   atualizarPoliciaDeRua(dt,agora);
+  separarCorpos();
 
   montarAlvosDoFrame();
   atualizarBalas(dt,alvosDaBala);

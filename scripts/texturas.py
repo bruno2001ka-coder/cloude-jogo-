@@ -113,49 +113,72 @@ def reboco():
     # reboco arrancado em vez de mancha pintada. ~28% da parede descasca.
     # ~15% da parede descasca. A 28% o olho via DUAS cores em partes quase iguais e lia camuflagem:
     # o que faz ler como favela é a falha ser EXCEÇÃO sobre a pintura, não metade dela.
-    caiu = ((placas + borda * .12 - .06) > .60).astype(float)
+    # Terceira calibragem, e a que resolveu. A 28% e depois a 15% de cobertura, com o cimento .12
+    # abaixo do reboco, a parede AINDA lia como camuflagem numa foto de perto: o olho não conta a
+    # área, conta o CONTRASTE, e duas manchas de valor bem diferente espalhadas por igual formam
+    # padrão de camuflagem em qualquer proporção. Agora são ~7% de falha e o degrau de valor caiu
+    # pela metade — a falha vira detalhe que se nota de perto, não a leitura da parede de longe.
+    caiu = ((placas + borda * .12 - .06) > .70).astype(float)
     caiu_suave = blur(caiu, 2)
     # Anel de borda: a beirada da placa é mais alta que o miolo, e é ela que pega a luz raspante.
     beirada = np.clip(blur(caiu, 3) - caiu_suave, 0, 1) * 2.2
 
-    # SUJEIRA ESCORRIDA. Faixas verticais estreitas, de comprimento variado, que é como a água suja
-    # desce da laje. Feitas por ruído esticado em Y: um ruído de frequência alta em X e baixa em Y já
-    # é um escorrido, sem precisar de desenho.
-    faixaX = ruido_tileavel(RES, 30, 2, .5)
-    faixaY = ruido_tileavel(RES,  2, 3, .6)
-    escorrido = np.clip((faixaX * .80 + faixaY * .40 - .58) * 3.8, 0, 1)
-    # Estica em Y: a média corrida na vertical transforma a mancha em RASTRO, que é o que o escorrido
-    # de água suja é. Sem isto ficava um chuvisco, invisível na parede.
-    for _ in range(3):
-        escorrido = (escorrido + np.roll(escorrido, 1, 0) + np.roll(escorrido, 2, 0)
-                     + np.roll(escorrido, 4, 0) + np.roll(escorrido, 7, 0)) / 5
-    escorrido = np.clip(escorrido * 2.6, 0, 1) * (.5 + faixaY * .5)
+    # SUJEIRA ESCORRIDA — e ESTA é a leitura da parede de morro, mais que a placa caída: água suja
+    # descendo da laje em rastro vertical, ano após ano.
+    #
+    # A primeira versão tentou fazer o rastro esticando um ruído 2D com quatro médias corridas em Y.
+    # Não funcionou e o motivo é aritmético: quatro passadas de 7 linhas num ladrilho de 512 borram
+    # ~20 px, ou seja 5 cm de parede. O resultado não era rastro, era CHUVISCO — e era ele, e não a
+    # placa caída, o "camuflagem" que apareceu em duas fotos seguidas.
+    #
+    # Rastro de verdade não se faz borrando: se faz tirando o Y da conta. O perfil sai da MÉDIA POR
+    # COLUNA do ruído (um vetor 1D, sem nenhuma variação vertical), e o comprimento vem de uma
+    # máscara em cosseno com fase sorteada por coluna. Cosseno porque é periódico: a textura ladrilha
+    # na vertical, e qualquer máscara não periódica deixaria uma linha de emenda na parede.
+    faixaX = ruido_tileavel(RES, 22, 2, .5)
+    perfil = faixaX.mean(axis=0)[None, :]
+    perfil = (perfil - perfil.min()) / ((perfil.max() - perfil.min()) or 1)
+    veio = np.clip((perfil - .52) * 2.6, 0, 1) * np.ones((RES, 1))
+    fase = ruido_tileavel(RES, 3, 2, .5).mean(axis=0)[None, :]
+    fase = (fase - fase.min()) / ((fase.max() - fase.min()) or 1)
+    yy = np.linspace(0, 1, RES, endpoint=False)[:, None] * np.ones((1, RES))
+    escorrido = veio * (.5 + .5 * np.cos(2 * np.pi * (yy - fase))) ** 2
 
     # RELEVO. O reboco é uma casca POR CIMA do cimento: onde ele caiu, o nível baixa de verdade.
     # ...mas POUCO. Com o degrau em .32 a oclusão calculada por `ocl` enegrecia a falha inteira e,
     # somada ao aoMap do material no jogo, a placa saía quase PRETA na tela. O degrau real entre
     # reboco e cimento é de milímetros, não de um palmo.
     h = base * .40 + poro * .60
-    h = h * (1 - caiu_suave * .30) - caiu_suave * .05 + beirada * .12
+    h = h * (1 - caiu_suave * .18) - caiu_suave * .025 + beirada * .10
 
     # COR. Reboco quase branco (a tinta da casa entra por fora); o cimento exposto é mais escuro e
     # mais neutro. O escorrido escurece os dois por igual, que é o que dá o aspecto encardido.
     # O cimento a .52 contra reboco a .86 virava buraco preto depois de a tinta da casa multiplicar
     # tudo. A .71 a falha continua legível e a parede segue lendo como UMA parede encardida.
     reboco_v = .86 + base * .10 + poro * .08
-    cimento_v = .74 + poro * .09 + borda * .05
+    cimento_v = .78 + poro * .09 + borda * .05
     v = reboco_v * (1 - caiu_suave) + cimento_v * caiu_suave
-    v = v - escorrido * .30 - beirada * .05
+    # O ESCORRIDO É QUE FAZ A PAREDE DE MORRO, não a placa caída: água suja descendo da laje em rastro
+    # vertical. Ele subiu de .30 pra .34 na mesma proporção em que a falha desceu — a parede continua
+    # encardida, mas encardida NA VERTICAL, que é direcional e por isso nunca lê como camuflagem.
+    v = v - escorrido * .26 - beirada * .04
     alb = cinza(v.clip(0, 1))
     # O cimento puxa pro frio e o reboco pintado pro quente: a diferença de TEMPERATURA é o que separa
     # os dois mesmo depois de a tinta da casa multiplicar tudo.
-    alb[..., 0] *= 1 - caiu_suave * .06
-    alb[..., 2] *= .985 + caiu_suave * .07
+    # A diferença de TEMPERATURA entre cimento (frio) e reboco pintado (quente) é o que separa os dois
+    # depois de a tinta da casa multiplicar tudo. Em .045/.05 ela era forte demais e a falha lia como
+    # MANCHA AZUL-CLARA sobre parede branca — chamava mais atenção que o reboco. Um sexto disso já
+    # basta pro olho ler "cimento" sem ler "pintaram de azul".
+    alb[..., 0] *= 1 - caiu_suave * .02
+    alb[..., 2] *= 1 + caiu_suave * .015
 
-    rough = (.84 + poro * .10 + caiu_suave * .10 + escorrido * .05).clip(.3, 1)
+    rough = (.84 + poro * .10 + caiu_suave * .10 + escorrido * .06).clip(.3, 1)
     # forca_normal baixa (era 1,9): o degrau da placa entrava no normal e a luz do jogo sombreava a
     # falha inteira; junto com o aoMap, a placa saía quase preta. O relevo do reboco é de milímetros.
-    salvar("reboco", alb, h, rough, forca_normal=1.4, ao_raio=6)
+    # ao_raio menor (era 6): a oclusão calculada num raio grande espalhava a sombra da falha muito
+    # além dela e era metade do efeito camuflagem — a mancha escura no albedo ganhava uma segunda,
+    # maior, na sombra.
+    salvar("reboco", alb, h, rough, forca_normal=1.1, ao_raio=4)
 
 # ============================ TIJOLO APARENTE ============================
 def tijolo():
@@ -230,9 +253,13 @@ def chao():
     seixos = (pedra > .70).astype(float)
     seixos = blur(seixos, 1)
     h = terra * .45 + grao * .25 + seixos * .5
-    r_ = .40 + terra * .22 + grao * .10 + seixos * .16
-    g_ = .31 + terra * .19 + grao * .09 + seixos * .15
-    b_ = .22 + terra * .13 + grao * .07 + seixos * .14
+    # TERRA DE BARRANCO, NÃO AREIA DE PRAIA. Com a base em .40/.31/.22 e o sol do jogo por cima, o
+    # morro inteiro saía cor de duna — a favela parecia construída numa praia. Terra de encosta é
+    # escura e puxa pro vermelho do óxido de ferro; o claro que existe nela é o SEIXO, e é ele que
+    # deve carregar a variação de luz, não o fundo.
+    r_ = .27 + terra * .20 + grao * .09 + seixos * .20
+    g_ = .19 + terra * .15 + grao * .08 + seixos * .18
+    b_ = .13 + terra * .10 + grao * .06 + seixos * .16
     alb = np.stack([r_, g_, b_], -1)
     rough = (.93 + grao * .06 - seixos * .12).clip(.5, 1)
     salvar("chao", alb, h, rough, forca_normal=2.2, ao_raio=9)
