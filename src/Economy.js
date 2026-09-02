@@ -48,49 +48,31 @@ export const fazendaPos=new THREE.Vector3(POLOS.fazenda.x,0,POLOS.fazenda.z);
 export const armasPos=new THREE.Vector3(POLOS.armas.x,0,POLOS.armas.z);
 criarEsconderijo(receptadorPos.x,receptadorPos.z);
 
-// Planta em vaso com três estágios visuais: muda, vegetativa e floração.
-// As formas são deliberadamente de jogo, mas respeitam a leitura natural de caule, nós, folhas e flores.
-const GEO_FOLHA=new THREE.IcosahedronGeometry(.115,1);
-const GEO_BROTO=new THREE.SphereGeometry(.08,7,5);
-function folhaCannabis(parent,x,y,z,escala,rotacao,material,estagio){
-  const m=bloco(GEO_FOLHA,material,x,y,z,parent);
-  m.scale.set(.58*escala,.13*escala,1.45*escala);
-  m.rotation.set(.25+escala*.18,rotacao,.18);
-  m.userData.estagio=estagio;
-  return m;
-}
-function ramoCannabis(parent,x,y,z,escala,estagio,folhas){
-  const haste=bloco(new THREE.CylinderGeometry(.012*escala,.018*escala,.24*escala,5),caulePlantaMat,x,y,z,parent);
-  haste.rotation.z=.2;
-  for(let i=0;i<folhas;i++){
-    const ang=i*Math.PI*2/folhas+(estagio%2)*.22;
-    const raio=.10*escala,altura=y+.08*escala;
-    folhaCannabis(parent,x+Math.cos(ang)*raio,altura,z+Math.sin(ang)*raio,.72*escala,ang,estagio===2?floraMat:folhaMat,estagio);
-  }
-  return haste;
+// Planta em vaso com três estágios visuais usando assets fotorealistas transparentes.
+// Cada sprite já inclui vaso e solo; assim não há uma segunda geometria procedural sobreposta.
+const carregadorTexturaPlanta=new THREE.TextureLoader();
+const TEXTURAS_PLANTA=[
+  carregadorTexturaPlanta.load('/assets/planta_estagio_1_muda.png'),
+  carregadorTexturaPlanta.load('/assets/planta_estagio_2_vegetativa.png'),
+  carregadorTexturaPlanta.load('/assets/planta_estagio_3_madura.png'),
+];
+function spritePlanta(parent,texture,escala,estagio){
+  const material=new THREE.SpriteMaterial({map:texture,transparent:true,alphaTest:.05,depthWrite:true});
+  const sprite=new THREE.Sprite(material);
+  sprite.position.set(0,escala*.5,0);
+  sprite.scale.set(escala,escala,1);
+  sprite.castShadow=true;sprite.receiveShadow=true;sprite.userData.estagio=estagio;
+  parent.add(sprite);return sprite;
 }
 function criarPlanta(x,y,z){
   const g=new THREE.Group();g.position.set(x,y,z);scene.add(g);
-  bloco(new THREE.CylinderGeometry(.2,.16,.26,8),potMat,0,.13,0,g);
-  const revelaEm=[];
-  const registrar=(m,estagio)=>{m.visible=estagio===0;revelaEm.push([m,estagio]);return m};
-  registrar(bloco(new THREE.CylinderGeometry(.022,.032,.38,6),caulePlantaMat,0,.45,0,g),0);
-  // Estágio 1: muda vegetativa, mais alta, com nós e folhas em pares alternados.
-  for(const [yy,esc] of [[.58,.72],[.72,.62],[.86,.5]]){
-    const antes=g.children.length;
-    const ramo=ramoCannabis(g,0,yy,0,esc,1,5);registrar(ramo,1);
-    for(const m of g.children.slice(antes+1))registrar(m,1);
-  }
-  // Estágio 2: copa mais cheia, folhas estreitas e flores claras concentradas nos ápices.
-  for(const [yy,esc] of [[.62,.9],[.82,.8],[1.02,.68],[1.20,.5]]){
-    const antes=g.children.length;
-    const ramo=ramoCannabis(g,0,yy,0,esc,2,7);registrar(ramo,2);
-    for(const m of g.children.slice(antes+1))registrar(m,2);
-    registrar(bloco(GEO_BROTO,floraAcentoMat,0,yy+.13*esc,.02,g),2);
-  }
-  registrar(bloco(new THREE.ConeGeometry(.07,.22,7),floraAcentoMat,0,1.39,.02,g),2);
-  for(const [m] of revelaEm)if(m.userData.estagio===undefined&&m.position.y>.45)m.visible=false;
-  criarSombraContato(.45,g,0,0);
+  const revelaEm=[
+    [spritePlanta(g,TEXTURAS_PLANTA[0],.82,0),0],
+    [spritePlanta(g,TEXTURAS_PLANTA[1],1.18,1),1],
+    [spritePlanta(g,TEXTURAS_PLANTA[2],1.42,2),2],
+  ];
+  revelaEm.forEach(([m,estagio])=>m.visible=estagio===0);
+  criarSombraContato(.52,g,0,.02);
   return{grupo:g,x,y,z,plantadoEm:performance.now()/1000,estagio:0,revelaEm,colhida:false};
 }
 // Crescimento cumulativo: cada parte some visível a partir do seu próprio estágio e continua visível depois (a planta não "encolhe").
