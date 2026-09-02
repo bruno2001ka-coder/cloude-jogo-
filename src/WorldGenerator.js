@@ -93,12 +93,41 @@ function criarEscadariaViela(casaGrupo,alturaTotal,w=6,d=4.8,lado=1){
   const largura=ESCADA_LARGURA;
   const lx=lado*(w/2+largura/2+ESCADA_MARGEM);// encosta na parede, com leve sobreposição pra não flutuar
   const lajeY=casaMundo.y+alturaTotal;
-  // O comprimento nunca passa da profundidade da casa: senão a escada invade a fachada da frente.
-  const margemPonta=.2,corridaMax=Math.max(1.2,d-2*margemPonta);
+  // O topo encosta na borda da frente do telhado, e a casa com escadaria NÃO leva mureta na frente
+  // (ver `bordas` no traçado) — era a mureta estendida por cima da escada que travava a chegada.
+  const lzTopoBase=d/2-.25;
+  // ===== A CORRIDA ACOMPANHA A SUBIDA =====
+  // Era travada na profundidade da casa (4,4 m). No mapa plano isso bastava, porque a subida era só a
+  // altura da casa. No morro a laje pode ficar 5 m acima do pé da escada, e espremer 5 m de subida em
+  // 4,4 m de corrida dá 49°: a pisada encolhia pra 13 cm e a escada virava parede — o jogador subia
+  // 3 m, batia e escorregava pro lado (medido: 6,1 m de desvio lateral, laje nunca alcançada).
+  // Agora a corrida sai da subida a 35° (tan 35° ≈ 0,70), que é inclinação de escada de verdade, e a
+  // escada CRESCE pra fora da casa quando precisa. O espaço extra é reservado no traçado (ver
+  // `escadaDe`), então ela não nasce dentro da vizinha.
+  // A ESCADA PROCURA O CHÃO. Fixar o comprimento por trigonometria (subida / tan 35°) parecia certo e
+  // estava errado: no morro o terreno atrás da casa DESCE, então o pé calculado ficava pendurado no
+  // ar. Medido: o jogador largado no pé caía 2,5 m e terminava andando lá embaixo — o teste dizia
+  // "não subiu", e o defeito era a escada não encostar no chão.
+  // Agora ela desce do topo pela inclinação alvo, amostrando o terreno de 25 em 25 cm, e PARA no
+  // primeiro ponto onde a linha da escada encontra o solo. O comprimento é uma consequência do
+  // relevo, não um número escolhido antes de olhar pra ele.
+  const CORRIDA_MAX_ABS=9,INCLINACAO=Math.tan(35*Math.PI/180);
+  let corridaMax=1.2;
+  for(let dist=1.2;dist<=CORRIDA_MAX_ABS;dist+=.25){
+    const m=localParaMundo(lx,lzTopoBase-dist);
+    if(lajeY-dist*INCLINACAO<=obterElevacao(m.x,m.z)+.05){corridaMax=dist;break}
+    corridaMax=dist;
+  }
 
   // A escada sobe do terreno NO PÉ dela até a laje. Medir no pé (e não no centro) é o que faz o
   // último degrau terminar exatamente rente ao telhado em terreno inclinado.
-  const pe=localParaMundo(lx,-corridaMax/2);
+  // O TOPO tem que cair DENTRO da laje, não em cima do vazio. Com a corrida centrada na casa
+  // (`-corrida/2` a `+corrida/2`) e agora podendo chegar a 9 m contra 4,8 m de casa, o último degrau
+  // terminava 2,1 m ADIANTE do telhado: o jogador subia tudo e parava no ar, a 0,9 m da laje.
+  // Ancorando o TOPO na borda do telhado, a escada cresce pra TRÁS — pro lado de fora da casa, que é
+  // onde há beco — e o último degrau encosta no telhado.
+  const lzTopo=lzTopoBase;
+  const pe=localParaMundo(lx,lzTopo-corridaMax);
   const yBase=obterElevacao(pe.x,pe.z);
   const subida=lajeY-yBase;
   if(subida<=0)return null;
@@ -109,8 +138,10 @@ function criarEscadariaViela(casaGrupo,alturaTotal,w=6,d=4.8,lado=1){
   const numDegraus=Math.max(3,Math.ceil(subida/(ALTURA_DEGRAU*.70)));
   const alturaDegrau=subida/numDegraus;
   // A pisada preenche o comprimento disponível, com teto de 30 cm pra escada baixa não virar rampa.
-  const pisada=Math.min(.30,corridaMax/numDegraus);
-  const corrida=numDegraus*pisada,lzInicio=-corrida/2;
+  // Piso mínimo de 22 cm: abaixo disso o pé do jogador ocupa três degraus ao mesmo tempo e o
+  // raycast vertical fica pingando entre eles.
+  const pisada=THREE.MathUtils.clamp(corridaMax/numDegraus,.22,.30);
+  const corrida=numDegraus*pisada,lzInicio=lzTopo-corrida;
 
   const grupoEscada=new THREE.Group();grupoEscada.userData.escadariaViela=true;casaGrupo.add(grupoEscada);
 
@@ -223,13 +254,34 @@ function construirPortaRefugio(g,d){
 // estica as paredes pra baixo até o canto mais baixo, mantendo o topo onde estava. É de graça em
 // draw calls — a mesma malha, só mais alta — enquanto um baldrame separado custaria +111 malhas.
 // `assentar=false` é pro andar de cima do sobrado, que se apoia na casa e não no chão.
-function casaBairro(x,z,w=6,d=6,h=3,cor=0xd87957,tipo=0,registrar=true,ladoEscada=0,corTelhado=0x888888,refugio=false,assentar=true,bordas=BORDAS_TODAS){const g=new THREE.Group();const terrenoY=obterElevacao(x,z);g.position.set(x,terrenoY,z);g.rotation.y=z>0?Math.PI:0;g.userData={bairroCasa:true,cor,tipo};bairro.add(g);const fachada=matReboco(cor);
+function casaBairro(x,z,w=6,d=6,h=3,cor=0xd87957,tipo=0,registrar=true,ladoEscada=0,corTelhado=0x888888,refugio=false,assentar=true,bordas=BORDAS_TODAS,giro=null){const g=new THREE.Group();
+  // A CASA SE ASSENTA PELA SOLEIRA, NÃO PELO CENTRO. Numa encosta de 19° o centro pode estar mais de
+  // um metro acima do terreno na frente da porta — medi 1,34 m — e o passo do jogador é 0,22 m: a
+  // porta ficava intransponível, com o esconderijo inteiro inacessível e nenhum erro aparecendo.
+  // Fincando pela cota da soleira, a entrada nasce sempre no nível da rua; o fundo, que fica mais
+  // alto, é absorvido pelo `afundar` (a parede estica pra baixo até o canto mais fundo).
+  const gy=giro!==null?giro:(z>0?Math.PI:0);
+  const terrenoY=obterElevacao(x+Math.sin(gy)*d/2,z+Math.cos(gy)*d/2);g.position.set(x,terrenoY,z);
+  // A casa acompanha a curva da rua que passa na frente dela. Antes era `z>0?PI:0` — dois valores só,
+  // porque o traçado era um tabuleiro. `giro` vem da TANGENTE da spline do beco (ver o traçado lá
+  // embaixo); o padrão antigo continua valendo pro Mercado e pras lojas, que não estão numa curva.
+  g.rotation.y=gy;g.userData={bairroCasa:true,cor,tipo};bairro.add(g);const fachada=matReboco(cor);
 // Variação ESTÁVEL por posição: a mesma casa recebe sempre a mesma pichação, o mesmo rodapé e o mesmo
 // telheiro. Math.random() aqui faria o bairro trocar de cara a cada carregamento — e o jogador decora
 // o caminho pelas casas, então a fachada precisa ser sempre a mesma.
 const semente=Math.abs(Math.round(x*7.3+z*13.7));
 let afundar=0;
-if(assentar){let menor=terrenoY;for(const sx of[-1,1])for(const sz of[-1,1])menor=Math.min(menor,obterElevacao(x+sx*w/2,z+sz*d/2));afundar=Math.max(0,terrenoY-menor)+.12}
+if(assentar){
+  // Os quatro cantos medidos NO MUNDO, já girados: com a casa torta, medir nos eixos globais pegava
+  // pontos que não são canto nenhum, e a parede parava de encostar no chão justamente na encosta.
+  const cg=Math.cos(g.rotation.y),sg=Math.sin(g.rotation.y);
+  let menor=terrenoY;
+  for(const sx of[-1,1])for(const sz of[-1,1]){
+    const lx=sx*w/2,lz=sz*d/2;
+    menor=Math.min(menor,obterElevacao(x+lx*cg+lz*sg,z-lx*sg+lz*cg));
+  }
+  afundar=Math.max(0,terrenoY-menor)+.12;
+}
 const casca=refugio?construirCascaCasa(g,w,h,d,fachada,afundar):null;if(refugio)g.userData.pecaPorta=construirPortaRefugio(g,d);const paredeMesh=casca?null:bloco(new THREE.BoxGeometry(w,h+afundar,d),fachada,0,h/2-afundar/2,0,g);const frente=new THREE.Mesh(new THREE.BoxGeometry(w*.7,.1,.04),concreto);frente.position.set(0,.08,d/2+.025);frente.castShadow=true;frente.receiveShadow=true;g.add(frente);const doorHeight=PORTA_ALTURA;if(!refugio)bloco(new THREE.BoxGeometry(.95,doorHeight,.08),porta,0,doorHeight/2,d/2+.07,g);for(const xx of [-w*.27,w*.27]){bloco(new THREE.BoxGeometry(1.22,1.02,.05),molduraJanela,xx,h*.56,d/2+.05,g);bloco(new THREE.BoxGeometry(1.05,.85,.06),Math.random()<.22?janelaAcesa:janela,xx,h*.56,d/2+.12,g);bloco(new THREE.BoxGeometry(1.18,.07,.08),concreto,xx,h*.56,d/2+.20,g)}
 // ===== FACHADA ENCARDIDA (referência de favela) =====
 // Rodapé de tijolo aparente: na favela o reboco cai primeiro na base, onde bate chuva e pé. É UMA
@@ -315,10 +367,12 @@ function registrarRefugio(g,x,z,w,d,pecaPorta){
   // parede, um ponto do "interior" colado na lateral já deixava a hitbox dentro do tijolo, e fechar
   // a porta ali prendia o jogador no próprio colisor. Medido: 42 pontos do interior davam colisão.
   const recuo=ESP_PAREDE+.25;
-  const r={x,z,pivo,folha,caixa,caixaFechada,aberta:true,
-    // Interior em coordenadas de MUNDO. A casa só gira 0 ou π (ver casaBairro) e as duas rotações
-    // mapeiam a caixa nela mesma, então a AABB local serve como mundial sem transformar nada.
-    minX:x-(w/2-recuo),maxX:x+(w/2-recuo),minZ:z-(d/2-recuo),maxZ:z+(d/2-recuo)};
+  // Interior em coordenadas LOCAIS da casa, mais o giro dela. Antes eram limites de MUNDO, e isso só
+  // funcionava porque a casa girava exclusivamente 0 ou π — as duas rotações que mapeiam uma caixa
+  // alinhada nela mesma. Com a casa acompanhando a curva do beco, um retângulo alinhado aos eixos
+  // globais deixaria de cobrir o interior (e cobriria pedaço da rua). Agora o teste desgira o ponto.
+  const r={x,z,giro:g.rotation.y,pivo,folha,caixa,caixaFechada,aberta:true,
+    meiaLarg:w/2-recuo,meiaProf:d/2-recuo};
   refugios.push(r);
   return r;
 }
@@ -329,7 +383,14 @@ export function alternarPortaRefugio(r){
 }
 // Em qual refúgio o ponto está (ou null). É o teste do INTERIOR, não de proximidade.
 export function refugioEmQueEsta(pos){
-  for(const r of refugios)if(pos.x>=r.minX&&pos.x<=r.maxX&&pos.z>=r.minZ&&pos.z<=r.maxZ)return r;
+  for(const r of refugios){
+    // Desgira o ponto pro referencial da casa e testa contra o retângulo local. Uma rotação inversa
+    // de dois cossenos por refúgio, nove refúgios: mais barato que qualquer alternativa, e correto
+    // para qualquer ângulo em vez de só pra 0 e π.
+    const dx=pos.x-r.x,dz=pos.z-r.z,c=Math.cos(r.giro),sn=Math.sin(r.giro);
+    const lx=dx*c-dz*sn,lz=dx*sn+dz*c;
+    if(Math.abs(lx)<=r.meiaLarg&&Math.abs(lz)<=r.meiaProf)return r;
+  }
   return null;
 }
 // Escondido = dentro da casa E com a porta fechada. As duas condições, sempre.
@@ -391,130 +452,303 @@ function construirBiqueira(x,z){
   return g;
 }
 
-// ===== TRAÇADO DO MORRO =====
-// O bairro era um LOTEAMENTO, não uma favela: passo fixo de 6 m, todas as casas com a mesma largura,
-// beco caindo sempre na mesma coluna. Da laje dava pra ver o resultado — casas pareadas e coladas, e
-// becos formando avenidas retas de ponta a ponta do bairro.
+// ===== TRAÇADO ORGÂNICO: RUA QUE SERPENTEIA, BECOS QUE RAMIFICAM =====
+// O bairro era um TABULEIRO. Passou por duas gerações — grade fixa, depois fileiras empacotadas com
+// largura variável — e as duas continuavam sendo linhas e colunas: dava pra ver a grade invisível de
+// cima. Favela não tem fileira. Tem UMA via que sobe o morro fazendo curva, e becos que ramificam
+// dela onde couber, apertando e torcendo conforme o barranco.
 //
-// Agora cada fileira é EMPACOTADA. A largura de cada casa sai de um hash da posição (5,0 a 7,4 m) e o
-// x sai da soma das larguras anteriores, então nenhuma casa se alinha com a de trás. Os becos caem em
-// colunas sorteadas POR FILEIRA, então param de se alinhar entre fileiras e viram passagem torta, que
-// é o que beco de morro é.
+// Agora o traçado são CURVAS (CatmullRomCurve3) e as casas são penduradas nelas: cada uma nasce a uma
+// distância medida ao longo da curva, deslocada perpendicularmente, e GIRADA pela tangente. Não
+// existe mais eixo X nem Z no desenho do bairro.
 //
-// O hash é determinístico de propósito, como a `semente` da fachada: o jogador decora o caminho pelo
-// bairro, e um traçado que muda a cada carregamento tornaria isso impossível.
-const CELL_D=4.8,BECO=2.4,BLOCK_COLS=12,BLOCK_ROWS=8;
-const LARG_MIN=5.0,LARG_MAX=7.4;
+// ===== A RESTRIÇÃO QUE DESENHOU A SOLUÇÃO =====
+// A física do jogo é AABB pura (Physics.js) — não há caixa girada. Uma casa de 6x4,8 girada 45° tem
+// AABB de 7,6x7,6: se eu deslocasse pela profundidade GEOMÉTRICA, a caixa invadiria a rua e fecharia
+// a passagem; se usasse a caixa inscrita, o jogador atravessaria a quina.
+// A saída é usar a própria AABB como medida: a casa é empurrada pra trás pela META DA AABB DELA, não
+// pela metade da profundidade. Assim a largura livre da rua é garantida por construção, para
+// QUALQUER ângulo — e o giro deixa de ter limite. O mesmo vale pro espaçamento entre vizinhas, que é
+// a soma das meias-larguras de AABB. Nada é selado, e a física continua sendo três comparações.
+const RUA_LARGURA=5.0,BECO_LARGURA=3.4;
+const CASA_PROF=4.8,LARG_MIN=4.6,LARG_MAX=7.0;
+const FOLGA_ENTRE_CASAS=.22;
+// AABB de um retângulo w x d girado de `a` em torno de Y.
+const aabbGirada=(w,d,a)=>{const c=Math.abs(Math.cos(a)),s=Math.abs(Math.sin(a));
+  return{W:w*c+d*s,D:w*s+d*c}};
 function hashInt(a,b){let h=(Math.imul(a,73856093)^Math.imul(b,19349663))>>>0;h^=h>>>13;return h>>>0}
+const sorteio=(a,b)=>(hashInt(a,b)%10000)/10000;// determinístico: o jogador decora o caminho
 let casaIndex=0;
+
 // ===== PRAÇA DO MERCADO =====
-// O Mercado é uma casa de 9x7 fincada em (0,-18), que é DENTRO da grade de casas — ele invadia quatro
-// lotes, com até 5,1 x 3,5 m de parede dentro de parede. Era o "casa em cima de casa".
-// Não dá pra mudá-lo de lugar: (0,-18) é a coordenada do polo de sementes (Poles.js), e o Mercado no
-// centro é o que obriga a atravessar o bairro patrulhado. Então os lotes que ele ocupa deixam de
-// existir e viram o largo à frente dele.
+// (0,-18) é a coordenada do polo de sementes (Poles.js) e não pode mudar: o Mercado no alto do morro
+// é o que obriga a atravessar o bairro patrulhado. Nenhuma casa pode nascer em cima dele.
 const MERCADO={x:0,z:-18,w:9,d:7};
-const naPraca=(x,z,w)=>Math.abs(x-MERCADO.x)<(w+MERCADO.w)/2-.1&&Math.abs(z-MERCADO.z)<(CELL_D+MERCADO.d)/2-.1;
-// Tintas de telhado CLARAS de propósito: a ferrugem agora está no albedo da textura, e tinta escura
-// por cima mataria o laranja. Cada tom dá um nível diferente de oxidação sem custar textura nova.
+const naPraca=(x,z,raio)=>Math.hypot(x-MERCADO.x,z-MERCADO.z)<raio+6.2;
 const telhados=[0xb8b2a8,0xa8a49c,0xc0b09c,0x9e9a92,0xb0a08c,0xaaa5a0];
 
-// --- 1. o traçado, calculado antes de construir qualquer coisa ---
-// Separar o CÁLCULO da CONSTRUÇÃO é o que deixa perguntar "esta casa tem beco à esquerda?" sem
-// depender de aritmética de coluna espalhada pelo laço — que era de onde vinham as regras frágeis do
-// tipo `col%4===0&&col>0`.
 // ===== ONDE PASSA GENTE =====
-// Morador (NPCs.js) e polícia de rua (Police.js) rondavam QUATRO CORREDORES COM COORDENADA FIXA no
-// código, tiradas da grade regular antiga. Quando o traçado virou fileira empacotada com becos
-// sorteados, esses corredores deixaram de ser becos — e os dois passaram a rondar linhas que só
-// existiam no arquivo. Agora o beco se registra no momento em que é aberto, e quem ronda lê daqui.
-//   · `eixo:'z'` — beco entre colunas, corre no sentido Z (sobe o morro).
-//   · `eixo:'x'` — a rua entre blocos de fileiras, corre no sentido X (atravessa o morro).
+// Morador (NPCs.js) e polícia de rua (Police.js) leem daqui pra rondar. São pontos amostrados nas
+// PRÓPRIAS curvas — antes eram quatro corredores com coordenada fixa no código, que deixaram de ser
+// becos assim que o traçado mudou, e os dois passaram meses rondando linhas que só existiam no arquivo.
 export const BECOS=[];
-const FILEIRAS=[];
+
+// ===== A VIA PRINCIPAL =====
+// Sobe o morro em S. Os pontos de controle passam de raspão pela praça do Mercado (o cume) e voltam,
+// que é o que obriga o jogador a subir pra comprar semente. `catmullrom` com tensão .5 dá curva
+// suave sem os laços que a tensão alta produz em ponto de controle muito junto.
+const via=new THREE.CatmullRomCurve3([
+  new THREE.Vector3(-46,0,  8),
+  new THREE.Vector3(-30,0, -4),
+  new THREE.Vector3(-33,0,-21),
+  new THREE.Vector3(-16,0,-33),
+  new THREE.Vector3(  2,0,-30),
+  new THREE.Vector3( 11,0,-15),
+  new THREE.Vector3( 27,0,-11),
+  new THREE.Vector3( 39,0,-27),
+  new THREE.Vector3( 44,0,-45),
+],false,'catmullrom',.5);
+
+// ===== OS BECOS =====
+// Ramificam da via em pontos sorteados ao longo dela, entram no morro e torcem. Cada um tem três
+// pontos de controle: o pé (na via), um meio deslocado pro lado, e a ponta — é o mínimo pra a curva
+// não sair reta, e o deslocamento lateral do meio é o que faz o beco "cair" pro lado do barranco.
+function criarBeco(mae,uNaVia,lado,comprimento,semente){
+  const p0=mae.getPointAt(uNaVia),t=mae.getTangentAt(uNaVia);
+  const n=new THREE.Vector3(-t.z*lado,0,t.x*lado).normalize();// normal da via, pro lado escolhido
+  // O pé do beco começa DEPOIS da fileira de casas da via mãe, não colado nela: a fileira ocupa
+  // RUA_LARGURA/2 + meia-AABB (~3 m), e um beco nascendo antes disso entra por dentro das casas.
+  const pe=p0.clone().addScaledVector(n,RUA_LARGURA/2+CASA_PROF+1.6);
+  const desvio=(sorteio(semente,7)-.5)*.9;// o meio sai do eixo: é isso que torce o beco
+  const meio=pe.clone().addScaledVector(n,comprimento*.55)
+    .addScaledVector(t,comprimento*desvio);
+  const ponta=pe.clone().addScaledVector(n,comprimento)
+    .addScaledVector(t,comprimento*desvio*1.7);
+  return new THREE.CatmullRomCurve3([pe,meio,ponta],false,'catmullrom',.5);
+}
+// ===== A SEGUNDA VIA =====
+// Uma espinha só não é rede. Com uma única rua, todo beco tinha que sair dela, e os becos dos dois
+// lados de um mesmo trecho nasciam quase em cima das casas da própria via — o descarte de
+// sobreposição comia metade do bairro (medi 60 casas de ~180 candidatas). Uma via de baixo, mais
+// larga e mais longa, dá um segundo eixo de onde ramificar e é o que faz o morro ter "parte de cima"
+// e "parte de baixo" — que é como favela se organiza de verdade.
+const viaBaixa=new THREE.CatmullRomCurve3([
+  new THREE.Vector3(-52,0,-30),
+  new THREE.Vector3(-34,0,-46),
+  new THREE.Vector3(-10,0,-50),
+  new THREE.Vector3( 12,0,-44),
+  new THREE.Vector3( 26,0,-33),
+  new THREE.Vector3( 34,0,-16),
+  new THREE.Vector3( 30,0,  2),
+],false,'catmullrom',.5);
+
+const becos=[];
 {
-  let z=-42;
-  for(let row=0;row<BLOCK_ROWS;row++){
-    // Dois becos por fileira, em colunas sorteadas. Ficam separados de propósito (um na metade
-    // esquerda, outro na direita): sorteados livres, os dois caíam juntos e metade da fileira ficava
-    // sem passagem nenhuma.
-    const hf=hashInt(row,7);
-    const becoA=1+hf%4,becoB=6+((hf>>>5)%4);
-    const casas=[];let x=-38;
-    for(let col=0;col<BLOCK_COLS;col++){
-      const larg=LARG_MIN+(hashInt(row,col)%1000)/1000*(LARG_MAX-LARG_MIN);
-      const becoDepois=(col===becoA||col===becoB);
-      casas.push({col,larg,x:x+larg/2,z,becoDepois,becoAntes:col>0&&casas[col-1].becoDepois});
-      // Centro do beco, guardado na hora em que ele é aberto. É a única fonte confiável de "onde
-      // passa gente": derivar isso depois, por aritmética de coluna, é exatamente o erro que deixou
-      // morador e polícia rondando corredor que não existe mais (ver BECOS abaixo).
-      if(becoDepois)BECOS.push({x:x+larg+BECO/2,z,eixo:'z'});
-      x+=larg+(becoDepois?BECO:0);
+  // Distribuídos ao longo das DUAS vias, alternando de lado. Os extremos ficam de fora: beco na
+  // ponta da via nasceria fora do bairro.
+  for(const[curva,quantos,marca] of [[via,12,0],[viaBaixa,10,500]]){
+    for(let i=0;i<quantos;i++){
+      const u=.10+(i/(quantos-1))*.80+(sorteio(i+marca,31)-.5)*.05;
+      const lado=(i%2)?1:-1;
+      const comp=11+sorteio(i+marca,53)*14;
+      becos.push({curva:criarBeco(curva,u,lado,comp,i+marca)});
     }
-    FILEIRAS.push({row,z,casas});
-    // A rua entre blocos de fileiras: amostrada ao longo do X pra ronda ter destino em toda a
-    // extensão dela, e não só no meio.
-    if(row%3===2)for(let bx=-34;bx<=34;bx+=7)BECOS.push({x:bx,z:z+CELL_D/2+BECO/2,eixo:'x'});
-    z+=CELL_D+((row%3===2)?BECO:0);
   }
 }
 
-// Dois lotes viram VAGA: o bar e a biqueira ocupam o buraco de uma casa que não é construída, em
-// vez de nascerem numa coordenada escolhida a olho que atropelaria uma parede. As fileiras 1 e 4 não
-// têm frente livre, então nenhum refúgio se perde nisso.
-const LOTE_BAR={row:4,col:3},LOTE_BIQUEIRA={row:1,col:8};
-const ehLote=(l,fila,casa)=>fila.row===l.row&&casa.col===l.col;
+// ===== PENDURAR AS CASAS NUMA CURVA =====
+// Caminha a curva por comprimento de arco. Em cada passo, a casa é deslocada perpendicularmente pela
+// meia-AABB dela (ver a restrição lá em cima) e girada pela tangente. O passo seguinte soma as
+// meias-larguras de AABB das duas vizinhas, então casa torta ocupa mais espaço ao longo da rua — que
+// é exatamente o que acontece de verdade.
+const casasDoTracado=[];
+function pendurarCasas(curva,larguraDaVia,semente,lados=[-1,1]){
+  const total=curva.getLength();
+  for(const lado of lados){
+    let s=2.5+sorteio(semente,lado+11)*3;// onde a fileira começa, pra os dois lados não se alinharem
+    let larguraAnterior=0;
+    let k=0;
+    while(s<total-3){
+      const u=s/total;
+      const p=curva.getPointAt(u),t=curva.getTangentAt(u);
+      const ang=Math.atan2(t.x,t.z);// giro que alinha o fundo da casa com a curva
+      const sem=hashInt(semente*1000+k,lado);
+      const larg=LARG_MIN+((sem%1000)/1000)*(LARG_MAX-LARG_MIN);
+      const{W,D}=aabbGirada(larg,CASA_PROF,ang);
+      if(larguraAnterior){s+=(larguraAnterior+W)/2+FOLGA_ENTRE_CASAS;if(s>=total-3)break}
+      const uu=s/total;
+      const pp=curva.getPointAt(uu),tt=curva.getTangentAt(uu);
+      const angulo=Math.atan2(tt.x,tt.z);
+      const{W:WW,D:DD}=aabbGirada(larg,CASA_PROF,angulo);
+      // Normal da curva, pro lado da fileira. O deslocamento usa a meia-AABB: é o que mantém a rua
+      // livre com a casa em qualquer ângulo.
+      const nx=-tt.z*lado,nz=tt.x*lado;
+      const off=larguraDaVia/2+DD/2;
+      const x=pp.x+nx*off,z=pp.z+nz*off;
+      // A porta olha PRA RUA: o fundo da casa é -z local, a frente é +z, então o giro tem que apontar
+      // a frente pra curva — ou seja, a normal invertida.
+      const giro=Math.atan2(-nx,-nz);
+      if(!naPraca(x,z,Math.max(WW,DD)/2)&&Math.hypot(x,z)<86)
+        casasDoTracado.push({x,z,giro,larg,W:WW,D:DD,curva,u:uu,lado,sem});
+      larguraAnterior=WW;k++;
+      if(!larguraAnterior)break;
+      if(k>60)break;// trava de segurança contra curva degenerada
+    }
+  }
+}
+pendurarCasas(via,RUA_LARGURA,1);
+pendurarCasas(viaBaixa,RUA_LARGURA,2);
+becos.forEach((b,i)=>pendurarCasas(b.curva,BECO_LARGURA,100+i));
 
-// --- 2. construção ---
-for(const fila of FILEIRAS){
-  // Refúgio só onde a PORTA dá pra ser alcançada: as fileiras são coladas fundo-com-frente, e só há
-  // vão livre à frente no fim de cada bloco de 3 (row%3===2) ou na última fileira. Marcar uma casa
-  // do meio faria um esconderijo com a entrada emparedada pela casa de trás.
-  const frenteLivre=(fila.row%3===2||fila.row===BLOCK_ROWS-1);
-  let ultimoRefugio=-99;
-  for(const casa of fila.casas){
+// ===== REJEIÇÃO DE SOBREPOSIÇÃO =====
+// Deslocar pela meia-AABB garante a largura da RUA, mas não impede duas casas de se encontrarem: na
+// parte de dentro de uma curva fechada as fileiras convergem, e um beco que ramifica passa por cima
+// de quem já estava na via. O resultado medido foi 5 dos 9 esconderijos com a porta emparedada — o
+// jogador nem conseguia chegar na soleira.
+// A varredura aceita as casas em ordem e descarta quem invade quem já entrou, com uma folga extra na
+// FRENTE (onde fica a porta e por onde se anda). É a mesma ideia de um gerador de cidade: gera
+// demais, depois poda.
+const FOLGA_FRENTE=2.2;
+// ===== SOBREPOSIÇÃO MEDIDA NO RETÂNGULO DE VERDADE, NÃO NA AABB =====
+// Testar AABB contra AABB descartava demais: a AABB de uma casa girada 40° é quase o dobro da casa,
+// então duas vizinhas lado a lado numa curva "colidiam" sem se tocarem — sobraram 52 casas de 115.
+// Aqui é o teorema do eixo separador entre dois retângulos: se existe um dos quatro eixos (as duas
+// direções de cada retângulo) em que as projeções não se encostam, eles não se tocam. São 4 eixos e
+// 8 produtos escalares por par, uma vez na geração, e devolve a densidade de favela.
+// A AABB continua existindo, mas só onde ela é a ferramenta certa: no COLISOR.
+const eixosDe=r=>{const c=Math.cos(r.giro),s2=Math.sin(r.giro);return[[c,-s2],[s2,c]]};
+const projeta=(r,ex,ez)=>{
+  const c=Math.cos(r.giro),s2=Math.sin(r.giro);
+  return Math.abs(c*ex-s2*ez)*r.lw/2+Math.abs(s2*ex+c*ez)*r.ld/2;
+};
+const invade=(a,b,folga=.18)=>{
+  const dx=b.x-a.x,dz=b.z-a.z;
+  for(const r of[a,b])for(const[ex,ez]of eixosDe(r)){
+    if(Math.abs(dx*ex+dz*ez)>projeta(a,ex,ez)+projeta(b,ex,ez)+folga)return false;
+  }
+  return true;
+};
+// Corpo, folga da porta e PEGADA DA ESCADARIA — os três como retângulos girados junto com a casa.
+const corpoDe=c=>({x:c.x,z:c.z,giro:c.giro,lw:c.larg,ld:CASA_PROF});
+// A folga da frente cobre o VÃO DA PORTA (1,2 m) com margem, não a fachada inteira: com a fachada,
+// a vizinha da MESMA rua caía dentro dela e era descartada.
+const frenteDe=c=>({x:c.x+Math.sin(c.giro)*(CASA_PROF/2+FOLGA_FRENTE/2),
+                    z:c.z+Math.cos(c.giro)*(CASA_PROF/2+FOLGA_FRENTE/2),
+                    giro:c.giro,lw:1.8,ld:FOLGA_FRENTE});
+// Reserva a pegada da escadaria com o comprimento MÁXIMO que ela pode ter (9 m — ver
+// CORRIDA_MAX_ABS em criarEscadariaViela): reservar só a profundidade da casa deixava a escada
+// crescer pra dentro da vizinha.
+const ESCADA_RESERVA=9.4;
+const escadaDe=(c,lado)=>{
+  const off=c.larg/2+ESCADA_LARGURA/2+ESCADA_MARGEM,cg=Math.cos(c.giro),sg=Math.sin(c.giro);
+  return{x:c.x+lado*off*cg,z:c.z-lado*off*sg,giro:c.giro,lw:ESCADA_LARGURA+.5,ld:ESCADA_RESERVA};
+};
+{
+  const aceitas=[];
+  for(const c of casasDoTracado){
+    const corpo=corpoDe(c),frente=frenteDe(c);
+    if(aceitas.some(a=>invade(corpo,a.corpo)||invade(frente,a.corpo,0)))continue;
+    c.corpo=corpo;aceitas.push(c);
+  }
+  casasDoTracado.length=0;casasDoTracado.push(...aceitas);
+}
+
+// Pontos de ronda: amostrados nas curvas de verdade, a cada ~6 m.
+function amostrarParaRonda(curva){
+  const total=curva.getLength(),passos=Math.max(2,Math.round(total/6));
+  for(let i=0;i<=passos;i++){const p=curva.getPointAt(i/passos);BECOS.push({x:p.x,z:p.z})}
+}
+amostrarParaRonda(via);amostrarParaRonda(viaBaixa);becos.forEach(b=>amostrarParaRonda(b.curva));
+
+// ===== CONSTRUÇÃO =====
+// A ESCADARIA agora nasce de uma MEDIÇÃO, não de aritmética de coluna: onde o terreno sobe mais de
+// ESCADA_DESNIVEL ao longo da lateral da casa, o barranco ali é intransponível a pé e entra uma
+// escadaria. É a regra que o morro pedia — degrau onde o morro é degrau.
+// ESCADARIA SÓ ONDE O BARRANCO É BARRANCO, E NO MÁXIMO OITO.
+// A primeira versão media o desnível lateral de cada casa e punha escada acima de 1,5 m. Num morro
+// com 19° de inclinação MÉDIA isso é quase toda casa: saíram ~60 escadarias, 1.256 colisores de
+// degrau, e de cima o bairro virou um campo de rampas cinzas. A escadaria é um MARCO — o caminho pra
+// laje — e marco que se repete sessenta vezes deixa de ser marco.
+// Agora todas são medidas, ordenadas pelo desnível, e só as oito maiores viram escada; e nenhuma
+// nasce a menos de 14 m de outra, pra elas se espalharem pelo morro em vez de brotarem juntas na
+// encosta mais íngreme.
+const ESCADA_MAXIMO=8,ESCADA_DISTANCIA_MIN=14;
+const desnivelLateral=c=>{
+  const cg=Math.cos(c.giro),sg=Math.sin(c.giro);
+  const hEsq=obterElevacao(c.x-(c.larg/2+1)*cg,c.z+(c.larg/2+1)*sg);
+  const hDir=obterElevacao(c.x+(c.larg/2+1)*cg,c.z-(c.larg/2+1)*sg);
+  return{dif:Math.abs(hEsq-hDir),lado:hEsq<hDir?-1:1};
+};
+// ===== BAR E BIQUEIRA OCUPAM DOIS LOTES DO TRAÇADO =====
+// Eles moravam em `{row:4,col:3}` e `{row:1,col:8}` — coordenadas de um tabuleiro que não existe
+// mais. Com o traçado em curvas os dois ficaram órfãos em (0,0), um em cima do outro: o teste da
+// biqueira acusou "contexto bar" parado na boca. Agora eles TOMAM O LUGAR de duas casas aceitas, o
+// que garante que estão numa rua de verdade, com frente livre e sem atropelar parede.
+// Escolhidos pelo extremo de uma ordenação estável: o bar na parte alta (o ponto de encontro fica
+// onde passa gente), a boca na parte baixa e longe dele — os dois pontos do morro não podem disputar
+// o mesmo contexto de painel.
+{
+  const ordenadas=[...casasDoTracado].sort((a,b)=>b.z-a.z||a.x-b.x);
+  const doBar=ordenadas[Math.floor(ordenadas.length*.25)];
+  const daBoca=[...casasDoTracado].sort((a,b)=>a.z-b.z||b.x-a.x)
+    .find(c=>Math.hypot(c.x-doBar.x,c.z-doBar.z)>34)||ordenadas[ordenadas.length-1];
+  construirBar(doBar.x,doBar.z);
+  construirBiqueira(daBoca.x,daBoca.z);
+  const fora=new Set([doBar,daBoca]);
+  const resto=casasDoTracado.filter(c=>!fora.has(c));
+  casasDoTracado.length=0;casasDoTracado.push(...resto);
+}
+
+const comEscada=new Set();
+{
+  const ranking=casasDoTracado.map(c=>({c,...desnivelLateral(c)}))
+    .sort((a,b)=>b.dif-a.dif);
+  const postas=[];
+  for(const r of ranking){
+    if(postas.length>=ESCADA_MAXIMO)break;
+    if(r.dif<1.2)break;
+    if(postas.some(p=>Math.hypot(p.x-r.c.x,p.z-r.c.z)<ESCADA_DISTANCIA_MIN))continue;
+    // A ESCADARIA PRECISA DE ESPAÇO PRÓPRIO. O corte de sobreposição olhava o corpo da casa e a
+    // frente da porta; a escadaria encosta na LATERAL, e num traçado em curva essa lateral costuma
+    // estar colada na vizinha. O resultado era escada nascendo dentro de parede: o jogador subia 3 m,
+    // batia e escorregava (medido: 6,17 m de desvio lateral). Se nenhum dos dois lados tem espaço, a
+    // casa não ganha escada — é melhor uma escadaria a menos do que uma que não sobe.
+    let lado=r.lado;
+    const livre=l=>{const e=escadaDe(r.c,l);
+      return !casasDoTracado.some(o=>o!==r.c&&invade(e,o.corpo,0))};
+    if(!livre(lado))lado=-lado;
+    if(!livre(lado))continue;
+    comEscada.add(r.c);r.c.ladoEscada=lado;postas.push(r.c);
+  }
+}
+{
+  let ultimoRefugioEm=-99;
+  for(const c of casasDoTracado){
     const i=casaIndex++;
-    const{x,z,larg:w}=casa;
     const h=i%7===0?3.6:i%3===0?3.2:2.8;
     const tipo=i%5===0?1:i%4===0?2:i%3;
     const cor=coresBairro[i%coresBairro.length];
     const corTelhado=telhados[i%telhados.length];
-    // Lote engolido pela praça do Mercado: não constrói nada aqui.
-    if(naPraca(x,z,w))continue;
-    if(ehLote(LOTE_BAR,fila,casa)){construirBar(x,z);continue}
-    if(ehLote(LOTE_BIQUEIRA,fila,casa)){construirBiqueira(x,z);continue}
-    // Escada precisa de beco nos DOIS lados que importam, e antes só o primeiro era checado:
-    //  · AO LADO — é onde a escadaria encosta (agora vem do traçado: `becoAntes`);
-    //  · À FRENTE DO 1º DEGRAU — é por onde se chega nela.
-    // Sem o segundo, as fileiras ficam coladas fundo-com-frente e a escadaria da casa de trás nasce a
-    // ~60 cm do pé desta: a laje enterrada dela fechava o acesso, o jogador andava contra ela sem
-    // subir, e a rede anti-travamento entendia "encurralado" e teleportava ele pra fora.
-    // UMA escadaria por beco: com uma de cada lado saíam dois lances paralelos a 1,34 m um do outro,
-    // com 1 m de largura cada, e o beco lia como escada duplicada na tela.
-    const peDesobstruido=fila.row%3===0;
-    const ladoEscada=(casa.becoAntes&&peDesobstruido)?-1:0;
-    // Qual borda do telhado dá pra um vão de verdade. `vizinha` cobre o caso do lote engolido pela
-    // praça do Mercado: a casa ao lado do buraco precisa de mureta mesmo sem beco ali.
-    const vizinha=k=>{const c=fila.casas[k];
-      return !!c&&!naPraca(c.x,c.z,c.larg)&&!ehLote(LOTE_BAR,fila,c)&&!ehLote(LOTE_BIQUEIRA,fila,c)};
-    const bordas={
-      frente:fila.row===BLOCK_ROWS-1||fila.row%3===2,
-      tras:fila.row===0||fila.row%3===0,
-      esq:casa.becoAntes||!vizinha(casa.col-1),
-      dir:casa.becoDepois||!vizinha(casa.col+1),
-    };
-    // Um refúgio a cada 4 casas da fileira, no máximo. Sobrado fica de fora (são duas casas
-    // empilhadas, a de cima não tem como ser oca sem retrabalho) e casa com escadaria também — a
-    // escadaria encosta na parede lateral e atrapalha o acesso à porta.
-    const ehRefugio=frenteLivre&&i%7!==0&&!ladoEscada&&casa.col-ultimoRefugio>=4;
-    if(ehRefugio)ultimoRefugio=casa.col;
-    const grupoCasa=i%7===0
-      ?sobrado(x,z,w,CELL_D,h,cor,ladoEscada,corTelhado,bordas)
-      :casaBairro(x,z,w,CELL_D,h,cor,tipo,true,ladoEscada,corTelhado,ehRefugio,true,bordas);
-    if(ladoEscada)criarEscadariaViela(grupoCasa,h+.12,w,CELL_D,ladoEscada);
-    if(ehRefugio){marcarRefugio(grupoCasa,CELL_D);const r=registrarRefugio(grupoCasa,x,z,w,CELL_D,grupoCasa.userData.pecaPorta);r.col=casa.col;r.row=fila.row}
+    const ladoEscada=comEscada.has(c)?c.ladoEscada:0;
+    // Refúgio: precisa de frente livre (está numa curva, então sempre tem rua na frente) e de
+    // distância do refúgio anterior, pra dois esconderijos não nascerem colados.
+    const longeDoUltimo=casaIndex-ultimoRefugioEm>=9;
+    const ehRefugio=longeDoUltimo&&i%7!==0&&!ladoEscada&&c.z<0;
+    if(ehRefugio)ultimoRefugioEm=casaIndex;
+    // Bordas de mureta: numa curva toda casa tem rua na frente, e as laterais só encostam na vizinha
+    // quando a folga é pequena. O fundo dá pro barranco, então sempre leva mureta.
+    // Mureta na frente e no fundo, e nas laterais só quando há escadaria (é ali que fica o vão do
+    // beco). A casa COM escadaria perde a mureta da frente: é por lá que a escada chega no telhado, e
+    // a mureta estendida por cima dela é uma parede na saída da escada.
+    const bordas={frente:!ladoEscada,tras:true,esq:!!ladoEscada,dir:!!ladoEscada};
+    const g=i%7===0
+      ?sobrado(c.x,c.z,c.larg,CASA_PROF,h,cor,ladoEscada,corTelhado,bordas)
+      :casaBairro(c.x,c.z,c.larg,CASA_PROF,h,cor,tipo,true,ladoEscada,corTelhado,ehRefugio,true,bordas,c.giro);
+    if(ladoEscada)criarEscadariaViela(g,h+.12,c.larg,CASA_PROF,ladoEscada);
+    if(ehRefugio){marcarRefugio(g,CASA_PROF);const r=registrarRefugio(g,c.x,c.z,c.larg,CASA_PROF,g.userData.pecaPorta);r.giro=c.giro}
   }
-}// Comércio de esquina e ponto de encontro visual.
+}
+// Comércio de esquina e ponto de encontro visual.
 const mercado=casaBairro(0,-18,9,7,3.1,0xd98545,0);bloco(new THREE.BoxGeometry(7.2,1.1,.12),bmat(0xe9d16a),-0,2.15,3.56,mercado);bloco(new THREE.BoxGeometry(5.9,.5,.08),bmat(0x7b3f2b),0,2.15,3.65,mercado);
 [-35,35].forEach(x=>[-55,-28,14,56].forEach(z=>poste(x,z)));for(const a of [[-35,-55],[-35,-28],[-35,14],[-35,56],[35,-55],[35,-28],[35,14]])fio(a,[a[0],a[1]+12]);
 [[-62,-62],[-62,36],[62,-34],[62,64],[-18,72],[18,-70]].forEach((p,i)=>arvore(p[0],p[1],.9+(i%2)*.18));
@@ -549,11 +783,34 @@ function corpoDoCliente(){
   bloco(new THREE.BoxGeometry(.14,.5,.14),bmat(0x63d16a),0,2.3,0,g);
   return g;
 }
+// ===== O CLIENTE SÓ NASCE EM LAJE QUE DÁ PRA ALCANÇAR =====
+// A entrega depende de o jogador CHEGAR no telhado. No mapa plano isso era a escadaria; no morro,
+// medido, só 23% das lajes ficam ao alcance de um passo (0,22 m) ou de um pulo (1,40 m) a partir do
+// terreno em volta. Mandar o cliente pra uma laje inalcançável é dar ao jogador uma missão impossível
+// sem nenhum aviso — pior que não ter a missão.
+// A lista é montada UMA vez, no carregamento: são ~100 casas x 48 amostras de terreno, caro demais
+// pra refazer a cada cliente e barato de sobra pra fazer no boot.
+const PULO_ALCANCE=1.40;// v²/2g com VELOCIDADE_PULO=8,2 e GRAVIDADE=-24 (Player.js)
+let lajesAlcancaveis=null;
+function montarLajesAlcancaveis(){
+  lajesAlcancaveis=casasPos.filter(c=>{
+    let maisAlto=-99;
+    for(let a=0;a<16;a++)for(const raio of[1.6,2.6,4]){
+      const ang=a/16*Math.PI*2;
+      maisAlto=Math.max(maisAlto,obterElevacao(c.x+Math.cos(ang)*raio,c.z+Math.sin(ang)*raio));
+    }
+    return c.laje-maisAlto<=PULO_ALCANCE;
+  });
+  // Se o relevo mudar e nenhuma laje passar no teste, é melhor o cliente aparecer em qualquer uma do
+  // que a entrega sumir do jogo sem ninguém notar.
+  if(!lajesAlcancaveis.length)lajesAlcancaveis=casasPos;
+}
 function sortearLaje(jogador){
+  if(!lajesAlcancaveis)montarLajesAlcancaveis();
   // Longe do jogador na hora de nascer, pelo mesmo motivo do spawn da polícia: cliente que aparece
   // do lado não lê como cliente, lê como bug.
   for(let t=0;t<24;t++){
-    const c=casasPos[Math.floor(Math.random()*casasPos.length)];
+    const c=lajesAlcancaveis[Math.floor(Math.random()*lajesAlcancaveis.length)];
     if(Math.hypot(c.x-jogador.x,c.z-jogador.z)<CLIENTE_DIST_MIN)continue;
     return c;
   }
