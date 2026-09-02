@@ -90,9 +90,10 @@ export const lotes=[];
 // Casa de morro é ESTREITA. Com 4,4-7,2 m de frente e 5 m de fundo saíam 84 sobrados espaçados num
 // terreno de 100 x 60 m, e de cima lia como condomínio, não como favela. A frente encolheu pra
 // 3,6-5,8 e o fundo pra 4,4: mais casas no mesmo morro, cada uma menor, encostada na vizinha.
-const PROF=4.4;                       // profundidade da casa, da rua pro fundo
-const LARG_MIN=3.6,LARG_MAX=5.8;
-const FOLGA=.12;                      // respiro entre vizinhas na mesma fileira
+const PROF=3.9;                       // profundidade da casa, da rua pro fundo
+const LARG_MIN=3.3,LARG_MAX=5.2;
+const FOLGA=.05;                      // respiro entre vizinhas na mesma fileira
+const ENCOSTO=.78;                    // quanto da AABB a vizinha pode invadir (parede dividida)
 // AABB de um retângulo w x d girado de `a`: é ela que decide o espaçamento e o recuo da rua.
 export const aabbGirada=(w,d,a)=>{const c=Math.abs(Math.cos(a)),s=Math.abs(Math.sin(a));
   return{W:w*c+d*s,D:w*s+d*c}};
@@ -111,12 +112,23 @@ export function retangulosSeTocam(a,b,folga=.15){
   return true;
 }
 
+// Distância do centro de uma AABB W x D até a borda dela NA DIREÇÃO (dx,dz). É a função suporte da
+// caixa, e é ela — não a meia-profundidade — que diz quanto a casa avança pra um lado qualquer.
+const suporteAABB=(W,D,dx,dz)=>(W/2)*Math.abs(dx)+(D/2)*Math.abs(dz);
+
 // Pendura lotes nos dois lados de uma curva.
 //
-// O RECUO USA A META-AABB, NÃO A META-PROFUNDIDADE. Com casa girada, deslocar pela profundidade
-// geométrica deixaria a AABB invadindo a rua e fechando a passagem; usar a caixa inscrita deixaria o
-// jogador atravessar a quina. Deslocando pela AABB, a largura livre da rua fica garantida por
-// construção em QUALQUER ângulo — e o giro deixa de ter limite.
+// O RECUO USA A FUNÇÃO SUPORTE DA AABB, e a diferença entre isso e "meia-AABB" custou 15 escadões.
+//
+// A versão anterior deslocava o lote por `D/2` ao longo da normal da rua, com o argumento de que
+// assim a AABB pararia na borda do corredor. Isso vale numa rua que corre em X ou em Z, e SÓ nelas:
+// a AABB é alinhada aos eixos do MUNDO, a normal aponta pra qualquer lado, e numa rua a 45° a caixa
+// avança (W+D)/(2·√2) na direção da normal — bem mais que D/2. O resultado é a quina da AABB
+// entrando na rua, e como a AABB é o colisor, a rua fecha.
+//
+// Não era teoria: 15 dos 40 escadões do morro terminavam sem chão livre numa das pontas — escada de
+// beco dando em parede. Com a função suporte, a largura livre passa a ser garantida por construção
+// em QUALQUER ângulo, que é o que a versão anterior afirmava fazer e não fazia.
 function pendurarLotes(curva,larguraDaVia,semente){
   const total=curva.getLength();
   for(const lado of[-1,1]){
@@ -130,33 +142,143 @@ function pendurarLotes(curva,larguraDaVia,semente){
       const p=curva.getPointAt(u),t=curva.getTangentAt(u);
       const nx=-t.z*lado,nz=t.x*lado;
       // A FRENTE olha pra rua: o +z local da casa aponta pra curva, ou seja, a normal invertida.
-      const giro=Math.atan2(-nx,-nz);
+      //
+      // ...MAS SÓ ATÉ A METADE DO CAMINHO. O colisor é a AABB da casa girada, e AABB de retângulo a
+      // 45° é 1,45x o retângulo — numa rua diagonal isso vira recuo enorme, espaçamento enorme, e o
+      // morro esvazia (medido: 109 casas caíram pra 50 quando o corredor passou a ser respeitado de
+      // verdade). Torcer a casa METADE do ângulo da rua corta esse inchaço pela metade.
+      //
+      // E o resultado LÊ MELHOR, não pior: casa de morro não é paralela ao beco: cada uma está um
+      // pouco atravessada, porque foi levantada no terreno que sobrou. A casa continua de frente pra
+      // rua (no máximo 22,5° fora dela) e o quarteirão ganha o desalinho que o alinhamento perfeito
+      // não tinha.
+      const giroRua=Math.atan2(-nx,-nz);
+      const cardeal=Math.round(giroRua/(Math.PI/2))*(Math.PI/2);
+      const giro=(giroRua+cardeal)/2;
       const{W,D}=aabbGirada(larg,PROF,giro);
-      const off=larguraDaVia/2+D/2;
+      const off=larguraDaVia/2+suporteAABB(W,D,nx,nz);
       lotes.push({x:p.x+nx*off,z:p.z+nz*off,giro,larg,prof:PROF,W,D,curva,u,lado,sem});
-      // Avança pela largura de AABB da casa que acabou de entrar: casa torta ocupa mais rua, que é
-      // exatamente o que acontece de verdade.
-      s+=W+FOLGA;
+      // Avança pelo quanto a AABB ocupa NA DIREÇÃO DA RUA — mesma conta, outro eixo — vezes ENCOSTO.
+      //
+      // O fator existe porque casa de favela DIVIDE PAREDE com a vizinha, e avançar pela AABB inteira
+      // deixava um vão de terra batida entre cada duas casas: de cima o morro lia como um loteamento
+      // de casas soltas, não como um morro. Encostando a 78% da AABB, as casas se tocam na tela.
+      //
+      // As AABBs passam a se sobrepor um pouco, e isso é INOFENSIVO aqui: elas são colisores, a união
+      // de dois blocos sólidos é um bloco sólido, e o corredor da rua continua garantido porque quem
+      // o garante é o RECUO (a outra direção), que não mudou. O que precisa ser vigiado é a porta, e
+      // ela tem regra própria na poda.
+      s+=2*suporteAABB(W,D,t.x,t.z)*ENCOSTO+FOLGA;
     }
   }
 }
 
 // ===== MONTA A REDE E OS LOTES =====
 export const becos=[];
+// Cada via e cada beco com a LARGURA que foi usada pra pendurar lote nele. É essa lista que a poda
+// consulta pra manter o corredor aberto — ver `corredorInvadido`.
+export const corredores=[];
+
+// ===== BECO PRECISA DE TERRA PRA CHAMAR DE SUA =====
+// Uma medição, e ela decidiu o desenho do morro: com 59 corredores e 1.233 m de rua numa área de
+// 100 x 70 m, 246 dos 318 lotes gerados morriam por invadir corredor. Sobravam 62 casas espalhadas —
+// tudo rua, nenhum quarteirão. Não era a poda que estava errada: era a REDE.
+//
+// Uma faixa de beco ocupa ~13 m: 2,4 m de passagem mais uma casa de cada lado. Dois becos a menos que
+// isso um do outro não formam dois becos com casas, formam um descampado com duas trilhas. Então o
+// beco novo só entra se mantiver distância dos que já existem — e o pé dele não conta, porque o pé
+// nasce colado na via mãe por definição.
+//
+// 8 m é o número medido, não o número da conta. Varrendo de 10,5 a 6,6 m: em 10,5 são 13 becos e 102
+// casas; em 8,0 são 19 becos e 111 casas; abaixo disso a rede para de crescer (o próprio traçado não
+// tem onde pôr mais beco) e só a poda por corredor sobe. 8 m é o ponto em que o morro tem o maior
+// número de becos que ainda cabem COM casa dos dois lados.
+const ESPACO_ENTRE_BECOS=8.0;
+const AMOSTRAS_BECO=9;
+function becoCabe(candidato,jaAceitos){
+  for(let i=Math.ceil(AMOSTRAS_BECO*.35);i<=AMOSTRAS_BECO;i++){
+    const p=candidato.getPointAt(i/AMOSTRAS_BECO);
+    for(const{curva,meia}of jaAceitos){
+      const n=Math.max(2,Math.round(curva.getLength()/2));
+      for(let k=0;k<=n;k++){
+        const q=curva.getPointAt(k/n);
+        // A via é larga, então a distância mínima até ela cresce junto: encostar num beco a 10,5 m é
+        // uma coisa, encostar na via principal a 10,5 m deixa meia casa de fileira.
+        if(Math.hypot(q.x-p.x,q.z-p.z)<ESPACO_ENTRE_BECOS+(meia-BECO_MIN/2))return false;
+      }
+    }
+  }
+  return true;
+}
 {
   // Becos ramificando das duas vias, alternando de lado. O recuo do pé é a largura da via mais a
   // profundidade de uma casa: menos que isso e o beco nasce por dentro da fileira da via mãe.
+  //
+  // Gera MUITO candidato e aceita poucos: sortear posição boa de primeira num traçado em curva é
+  // difícil, e testar é barato. Os aceitos ficam espalhados ao longo da via em vez de amontoados.
   const recuo=VIA_LARGURA/2+PROF+1.4;
-  for(const[mae,quantos,marca]of[[viaPrincipal,17,0],[viaBaixa,14,500]]){
+  const aceitos=[{curva:viaPrincipal,meia:VIA_LARGURA/2},{curva:viaBaixa,meia:VIA_LARGURA/2}];
+  for(const[mae,quantos,marca]of[[viaPrincipal,26,0],[viaBaixa,22,500]]){
     for(let i=0;i<quantos;i++){
-      const u=.10+(i/(quantos-1))*.80+(sorteio(i+marca,31)-.5)*.05;
-      becos.push(criarBeco(mae,u,(i%2)?1:-1,11+sorteio(i+marca,53)*14,i+marca,recuo));
+      const u=.08+(i/(quantos-1))*.84+(sorteio(i+marca,31)-.5)*.04;
+      const b=criarBeco(mae,u,(i%2)?1:-1,13+sorteio(i+marca,53)*15,i+marca,recuo);
+      if(!becoCabe(b,aceitos))continue;
+      becos.push(b);aceitos.push({curva:b,meia:BECO_MIN/2});
     }
+  }
+}
+const BECO_LARGURA=BECO_MIN+.4;
+// BECO QUE SAI DE BECO. Um morro não tem só ruas e travessas — tem a travessa da travessa, que é
+// como o miolo do quarteirão fica acessível em vez de virar um bloco maciço. Sai do MEIO do beco mãe,
+// curto, e alterna de lado.
+{
+  const aceitos=[{curva:viaPrincipal,meia:VIA_LARGURA/2},{curva:viaBaixa,meia:VIA_LARGURA/2},
+                 ...becos.map(c=>({curva:c,meia:BECO_MIN/2}))];
+  for(let i=0;i<becos.length;i++){
+    const b=becos[i];
+    if(b.getLength()<11)continue;
+    const filho=criarBeco(b,.5,(i%2)?1:-1,7+sorteio(i,71)*7,i+900,BECO_MIN/2+PROF+1.1);
+    if(!becoCabe(filho,aceitos))continue;
+    becos.push(filho);aceitos.push({curva:filho,meia:BECO_MIN/2});
   }
 }
 pendurarLotes(viaPrincipal,VIA_LARGURA,1);
 pendurarLotes(viaBaixa,VIA_LARGURA,2);
-becos.forEach((b,i)=>pendurarLotes(b,BECO_MIN+.4,100+i));
+becos.forEach((b,i)=>pendurarLotes(b,BECO_LARGURA,100+i));
+corredores.push({curva:viaPrincipal,meia:VIA_LARGURA/2},{curva:viaBaixa,meia:VIA_LARGURA/2});
+for(const b of becos)corredores.push({curva:b,meia:BECO_LARGURA/2});
+
+// ===== O CORREDOR NÃO PODE SER TAPADO =====
+// `pendurarLotes` afasta cada lote da SUA curva, então o corredor dela nasce livre. O que ele não
+// sabe é que existem outras 23 curvas: uma casa da via principal não tinha nada que a impedisse de
+// nascer bem em cima de um beco que passa atrás dela.
+//
+// O efeito não era sutil — 15 dos 40 escadões terminavam sem chão livre em uma das pontas, ou seja
+// escada de beco que dá numa parede. É o contrário do "favela totalmente acessível, todos os cantos"
+// que foi pedido, e nenhum teste pegava porque nenhum teste andava por um beco.
+//
+// A conta é a mesma da rua: o corredor tem que sobrar livre CONTRA A AABB do lote, que é o que a
+// física enxerga. A margem de 5 cm é o que impede o lote de rejeitar o próprio corredor por erro de
+// arredondamento — ele nasce encostando exatamente na borda dele.
+const AMOSTRA_CORREDOR=1.0;
+const amostrasCorredor=[];
+for(const{curva,meia}of corredores){
+  const total=curva.getLength(),n=Math.max(2,Math.round(total/AMOSTRA_CORREDOR));
+  for(let i=0;i<=n;i++){const p=curva.getPointAt(i/n);amostrasCorredor.push(p.x,p.z,meia-.05)}
+}
+// A distância é a EUCLIDIANA até a caixa, não "cabe na caixa inflada em cada eixo". Inflar os dois
+// eixos em r faz a quina da caixa alcançar r·√2, e com isso todo lote de rua diagonal rejeitava o
+// próprio corredor — a poda passou de 109 casas pra 8. O corredor é um TUBO de raio r em volta do
+// eixo da rua, e tubo se testa com distância, não com retângulo.
+function corredorInvadido(l){
+  const hw=l.W/2,hd=l.D/2;
+  for(let i=0;i<amostrasCorredor.length;i+=3){
+    const px=amostrasCorredor[i],pz=amostrasCorredor[i+1],r=amostrasCorredor[i+2];
+    const dx=Math.max(0,Math.abs(px-l.x)-hw),dz=Math.max(0,Math.abs(pz-l.z)-hd);
+    if(dx*dx+dz*dz<r*r)return true;
+  }
+  return false;
+}
 
 // ===== PODA =====
 // A rede gera de propósito MAIS lote do que cabe, e aqui o excesso cai. É como um gerador de cidade
@@ -177,16 +299,25 @@ const colisorDe=l=>({x:l.x,z:l.z,giro:0,lw:l.W,ld:l.D});
 const portaDe=l=>({x:l.x+Math.sin(l.giro)*(l.prof/2+FOLGA_PORTA/2),
                    z:l.z+Math.cos(l.giro)*(l.prof/2+FOLGA_PORTA/2),
                    giro:l.giro,lw:1.8,ld:FOLGA_PORTA});
+// Contagem de quem morre em cada regra. "A favela ficou vazia" sem esta conta vira chute sobre qual
+// das três podas apertar — e as três apertam por motivos diferentes.
+export const diagnosticoDaPoda={gerados:0,porCorredor:0,porVizinha:0,porPorta:0,aceitos:0};
 {
   const aceitos=[];
+  diagnosticoDaPoda.gerados=lotes.length;
   for(const l of lotes){
     l.corpo=corpoDe(l);
     const porta=portaDe(l);
-    if(aceitos.some(a=>retangulosSeTocam(l.corpo,a.corpo)
-                     ||retangulosSeTocam(porta,colisorDe(a),0)
-                     ||retangulosSeTocam(portaDe(a),colisorDe(l),0)))continue;
+    if(corredorInvadido(l)){diagnosticoDaPoda.porCorredor++;continue}
+    // FOLGA NEGATIVA: duas casas podem se INTERPENETRAR 12 cm. Não é descuido — é parede dividida, que
+    // é como a casa de morro encosta na vizinha. Com folga positiva sobrava sempre uma fresta de terra
+    // entre cada duas casas, e 40 lotes bons morriam por "encostar" em quem eles deviam encostar.
+    if(aceitos.some(a=>retangulosSeTocam(l.corpo,a.corpo,-.12))){diagnosticoDaPoda.porVizinha++;continue}
+    if(aceitos.some(a=>retangulosSeTocam(porta,colisorDe(a),0)
+                     ||retangulosSeTocam(portaDe(a),colisorDe(l),0))){diagnosticoDaPoda.porPorta++;continue}
     aceitos.push(l);
   }
+  diagnosticoDaPoda.aceitos=aceitos.length;
   lotes.length=0;lotes.push(...aceitos);
 }
 
@@ -465,7 +596,7 @@ for(const l of lotes){
   if(lotesRefugio.length>=REFUGIO_ALVO)break;
   const k=Math.round(l.giro/(Math.PI/2));
   if(Math.abs(l.giro-k*Math.PI/2)>.30)continue;
-  if(l.larg<4.6)continue;// menos que isso e a casa oca não tem interior utilizável
+  if(l.larg<4.3)continue;// menos que isso e a casa oca não tem interior utilizável
   if(lotesRefugio.some(o=>Math.hypot(o.x-l.x,o.z-l.z)<REFUGIO_DIST_MIN))continue;
   l.giro=k*Math.PI/2;
   const ab=aabbGirada(l.larg,l.prof,l.giro);l.W=ab.W;l.D=ab.D;
@@ -475,7 +606,7 @@ for(const l of lotes){
 // mesma esquina apagaria metade do trajeto.
 let loteBar=null,loteBiqueira=null;
 {
-  const naVia=lotes.filter(l=>l.curva===viaPrincipal&&!l.papel&&l.larg>5.0);
+  const naVia=lotes.filter(l=>l.curva===viaPrincipal&&!l.papel&&l.larg>4.6);
   if(naVia.length>4){
     loteBar=naVia[Math.floor(naVia.length*.26)];loteBar.papel='bar';
     loteBiqueira=naVia[Math.floor(naVia.length*.68)];loteBiqueira.papel='biqueira';
