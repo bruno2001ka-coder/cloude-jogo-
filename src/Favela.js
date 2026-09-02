@@ -372,6 +372,17 @@ for(const beco of becos){
 // Sem isso o parkour seria sorte, e sorte que falha em silêncio é o pior tipo de defeito.
 const ANDAR_ALT=2.55,RECUO_ANDAR=1.15;
 export function alturaDaLaje(l){return l.baseY+l.andares*ANDAR_ALT+.12}
+// A soleira precisa ser recalculada sempre que o lote muda de orientação. Os esconderijos são
+// alinhados a um eixo cardeal depois da primeira seleção; usar a cota calculada antes dessa rotação
+// deixa a porta numa cota antiga e faz a casa parecer flutuar ou afundar no barranco.
+function baseYDaSoleira(l){
+  let soleira=-Infinity;
+  for(const u of[-.5,-.25,0,.25,.5])for(const fora of[0,1.0]){
+    const p=noLote(l,u*l.larg,l.prof/2+fora);
+    soleira=Math.max(soleira,obterElevacao(p.x,p.z));
+  }
+  return soleira;
+}
 {
   for(const l of lotes){
     // A casa se assenta pela SOLEIRA, não pelo centro: numa encosta de 19° o centro pode estar mais
@@ -383,12 +394,7 @@ export function alturaDaLaje(l){return l.baseY+l.andares*ANDAR_ALT+.12}
     // terra e sobrava o telheiro saindo do chão, sem porta nenhuma embaixo. Sete amostras ao longo da
     // fachada, e uma delas 1 m à frente da porta — a soleira fica acima de todas, e o desnível do
     // outro lado quem resolve é o `afundar` da parede.
-    let soleira=-Infinity;
-    for(const u of[-.5,-.25,0,.25,.5])for(const fora of[0,1.0]){
-      const p=noLote(l,u*l.larg,l.prof/2+fora);
-      soleira=Math.max(soleira,obterElevacao(p.x,p.z));
-    }
-    l.baseY=soleira;
+    l.baseY=baseYDaSoleira(l);
     l.andares=1+(l.sem%100<42?0:l.sem%100<82?1:2);// 42% térrea, 40% dois, 18% três
   }
   // Puxa a altura pra caber no pulo, do lote mais baixo pro mais alto.
@@ -686,6 +692,8 @@ for(const l of lotes){
   if(l.larg<4.3)continue;// menos que isso e a casa oca não tem interior utilizável
   if(lotesRefugio.some(o=>Math.hypot(o.x-l.x,o.z-l.z)<REFUGIO_DIST_MIN))continue;
   l.giro=k*Math.PI/2;
+  // O giro foi normalizado para abrir o refúgio de verdade; a base precisa acompanhar a nova fachada.
+  l.baseY=baseYDaSoleira(l);
   const ab=aabbGirada(l.larg,l.prof,l.giro);l.W=ab.W;l.D=ab.D;
   l.papel='refugio';lotesRefugio.push(l);
 }
@@ -826,9 +834,22 @@ function construirRefugio(l){
   const reboco=matReboco(cor),telha=matTelha(CORES_TELHA[(l.sem>>3)%CORES_TELHA.length]);
   const larg=l.larg,prof=l.prof,y0=l.baseY,alt=ANDAR_ALT+.25;
   const P=(dx,dz)=>noLote(l,dx,dz);
+  // O piso usa a cota da soleira, mas o morro pode descer vários centímetros (ou metros) atrás
+  // dela. Se as paredes começarem em `y0`, a parte de baixo fica no ar. A casa comum já corrige isso
+  // com `afundar`; o refúgio precisa aplicar a mesma regra à sua casca oca.
+  let menorTerreno=y0;
+  for(const sx of[-1,1])for(const sz of[-1,1])for(const fora of[0,1.4]){
+    const p=P(sx*(larg/2+fora),sz*(prof/2+fora));
+    menorTerreno=Math.min(menorTerreno,obterElevacao(p.x,p.z));
+  }
+  for(const[dx,dz]of[[0,prof/2+1.4],[0,-prof/2-1.4],[larg/2+1.4,0],[-larg/2-1.4,0]]){
+    const p=P(dx,dz);menorTerreno=Math.min(menorTerreno,obterElevacao(p.x,p.z));
+  }
+  const afundar=Math.max(0,y0-menorTerreno)+.25;
   const casca=[];
-  const parede=(lw,ld,dx,dz,h,dy)=>{const p=P(dx,dz);
-    casca.push(pecaSolta(new THREE.BoxGeometry(lw,h,ld),reboco,p.x,y0+dy+h/2,p.z,l.giro,g))};
+  const parede=(lw,ld,dx,dz,h,dy,descer=true)=>{const p=P(dx,dz);
+    const altura=h+(descer?afundar:0),base=y0+dy-(descer?afundar:0);
+    casca.push(pecaSolta(new THREE.BoxGeometry(lw,altura,ld),reboco,p.x,base+altura/2,p.z,l.giro,g))};
   parede(larg,ESP_PAREDE,0,-prof/2,alt,0);                 // fundo
   parede(ESP_PAREDE,prof,-larg/2,0,alt,0);                 // lateral esquerda
   parede(ESP_PAREDE,prof, larg/2,0,alt,0);                 // lateral direita
