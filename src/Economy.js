@@ -52,16 +52,17 @@ criarEsconderijo(receptadorPos.x,receptadorPos.z);
 // Planta em vaso com três estágios visuais usando assets fotorealistas transparentes.
 // Cada sprite já inclui vaso e solo; assim não há uma segunda geometria procedural sobreposta.
 const carregadorTexturaPlanta=new THREE.TextureLoader();
-const TEXTURAS_PLANTA=[
-  carregadorTexturaPlanta.load('/assets/planta_estagio_1_muda.png'),
-  carregadorTexturaPlanta.load('/assets/planta_estagio_2_vegetativa.png'),
-  carregadorTexturaPlanta.load('/assets/planta_estagio_3_madura.png'),
-];
+const TEXTURAS_PLANTA=['assets/planta_estagio_1_muda.png','assets/planta_estagio_2_vegetativa.png','assets/planta_estagio_3_madura.png'].map(url=>carregadorTexturaPlanta.load(url,
+  textura=>{textura.colorSpace=THREE.SRGBColorSpace;textura.needsUpdate=true},
+  undefined,
+  erro=>console.warn('Quintal 3D: falha ao carregar asset de planta',url,erro)));
 function spritePlanta(parent,texture,escala,estagio){
-  const material=new THREE.SpriteMaterial({map:texture,transparent:true,alphaTest:.05,depthWrite:true});
+  const material=new THREE.SpriteMaterial({map:texture,transparent:true,alphaTest:.05,depthWrite:false});
   const sprite=new THREE.Sprite(material);
-  sprite.position.set(0,escala*.5,0);
-  sprite.scale.set(escala,escala,1);
+  // O centro padrão do Sprite fica no meio e fazia a base variar com o tamanho do estágio. Ancorar quase
+  // no rodapé mantém o vaso no chão mesmo quando a textura tem transparência ao redor do recorte.
+  sprite.center.set(.5,.03);sprite.position.set(0,.03,0);
+  sprite.scale.set(escala,escala,1);sprite.renderOrder=2;
   sprite.castShadow=true;sprite.receiveShadow=true;sprite.userData.estagio=estagio;
   parent.add(sprite);return sprite;
 }
