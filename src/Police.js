@@ -43,7 +43,7 @@ import{estaEscondido,refugioEmQueEsta,refugios}from'./WorldGenerator.js';
 import{colidePedestre,waypointsVielas}from'./NPCs.js';
 import{ALT_TORSO,ALT_OLHO,ALT_CANO,atualizarCombate,espalhamentoDoTiro,tempoDeReacao,
   distribuirPapeis,destinoDoPapel,procurarCobertura,PAPEL,velJogador,LEAD_FATOR,LEAD_RUIDO}from'./Combate.js';
-import{plantas,confiscarPlanta,aplicarMulta,inventario,atualizarStatusEconomia,isInventarioAberto,registrarGanchosPolicia}from'./Economy.js';
+import{plantas,confiscarPlanta,aplicarMulta,definirDinheiro,inventario,atualizarStatusEconomia,isInventarioAberto,registrarGanchosPolicia}from'./Economy.js';
 import{dispararBala,atualizarBalas,limparBalas,VELOCIDADE_BALA}from'./Bullets.js';
 import{aplicarDano,renderizarVidaJogador,criarBarraMundo}from'./HealthBar.js';
 import{droneState,miraState}from'./Camera.js';
@@ -430,6 +430,8 @@ function renderJogador(){
   transitar('recuando');
   setTimeout(()=>{
     player.position.set(SPAWN_X,obterElevacao(SPAWN_X,SPAWN_Z),SPAWN_Z);
+    // A rendição reinicia o jogador com uma reserva mínima para ele poder voltar ao jogo.
+    definirDinheiro(300);
     saudeJogador=JOGADOR_HP_MAX;jogadorRendido=false;atualizarHudSaude();
   },1400);
 }

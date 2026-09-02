@@ -21,7 +21,8 @@ let ganchosPolicia={curar:()=>false,precisaCurar:()=>false,denunciar:()=>{}};
 export function registrarGanchosPolicia(g){ganchosPolicia={...ganchosPolicia,...g}}
 const jogadorPrecisaCurar=()=>ganchosPolicia.precisaCurar();
 
-export let dinheiro=1000;
+// Saldo inicial de teste para validar lojas, armas, munição e atividades sem grind.
+export let dinheiro=10000;
 // `municao` e `colete` são consumidos pelo sistema de combate (Police.js). Ficam no inventário, e não
 // dentro do Police, porque Economy → Police seria dependência circular: o Police já importa a Economy.
 // `armas` (o que o jogador POSSUI) e `municao` (estoque POR ARMA) seguem a mesma regra: o Weapons.js
