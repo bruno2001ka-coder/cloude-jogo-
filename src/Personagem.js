@@ -287,6 +287,9 @@ function tentarPendurarMochilas(){
     if(mochilaModelo){
       for(const filho of grupo.children.slice()){grupo.remove(filho);filho.geometry?.dispose?.()}
       grupo.add(mochilaModelo);
+      // Alguns exportadores GLB preservam nós ocultos do arquivo original. O modelo precisa ser visível
+      // quando o grupo for ligado pelo inventário, então normalizamos essa flag em toda a hierarquia.
+      mochilaModelo.traverse(o=>{o.visible=true});
       // De costas pro observador: o modelo vem virado pra frente, e uma mochila com o bolso pro lado
       // das costas do jogador fica com a alça pra fora.
       mochilaModelo.rotation.y=Math.PI;

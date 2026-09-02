@@ -53,11 +53,12 @@ export function definirColeteVisivel(v){if(v)garantirColete();colete.visible=!!v
 export function coleteEstaVisivel(){return colete.visible}
 
 // ===== MOCHILA 3D DOS PACOTES =====
-// O fallback antigo de caixas foi removido: ele aparecia como um volume grande e escondia a mochila 3D.
-// O grupo nasce vazio e recebe exclusivamente `assets/mochila.glb` quando os pacotes ficam visíveis.
+// O fallback antigo de caixas foi removido: o grupo nasce vazio e recebe exclusivamente o GLB.
 const mochila=new THREE.Group();mochila.visible=false;player.add(mochila);
-// Pendura no osso do tronco quando o personagem e o modelo 3D terminam de carregar.
-let mochilaPedida=false;
+// O GLB é solicitado já na inicialização. Assim o modelo termina de carregar antes da primeira colheita
+// ou entrega, evitando que uma corrida entre save, inventário e renderização deixe a mochila invisível.
+let mochilaPedida=true;
+pendurarMochila(mochila);
 function garantirMochila(){if(mochilaPedida)return;mochilaPedida=true;pendurarMochila(mochila)}
 export function definirMochilaVisivel(v){if(v)garantirMochila();mochila.visible=!!v}
 
