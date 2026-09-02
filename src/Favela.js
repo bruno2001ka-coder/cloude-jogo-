@@ -856,7 +856,9 @@ function construirRefugio(l){
   const aba=(larg-VAO_PORTA)/2;
   parede(aba,ESP_PAREDE,-(larg+VAO_PORTA)/4,prof/2,alt,0); // fachada, à esquerda do vão
   parede(aba,ESP_PAREDE, (larg+VAO_PORTA)/4,prof/2,alt,0); // fachada, à direita do vão
-  parede(VAO_PORTA,ESP_PAREDE,0,prof/2,alt-PORTA_ALTURA,PORTA_ALTURA);// verga sobre a porta
+  // A verga não pode descer com as paredes: ela começa no topo do vão e, se for estendida para baixo,
+  // transforma a porta em uma parede maciça justamente quando o terreno exige mais afundamento.
+  parede(VAO_PORTA,ESP_PAREDE,0,prof/2,alt-PORTA_ALTURA,PORTA_ALTURA,false);// verga sobre a porta
   // Laje: é telhado e é piso de quem está em cima.
   const c=P(0,0);
   const laje=pecaSolta(new THREE.BoxGeometry(larg+.14,.12,prof+.14),telha,c.x,y0+alt+.06,c.z,l.giro,g);
