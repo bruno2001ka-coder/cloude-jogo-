@@ -3,7 +3,7 @@ import*as THREE from'three';
 import{mergeGeometries}from'three/addons/utils/BufferGeometryUtils.js';
 import{scene}from'./core.js';
 import{obterElevacao}from'./Terrain.js';
-import{registrarObstaculo,superficiesAndaveis,obstaculos,obstaculosPedestres,marcarObstaculoMovel}from'./Physics.js';
+import{registrarObstaculo,superficiesAndaveis,obstaculos,obstaculosPedestres,marcarObstaculoMovel,marcarSemFusao}from'./Physics.js';
 import{bmat,matReboco,matTelha,matConcreto,matMadeira,matTerraArada,matTerraBatida,graffiteMat,uvPorMetro,tijolo,concreto,janela,janelaAcesa,molduraJanela,porta,agua,posteMat,folhaMat,folhaClara,criarSombraContato}from'./Materials.js';
 import{POLOS}from'./Poles.js';
 // O degrau da escadaria é derivado do step-up do jogador: um número solto aqui viraria escada
@@ -251,7 +251,10 @@ if(tipo===2){const mad=matMadeira(0x6b4a30);bloco(new THREE.BoxGeometry(w*.62,.1
 // casa lisa do bairro. Inclinado pra frente: telha na horizontal não lê como telheiro, lê como prateleira.
 // Fora do refúgio: lá a placa vermelha que marca o esconderijo mora exatamente nesse espaço.
 if(tipo===1&&!refugio){const telheiro=bloco(new THREE.BoxGeometry(1.9,.07,.8),matTelha(corTelhado),0,PORTA_ALTURA+.26,d/2+.34,g);telheiro.rotation.x=.18}
-if(tipo!==1){const tank=bloco(new THREE.CylinderGeometry(.38,.38,.62,10),agua,w*.22,h+.55,-d*.12,g);tank.castShadow=true}g.userData.paredeMesh=paredeMesh;if(registrar){if(casca)casca.forEach(registrarObstaculo);else registrarObstaculo(paredeMesh);muretas.forEach(registrarObstaculo)}return g}
+if(tipo!==1){const tank=bloco(new THREE.CylinderGeometry(.38,.38,.62,10),agua,w*.22,h+.55,-d*.12,g);tank.castShadow=true}g.userData.paredeMesh=paredeMesh;if(registrar){
+  // A casca do refúgio é registrada SEM FUSÃO: ela tem vão de porta, e fundir a verga com as
+  // laterais da fachada emparedaria a entrada (ver `caixasSemFusao` em Physics.js).
+  if(casca)casca.forEach(m=>marcarSemFusao(registrarObstaculo(m)));else registrarObstaculo(paredeMesh);muretas.forEach(registrarObstaculo)}return g}
 function sobrado(x,z,w,d,h,cor,ladoEscada=0,corTelhado=0x888888,bordas=BORDAS_TODAS){const g=casaBairro(x,z,w,d,h,cor,2,true,ladoEscada,corTelhado,false,true,bordas);const up=casaBairro(x,z,w*.86,d*.82,h*.72,cor===tijolo.color?.getHex?.()?0xd87957:0xe8c45d,1,false,0,corTelhado,false,false);up.position.y=obterElevacao(x,z)+h+.18;registrarObstaculo(up.userData.paredeMesh);up.userData.muretas.forEach(registrarObstaculo);return g}
 // A árvore nasce NO TERRENO. Ela ficava em y=0 fixo, e o terreno do mapa vai de -2,5 a +3,8 m: as 11
 // árvores estavam todas fora do chão — a de (-18,72) enterrada 3,8 m e as das bordas boiando 2,5 m no ar.
