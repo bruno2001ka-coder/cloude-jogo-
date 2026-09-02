@@ -1,6 +1,6 @@
-// Mundo construído: FAZENDA (porteira, curral, canteiros, bichos), as duas lojas fora do morro e o
-// esconderijo do Receptador. A FAVELA FOI APAGADA por inteiro — ver o bloco em `casasPos`, que
-// explica o que ficou de andaime pros outros módulos não quebrarem no import.
+// Mundo construído FORA do morro: a FAZENDA (porteira, curral, canteiros, bichos), as duas lojas e o
+// esconderijo do Receptador — mais o cliente da laje, que é regra de jogo e não geometria de bairro.
+// A favela em si mora em `Favela.js` e é só reexportada daqui (ver o bloco logo abaixo).
 import*as THREE from'three';
 import{scene}from'./core.js';
 import{obterElevacao}from'./Terrain.js';
@@ -29,32 +29,23 @@ function projetaSombra(geo){
 }
 function bloco(geo,material,x,y,z,parent=bairro){if(material&&material.map)uvPorMetro(geo);const m=new THREE.Mesh(geo,material);m.position.set(x,y,z);m.castShadow=projetaSombra(geo);m.receiveShadow=true;parent.add(m);return m}
 
-// ===== A FAVELA FOI APAGADA =====
-// Todo o bairro saiu daqui: casas, sobrados, refúgios, escadarias de viela, mercado, bar, biqueira,
-// postes e fios. O que ficou de pé é a FAZENDA (porteira, curral, canteiros e bichos), as duas lojas
-// fora do morro (Depósito Rural e Loja de Armas), o esconderijo do Receptador e o terreno.
+// ===== A FAVELA VEM DE Favela.js =====
+// O bairro foi reescrito do zero num módulo próprio (`Favela.js`) e este arquivo ficou com o que
+// nunca foi favela: a FAZENDA (porteira, curral, canteiros, bichos), as duas lojas fora do morro e o
+// esconderijo do Receptador.
 //
-// As listas e pontos abaixo continuam EXISTINDO, vazios e inertes de propósito. Cinco módulos leem
-// daqui (Economy, Police, NPCs, UI e main) e apagar os símbolos derrubaria os cinco no import — falha
-// barulhenta na hora errada. Vazios, cada sistema não encontra nada e segue:
-//   · `refugios` vazio → não existe esconderijo, `estaEscondido` é sempre falso;
-//   · `casasPos` vazio → o radar não desenha quarteirão e o cliente da laje nunca nasce;
-//   · BAR/BIQUEIRA com raio 0 → o painel de ações nunca os reconhece (o teste é `dist < raio`);
-//   · `BECOS` ganha um circuito provisório, pra morador e polícia de rua terem por onde rondar em vez
-//     de sortear de uma lista vazia e receber `undefined`.
-//
-// É andaime, não solução: serve pra a favela nova entrar sem religar o resto do jogo peça por peça.
-export const casasPos=[];
+// A separação não é arrumação: a favela precisa nascer de RUA — spline, becos, escadão, lote pendurado
+// na curva — e isso não cabia ao lado de um gerador de sítio sem virar o arquivo de mil linhas que já
+// foi. Cinco módulos (Economy, Police, NPCs, UI e main) importam a favela DAQUI; em vez de mandar os
+// cinco mudarem de endereço, este arquivo reexporta. É uma linha de indireção contra cinco de
+// mudança espalhada.
+import{favela,casasPos,BECOS,refugios,BAR,BIQUEIRA,sumirCaixa,alternarPortaRefugio,
+  refugioEmQueEsta,estaEscondido,atualizarRefugios}from'./Favela.js';
+bairro.add(favela);
+export{casasPos,BECOS,refugios,BAR,BIQUEIRA,sumirCaixa,alternarPortaRefugio,
+  refugioEmQueEsta,estaEscondido,atualizarRefugios};
 
-// Circuito provisório de ronda enquanto não há favela: um anel na área onde ela ficava.
-export const BECOS=[];
-for(let i=0;i<16;i++){const a=i/16*Math.PI*2;BECOS.push({x:Math.cos(a)*28,z:-20+Math.sin(a)*20})}// footprints pro radar mostrar o traçado das ruas, não só pontos soltos
-// ===== REFÚGIO: casa comum da favela, oca, com porta que abre e fecha =====
-// A regra é ENTRAR e FECHAR: enquanto a porta estiver fechada e o jogador dentro, a polícia e o
-// helicóptero não acham ele (ver Police.js). Antes bastava chegar a 2,8 m da casa, o que fazia o
-// esconderijo valer também na viela e na calçada — "esconderijo em qualquer lugar".
-// A árvore ficou: ela é da FAZENDA (o pomar do sítio), não da favela. Veio junto no corte porque
-// morava no meio do bloco das casas — é a única peça daquele bloco que sobrevive.
+// A árvore ficou aqui: ela é da FAZENDA (o pomar do sítio), não da favela.
 function arvore(x,z,s=1){const g=new THREE.Group();g.position.set(x,obterElevacao(x,z),z);bairro.add(g);
   bloco(new THREE.CylinderGeometry(.16*s,.22*s,1.5*s,6),posteMat,0,.75*s,0,g);
   const clusters=[[0,1.8,0],[-.45,1.55,0],[.45,1.55,0],[0,1.55,.45],[0,1.55,-.42]];
@@ -62,51 +53,91 @@ function arvore(x,z,s=1){const g=new THREE.Group();g.position.set(x,obterElevaca
   criarSombraContato(.85*s,g);
   return g}
 
-// ===== ESCONDERIJO: a interface segue viva, a lista está vazia =====
-// A casa-refúgio saiu com a favela. Estas quatro funções ficam porque Police.js e Economy.js chamam
-// as quatro todo quadro; com a lista vazia elas devolvem "não tem esconderijo" e o jogo segue. Quando
-// a favela nova existir, basta voltar a POPULAR `refugios` — nada aqui muda.
-export const refugios=[];
-// A caixa da porta ABERTA não pode ser uma Box3 vazia: vazio em three é ±Infinity, e Infinity entra
-// na rasterização da NavMesh e no slab test das balas virando NaN. Uma caixa minúscula enterrada a
-// 10 km é finita e nunca encosta em nada. A porteira da fazenda usa a mesma função.
-export function sumirCaixa(b){b.min.set(0,-9999,0);b.max.set(.01,-9998.99,.01)}
-export function alternarPortaRefugio(r){
-  r.aberta=!r.aberta;
-  if(r.aberta)sumirCaixa(r.caixa);else r.caixa.copy(r.caixaFechada);
-  return r.aberta;
+
+// ===== CLIENTE NA LAJE: a entrega =====
+// De tempos em tempos um cliente aparece EM CIMA de uma laje e o radar marca. Entregar paga mais que
+// o Receptador (PRECOS.entregaLaje) porque o preço é o risco: pra chegar nele você atravessa os
+// telhados e fica de pé no lugar mais visível do morro, que é onde o helicóptero enxerga. É o que dá
+// função ao telhado — sem isso a laje é só um lugar por onde dá pra andar.
+export const clienteLaje={ativo:false,x:0,y:0,z:0,raio:2.6,pacotesPedidos:0};
+const CLIENTE_ESPERA_MIN=40,CLIENTE_ESPERA_MAX=85,CLIENTE_DURACAO=80,CLIENTE_DIST_MIN=25;
+let grupoCliente=null,esperaCliente=18,tempoCliente=0;
+function corpoDoCliente(){
+  // Corpo simples e PARADO: o cliente não anda, então não precisa das pernas animadas do morador.
+  // Criado UMA vez e reposicionado — criar e descartar a cada aparição vazaria geometria na GPU.
+  const g=new THREE.Group();bairro.add(g);
+  const pele=bmat(0xc79067),roupa=bmat(0x2e4a6b),calca=bmat(0x2a2a26);
+  bloco(new THREE.BoxGeometry(.5,.72,.3),roupa,0,.78,0,g);
+  bloco(new THREE.BoxGeometry(.34,.34,.32),pele,0,1.32,0,g);
+  bloco(new THREE.BoxGeometry(.36,.09,.33),bmat(0x171712),0,1.52,0,g);
+  // Braços: o cliente ficou dois meses sem eles e o Bruno reclamou olhando a laje de baixo. Um bloco
+  // de cada lado, colado no tronco, é tudo que falta pra um boneco parado ler como pessoa.
+  for(const lx of[-.31,.31])bloco(new THREE.BoxGeometry(.12,.6,.22),roupa,lx,.86,0,g);
+  for(const lx of[-.13,.13])bloco(new THREE.BoxGeometry(.12,.5,.15),calca,lx,.26,0,g);
+  g.scale.setScalar(.52);
+  criarSombraContato(.5,g);
+  // Marcador vertical: sem ele o cliente some entre as caixas d'água quando visto do chão.
+  bloco(new THREE.BoxGeometry(.14,.5,.14),bmat(0x63d16a),0,2.3,0,g);
+  return g;
 }
-// Em qual refúgio o ponto está (ou null). É o teste do INTERIOR, não de proximidade.
-export function refugioEmQueEsta(pos){
-  for(const r of refugios)if(pos.x>=r.minX&&pos.x<=r.maxX&&pos.z>=r.minZ&&pos.z<=r.maxZ)return r;
+// ===== O CLIENTE SÓ NASCE EM LAJE QUE DÁ PRA ALCANÇAR =====
+// A entrega depende de o jogador CHEGAR no telhado. Mandar o cliente pra uma laje inalcançável é dar
+// uma missão impossível sem nenhum aviso — pior que não ter a missão. A lista é montada UMA vez, no
+// carregamento: ~110 casas x 48 amostras de terreno, caro demais pra refazer a cada cliente.
+const PULO_ALCANCE=1.40;// v²/2g com VELOCIDADE_PULO=8,2 e GRAVIDADE=-24 (Player.js)
+let lajesAlcancaveis=null;
+function montarLajesAlcancaveis(){
+  lajesAlcancaveis=casasPos.filter(c=>{
+    let maisAlto=-99;
+    for(let a=0;a<16;a++)for(const raio of[1.6,2.6,4]){
+      const ang=a/16*Math.PI*2;
+      maisAlto=Math.max(maisAlto,obterElevacao(c.x+Math.cos(ang)*raio,c.z+Math.sin(ang)*raio));
+    }
+    return c.laje-maisAlto<=PULO_ALCANCE;
+  });
+  // Se o relevo mudar e nenhuma laje passar no teste, é melhor o cliente aparecer em qualquer uma do
+  // que a entrega sumir do jogo sem ninguém notar.
+  if(!lajesAlcancaveis.length)lajesAlcancaveis=casasPos;
+}
+function sortearLaje(jogador){
+  if(!lajesAlcancaveis)montarLajesAlcancaveis();
+  if(!lajesAlcancaveis.length)return null;
+  // Longe do jogador na hora de nascer, pelo mesmo motivo do spawn da polícia: cliente que aparece do
+  // lado não lê como cliente, lê como bug.
+  for(let t=0;t<24;t++){
+    const c=lajesAlcancaveis[Math.floor(Math.random()*lajesAlcancaveis.length)];
+    if(Math.hypot(c.x-jogador.x,c.z-jogador.z)<CLIENTE_DIST_MIN)continue;
+    return c;
+  }
   return null;
 }
-// Escondido = dentro da casa E com a porta fechada. As duas condições, sempre.
-export function estaEscondido(pos){const r=refugioEmQueEsta(pos);return !!r&&!r.aberta}
-export function atualizarRefugios(dt){
-  const k=1-Math.exp(-9*dt);
-  for(const r of refugios){
-    const alvo=r.aberta?1.9:0;// 1,9 rad ≈ 109°, a abertura da folha
-    if(Math.abs(r.pivo.rotation.y-alvo)>.001)r.pivo.rotation.y+=(alvo-r.pivo.rotation.y)*k;
+export function atualizarClienteLaje(dt,jogador){
+  if(clienteLaje.ativo){
+    tempoCliente-=dt;
+    if(tempoCliente<=0||clienteLaje.pacotesPedidos<=0){
+      clienteLaje.ativo=false;
+      if(grupoCliente)grupoCliente.visible=false;
+      esperaCliente=CLIENTE_ESPERA_MIN+Math.random()*(CLIENTE_ESPERA_MAX-CLIENTE_ESPERA_MIN);
+    }
+    return;
   }
+  esperaCliente-=dt;
+  if(esperaCliente>0)return;
+  const c=sortearLaje(jogador);
+  if(!c){esperaCliente=6;return}// nenhuma laje longe o bastante: tenta de novo daqui a pouco
+  if(!grupoCliente)grupoCliente=corpoDoCliente();
+  clienteLaje.x=c.x;clienteLaje.z=c.z;clienteLaje.y=c.laje;
+  clienteLaje.pacotesPedidos=2+Math.floor(Math.random()*3);
+  clienteLaje.ativo=true;tempoCliente=CLIENTE_DURACAO;
+  grupoCliente.position.set(c.x,c.laje,c.z);grupoCliente.visible=true;
 }
-// ===== BAR E BIQUEIRA =====
-// Saíram com a favela. Raio ZERO enquanto não há favela: o painel de ações testa `distância < raio`, então com 0 eles
-// nunca são reconhecidos. Com o raio antigo e a posição em (0,0), qualquer jogador parado na origem
-// abriria o painel do bar — que é exatamente o lixo que sobra de uma remoção pela metade.
-export const BAR={x:0,y:0,z:0,raio:0};
-export const BIQUEIRA={x:0,y:0,z:0,raio:0};
-// ===== CLIENTE NA LAJE: interface viva, mecânica dormindo =====
-// A entrega acontecia em cima do telhado de uma casa. Sem casas, não há laje — então o cliente
-// simplesmente nunca nasce. Economy.js e UI.js importam os quatro símbolos abaixo e chamam três deles
-// todo quadro; mantê-los é o que impede a remoção da favela virar erro de import em dois módulos que
-// não têm nada a ver com o bairro.
-// Pra religar quando a favela nova existir: `casasPos` precisa voltar a ter {x,z,w,d,laje} e este
-// bloco volta a sortear entre as lajes alcançáveis.
-export const clienteLaje={ativo:false,x:0,y:0,z:0,raio:0,pacotesPedidos:0};
-export function atualizarClienteLaje(){}
-export function pertoDoCliente(){return false}
-export function entregouAoCliente(){}
+export function pertoDoCliente(pos){
+  return clienteLaje.ativo&&Math.hypot(pos.x-clienteLaje.x,pos.z-clienteLaje.z)<clienteLaje.raio
+    // Tem que estar EM CIMA da laje, não embaixo: sem a checagem de altura dava pra entregar da rua, e
+    // aí a entrega deixava de custar a subida, que é a coisa toda.
+    &&Math.abs(pos.y-clienteLaje.y)<1.6;
+}
+export function entregouAoCliente(n){clienteLaje.pacotesPedidos=Math.max(0,clienteLaje.pacotesPedidos-n)}
 
 export const porteiraFazenda={x:0,y:0,z:0,aberta:true,raio:3.6,pivos:[],caixa:null,caixaFechada:null};
 const PORTEIRA_ABERTA_RAD=Math.PI*.55;// abre pra dentro do sítio, encostando na cerca
