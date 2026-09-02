@@ -62,13 +62,17 @@ function eixoDeFusao(a,b){
   for(let e=0;e<3;e++){
     const k=EIXOS[e];
     if(Math.abs(a.min[k]-b.min[k])<=TOL_FACE&&Math.abs(a.max[k]-b.max[k])<=TOL_FACE)continue;
-    // COLISOR DE PAREDE PODE DESCER, NUNCA SUBIR. Duas paredes vizinhas de mesma altura tinham a
-    // base em cotas diferentes — cada casa se assenta no terreno esticando a parede pra BAIXO até o
-    // canto mais fundo do lote (ver `afundar`), e no morro isso muda de casa pra casa. Exigir as
-    // duas faces em Y impedia a fusão de um quarteirão inteiro por causa de uma diferença que está
-    // toda ENTERRADA. Casar só o topo e unir pra baixo resolve, e é seguro: o volume extra fica
-    // dentro do terreno. Unir pra CIMA é que não pode — subiria acima da laje da casa mais baixa e
-    // prenderia quem estivesse andando no telhado dela.
+    // COLISOR DE PAREDE PODE DESCER, NUNCA SUBIR. Duas paredes vizinhas de mesma altura podem ter a
+    // base em cotas diferentes: cada casa se assenta esticando a parede pra BAIXO até o canto mais
+    // fundo do lote (`afundar`), e essa diferença está toda ENTERRADA. Casar só o topo e unir pra
+    // baixo é seguro — o volume extra fica dentro do terreno.
+    //
+    // Unir pra CIMA é que não pode: subiria acima da laje da casa mais baixa e prenderia quem
+    // estivesse andando no telhado dela. E é por isso que o "colisor do quarteirão inteiro" NÃO
+    // existe aqui: no morro, casas vizinhas têm o telhado em cotas diferentes (o topo é
+    // terreno+altura, e o terreno muda de lote pra lote), então uma caixa única pro quarteirão
+    // teria que subir até o telhado mais alto e emparedaria os telhados mais baixos. Num trecho
+    // plano — a cerca da fazenda, por exemplo — a regra continua fundindo.
     if(k==='y'&&Math.abs(a.max.y-b.max.y)<=TOL_FACE)continue;
     if(solto>=0)return null;// dois eixos soltos: juntar criaria volume que não existe
     solto=e;
@@ -77,18 +81,46 @@ function eixoDeFusao(a,b){
   const k=EIXOS[solto];
   return Math.max(a.min[k],b.min[k])-Math.min(a.max[k],b.max[k])<=TOL_JUNTA?solto:null;
 }
+// ===== CAIXAS QUE NÃO PODEM FUNDIR =====
+// A casa-refúgio é uma casca com um VÃO DE PORTA, e a verga (a faixa de parede acima da porta) tem o
+// mesmo topo das duas laterais da fachada e encosta nas duas. Pela regra de fusão isso é um trio
+// fundível — e a união desce, porque a verga tem o fundo mais alto. O resultado é uma caixa maciça
+// cobrindo a fachada inteira: os 9 esconderijos ficaram intransponíveis, sem nenhum erro aparecer.
+//
+// E não dá pra distinguir os dois casos olhando só as AABBs: "dois blocos lado a lado, mesmo topo,
+// fundos diferentes" descreve tanto duas paredes assentadas em cotas diferentes (que DEVEM fundir)
+// quanto uma verga sobre um vão (que não pode). A diferença é semântica, então quem constrói uma
+// estrutura com abertura avisa aqui, em vez de a fusão tentar adivinhar.
+const caixasSemFusao=new Set();
+export function marcarSemFusao(box){caixasSemFusao.add(box);gradeMontada=false;otimizado=false;return box}
+
+// Retrato do que o WorldGenerator REGISTROU, antes de qualquer fusão. Existe por um motivo concreto:
+// o teste de colisão comparava a lista otimizada contra ela mesma (a fusão roda na primeira consulta,
+// e a primeira consulta acontece no primeiro quadro, antes de qualquer teste conseguir olhar), então
+// ficou verde enquanto a fusão emparedava os 9 esconderijos — emparedar é exatamente "as duas listas
+// concordam". Com o retrato, dá pra conferir COMPORTAMENTO contra o mundo original.
+// São 6 floats por caixa: 600 caixas custam 14 KB, e é o mesmo dado que o modo debug desenha.
+export let obstaculosOriginais=null;
 let otimizado=false;
 function otimizarObstaculos(){
   otimizado=true;
+  if(!obstaculosOriginais){
+    obstaculosOriginais=new Float32Array(obstaculos.length*6);
+    for(let i=0;i<obstaculos.length;i++){
+      const b=obstaculos[i],o=i*6;
+      obstaculosOriginais[o]=b.min.x;obstaculosOriginais[o+1]=b.min.y;obstaculosOriginais[o+2]=b.min.z;
+      obstaculosOriginais[o+3]=b.max.x;obstaculosOriginais[o+4]=b.max.y;obstaculosOriginais[o+5]=b.max.z;
+    }
+  }
   // Roda em passadas: fundir A com B pode deixar A colada em C. Para quando uma passada não muda nada.
   for(let passada=0;passada<6;passada++){
     let mudou=false;
     for(let i=0;i<obstaculos.length;i++){
       const a=obstaculos[i];
-      if(caixasMoveis.has(a))continue;// porta/porteira trocam de conteúdo: fundir congelaria o buraco
+      if(caixasMoveis.has(a)||caixasSemFusao.has(a))continue;// porta/porteira trocam de conteúdo: fundir congelaria o buraco
       for(let j=i+1;j<obstaculos.length;j++){
         const b=obstaculos[j];
-        if(caixasMoveis.has(b))continue;
+        if(caixasMoveis.has(b)||caixasSemFusao.has(b))continue;
         const eixo=contida(b,a)?-1:eixoDeFusao(a,b);
         if(eixo===null)continue;
         if(eixo>=0)a.union(b);
