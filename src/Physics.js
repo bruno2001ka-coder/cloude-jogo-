@@ -151,24 +151,30 @@ function montarGrade(){
 }
 // Quem tem uma Box3 cujo CONTEÚDO vai mudar (porta, porteira) registra aqui.
 export function marcarObstaculoMovel(box){caixasMoveis.add(box);gradeMontada=false;return box}
-// Um obstáculo registrado depois da grade montada entraria invisível pra broadphase — falha silenciosa,
-// das piores de achar. Por isso `registrarObstaculo` invalida a grade.
-export function invalidarGradeDeObstaculos(){gradeMontada=false;otimizado=false}
-
-export function registrarObstaculo(meshParede){
+// ===== DE ONDE VEM CADA COLISOR =====
+// Cada caixa registrada carrega uma CATEGORIA. Não é enfeite: sem ela, "temos N colisores" é um
+// número sem ação possível — não dá pra saber se N está em parede (necessário) ou em decoração
+// (desperdício), e a otimização vira chute. É também o que o modo debug mostra na tela.
+export const categoriasObstaculo=[];
+export function contarColisores(){
+  const por={};
+  for(const c of categoriasObstaculo)por[c]=(por[c]||0)+1;
+  return{total:obstaculos.length,registrados:categoriasObstaculo.length,por,
+    pedestres:obstaculosPedestres.length,andaveis:superficiesAndaveis.length};
+}
+export function registrarObstaculo(meshParede,categoria='sem-categoria'){
   gradeMontada=false;otimizado=false;
   // Atualiza a hierarquia antes de converter o espaço local para world space.
   meshParede.updateWorldMatrix(true,false);
   // A AABB é calculada somente da parede recebida, nunca do grupo/telhado.
   const box=new THREE.Box3().setFromObject(meshParede);
-  obstaculos.push(box);
+  obstaculos.push(box);categoriasObstaculo.push(categoria);
   return box;
 }
-
-export function registrarObstaculoPedestre(mesh){
-  mesh.updateWorldMatrix(true,false);
-  const box=new THREE.Box3().setFromObject(mesh);
-  obstaculosPedestres.push(box);
+// Pra quem monta a Box3 na mão (escadaria, cerca, porta) e não tem malha pra medir.
+export function registrarCaixa(box,categoria='sem-categoria'){
+  gradeMontada=false;otimizado=false;
+  obstaculos.push(box);categoriasObstaculo.push(categoria);
   return box;
 }
 

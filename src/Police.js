@@ -59,8 +59,17 @@ const PLANTA_DETECTAVEL_ESTAGIO=2;
 // Viés de patrulha: fração dos waypoints sorteados DENTRO de um disco em volta de uma muda madura.
 // É o que substitui a antiga "caça ativa" — a polícia bate a região, em vez de ir na coordenada.
 const PATRULHA_VIES=.55,PATRULHA_RAIO_VIES=30;
-// Tempo que o heli fica estabilizado sobre a plantação antes de soltar as cordas.
-const PAIRANDO_DURACAO=1.2;
+// ===== O AVISO ANTES DA BATIDA =====
+// Era 1,2 s entre o heli parar e as cordas descerem: não dava pra ver que ele tinha achado alguma
+// coisa, muito menos pra reagir — a batida chegava como um fato consumado. Quatro segundos com aviso
+// na tela é o tempo de largar o que está fazendo e correr, que é o que transforma a batida de
+// punição em decisão.
+const PAIRANDO_DURACAO=4;
+// Onde a guarnição pousa, medido do ponto-alvo. Antes era um ANEL DE 2,4 m EM VOLTA DELE: se o
+// jogador estivesse ao lado da própria muda, os seis desciam formando um círculo em cima dele, sem
+// saída. Agora descem juntos a 13 m, do lado de onde o helicóptero veio, e vêm A PÉ — dá pra ouvir,
+// ver e correr, e é a diferença entre uma batida e um teleporte.
+const RAPEL_DIST=13,RAPEL_ESPACO=1.6;
 const RAPEL_DURACAO=1.5;
 const COMBATE_RAIO_ATIVACAO=16;
 const POLICIAL_HP=100,POLICIAL_VELOCIDADE=2,POLICIAL_ALCANCE_TIRO=13,POLICIAL_APROX_MIN=7;
@@ -132,6 +141,21 @@ const BUSCA_DESVIOS=[0,.4,-.4,.8,-.8];
 // [min,max] e ENCOLHE com a ficha (÷(1+procurado·0,45)), então é a ficha suja que enche a rua de fardado.
 const RUA_INTERVALO_MIN=70,RUA_INTERVALO_MAX=140,RUA_DUPLA_VIDA=75,RUA_MAX_DUPLAS=2;
 const RUA_VELOCIDADE=1.7,RUA_CHEGADA=1.6,RUA_VASCULHAR_RAIO=3.2;
+// ===== NINGUÉM NASCE NA CARA DO JOGADOR =====
+// A dupla nascia direto num `pontoDeRonda()` — um beco ou a frente de um esconderijo sorteados no
+// mapa inteiro, SEM nenhuma checagem de onde o jogador está. Dois fardados podiam materializar a 3 m
+// dele. Era o "surgem do nada".
+// Agora o ponto precisa passar por um de dois critérios:
+//   · longe o bastante pra estar fora de qualquer alcance de visão (RUA_SPAWN_LONGE), ou
+//   · a uma distância média, mas com PAREDE no meio — reusando o mesmo teste de segmento que a visão
+//     deles já faz, então o que vale é "não dá pra ver de onde ele está", não um número mágico.
+// Se nenhum dos sorteios servir, a dupla NÃO nasce nesta janela. É melhor a favela ficar sem polícia
+// um minuto a mais do que ter polícia brotando do chão.
+const RUA_SPAWN_LONGE=40,RUA_SPAWN_MINIMO=20,RUA_SPAWN_TENTATIVAS=12;
+// Setor proibido em volta da direção do esconderijo mais próximo: com ficha suja, nascer bem entre o
+// jogador e a casa em que ele ia se enfiar é o que faz a perseguição virar beco sem saída. Sobra
+// sempre pra onde correr.
+const RUA_SPAWN_SETOR_FUGA=.9;
 // Agressividade por estrela: velocidade, cadência e distância em que param de avançar pra trocar tiro.
 const AGRESSAO_VEL_POR_ESTRELA=.16,AGRESSAO_CADENCIA_POR_ESTRELA=.11,AGRESSAO_APROX_POR_ESTRELA=.55;
 // Quanto mais alta a ficha, maior a guarnição. Teto de 6 por causa do celular: cada policial é uma
@@ -283,7 +307,6 @@ const policia={estado:'patrulha',alvoPlanta:null,pontoAlvo:{x:0,z:0},tempoEstado
 let jaFoiPreso=false;
 function levandoPacote(){return inventario.pacote>0}
 export function chamaAtencao(){return levandoPacote()||jaFoiPreso}
-export function temFichaCorrida(){return jaFoiPreso}
 function elevarProcurado(n){if(n>policia.procurado)policia.procurado=Math.min(PROCURADO_MAX,n)}
 function somarProcurado(n){policia.procurado=Math.min(PROCURADO_MAX,policia.procurado+n)}
 const policiais=[];
@@ -876,6 +899,8 @@ const ESTADOS={
       heli.position.x=THREE.MathUtils.lerp(heli.position.x,alvo.x,1-Math.exp(-4*dt));
       heli.position.z=THREE.MathUtils.lerp(heli.position.z,alvo.z,1-Math.exp(-4*dt));
       heli.rotation.z=THREE.MathUtils.lerp(heli.rotation.z,0,1-Math.exp(-5*dt));
+      // Um aviso só, no começo do pairar: repetir a cada quadro entupiria a faixa de aviso.
+      if(policia.tempoEstado<dt*1.5)mostrarAviso('Helicóptero parado em cima de você. Corre.',PAIRANDO_DURACAO*1000);
       if(policia.tempoEstado>=PAIRANDO_DURACAO)transitar('rapel');
     }
   },
@@ -885,12 +910,20 @@ const ESTADOS={
       // O tamanho da guarnição sai da ficha: 2 até 1 estrela, +1 por estrela até 6. É o "quanto mais
       // mata, mais aparecem" — a escalada é consequência das baixas, não um número fixo.
       const quantos=numPoliciaisPara(policia.procurado);
+      // Direção de onde o helicóptero veio: pousar desse lado deixa a leitura coerente com o que o
+      // jogador acabou de ver no céu, e garante que eles não apareçam do lado oposto sem explicação.
+      let dx=heli.position.x-alvo.x,dz=heli.position.z-alvo.z;
+      const dh=Math.hypot(dx,dz)||1;dx/=dh;dz/=dh;
+      // Fila perpendicular à direção de chegada, e o conjunto todo empurrado pro espaço livre mais
+      // próximo — sem isso a fila podia cair dentro de um quarteirão e eles nasceriam dentro da parede.
+      const base=buscarPosicaoLivre(alvo.x+dx*RAPEL_DIST,alvo.z+dz*RAPEL_DIST,
+        (x,z)=>colidePedestre(x,z),9)||{x:alvo.x+dx*RAPEL_DIST,z:alvo.z+dz*RAPEL_DIST};
       for(let i=0;i<quantos;i++){
         const pol=criarPolicial(i);
-        const ang=(i/quantos)*Math.PI*2,raio=2.4;
+        const desloc=(i-(quantos-1)/2)*RAPEL_ESPACO;
         // Vector3.set com DOIS argumentos jogava o z no y e deixava z=0: os policiais desciam sempre na
         // faixa z≈0, longe da plantação. É o que fazia a batida parecer que não existia.
-        pol.pos.set(alvo.x+Math.cos(ang)*raio,0,alvo.z+Math.sin(ang)*raio);
+        pol.pos.set(base.x-dz*desloc,0,base.z+dx*desloc);
         pol.grupo.position.set(pol.pos.x,heli.position.y,pol.pos.z);
         policiais.push(pol);
         const corda=new THREE.Line(new THREE.BufferGeometry().setFromPoints([heli.position.clone(),pol.grupo.position.clone()]),new THREE.LineBasicMaterial({color:0x333333}));
@@ -968,8 +1001,36 @@ function pontoDeRonda(){
   const wp=waypointsVielas[Math.floor(Math.random()*waypointsVielas.length)];
   return{x:wp.x,z:wp.z};
 }
-function nascerDupla(agora){
-  const base=pontoDeRonda();
+// Onde o esconderijo mais próximo fica, visto do jogador. Serve pra não fechar a rota de fuga.
+function anguloDaFuga(px,pz){
+  let melhor=null,melhorD=Infinity;
+  for(const r of refugios){const d=(r.x-px)**2+(r.z-pz)**2;if(d<melhorD){melhorD=d;melhor=r}}
+  return melhor?Math.atan2(melhor.x-px,melhor.z-pz):null;
+}
+// Sorteia um ponto de nascimento aceitável, ou devolve null se não achar em RUA_SPAWN_TENTATIVAS.
+function pontoDeNascimento(){
+  const px=player.position.x,pz=player.position.z;
+  const angFuga=policia.procurado>0?anguloDaFuga(px,pz):null;
+  for(let t=0;t<RUA_SPAWN_TENTATIVAS;t++){
+    const p=pontoDeRonda();
+    const d=Math.hypot(p.x-px,p.z-pz);
+    if(d<RUA_SPAWN_MINIMO)continue;
+    if(angFuga!==null){
+      const ang=Math.atan2(p.x-px,p.z-pz);
+      let dif=Math.abs(ang-angFuga);if(dif>Math.PI)dif=Math.PI*2-dif;
+      if(dif<RUA_SPAWN_SETOR_FUGA)continue;// tapando a saída pro esconderijo
+    }
+    if(d>=RUA_SPAWN_LONGE)return p;
+    // Distância média: só vale com parede no meio. A altura 1,2 é a do tronco, a mesma que o teste
+    // de visão usa — bater no chão do morro não conta como estar escondido.
+    if(primeiroImpactoNoSegmento(p.x,obterElevacao(p.x,p.z)+1.2,p.z,px,player.position.y+1.2,pz))return p;
+  }
+  return null;
+}
+// Exposto só pro teste de spawn: ele precisa sortear centenas de nascimentos sem esperar os 70-140 s
+// da janela real, e sem policial de verdade entrando em cena a cada sorteio.
+export function __pontoDeNascimentoParaTeste(){return pontoDeNascimento()}
+function nascerDupla(agora,base){
   for(let i=0;i<2;i++){
     const pol=criarPolicial(policiaisRua.length+i,'rua');
     pol.pos.set(base.x+(i?1.2:-1.2),0,base.z);
@@ -986,8 +1047,13 @@ function atualizarPoliciaDeRua(dt,agora){
   const emEncontro=policia.estado!=='patrulha'&&policia.estado!=='recuando';
   proximaDupla-=dt;
   if(proximaDupla<=0&&!emEncontro&&policiaisRua.length<RUA_MAX_DUPLAS*2){
-    nascerDupla(agora);
-    proximaDupla=RUA_INTERVALO_MIN+Math.random()*(RUA_INTERVALO_MAX-RUA_INTERVALO_MIN);
+    const base=pontoDeNascimento();
+    // Sem ponto aceitável a dupla não nasce, e a próxima janela é CURTA: senão um jogador parado em
+    // campo aberto no meio do mapa ficaria sem polícia nenhuma por dois minutos.
+    if(base){
+      nascerDupla(agora,base);
+      proximaDupla=RUA_INTERVALO_MIN+Math.random()*(RUA_INTERVALO_MAX-RUA_INTERVALO_MIN);
+    }else proximaDupla=8;
   }
   for(let i=policiaisRua.length-1;i>=0;i--){
     const pol=policiaisRua[i];
@@ -1065,7 +1131,13 @@ export function jogadorComMochila(){return !jogadorRendido&&inventario.pacote>0}
 // polícia sem fechar ciclo (Police já importa `inventario` de Economy).
 // Beber no bar recupera vida: é a única cura instantânea do jogo — a regeneração normal só corre em
 // patrulha (ver o fim de `atualizarPolicia`), então quem apanha em perseguição não tem como sarar.
-export function curarJogador(){if(jogadorRendido)return false;saudeJogador=JOGADOR_HP_MAX;atualizarHudSaude();return true}
+export function curarJogador(pontos){
+  if(jogadorRendido||saudeJogador>=JOGADOR_HP_MAX)return false;
+  // Sem argumento cura tudo (a dose do bar); com argumento cura o tanto pedido (comida e água do
+  // Mercado). Um só caminho pra mexer na vida do jogador evita duas fontes de verdade pro mesmo HP.
+  saudeJogador=Math.min(JOGADOR_HP_MAX,pontos?saudeJogador+pontos:JOGADOR_HP_MAX);
+  atualizarHudSaude();return true;
+}
 export function jogadorPrecisaCurar(){return !jogadorRendido&&saudeJogador<JOGADOR_HP_MAX}
 // Vender na biqueira é venda NA RUA, à vista de todo mundo: sobe uma estrela.
 export function denunciarBoca(){somarProcurado(1);mostrarAviso('Venderam na tua cara. A polícia soube.',2600)}

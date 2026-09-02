@@ -14,8 +14,8 @@
 export const POLOS={
   // Oeste — insumo barato, mas longe: terra e vaso na fonte.
   fazenda:{x:-94,z:-53,raio:5.5,rotulo:'Depósito Rural',cor:'#c8a24a'},
-  // Centro/Norte — o mercadinho que já existia no bairro: caro, porém seguro e no caminho.
-  sementes:{x:0,z:-18,raio:4.5,rotulo:'Mercado de Sementes',cor:'#5ec2ff'},
+  // Centro/Norte, no alto do morro — comida e água. A semente saiu daqui e foi pra biqueira.
+  sementes:{x:0,z:-18,raio:4.5,rotulo:'Mercadinho (comida e água)',cor:'#5ec2ff'},
   // Nordeste — munição e colete: o polo que sustenta o sistema de combate.
   // `predio` é onde o barracão é construído; (x,z) é o BALCÃO, onde o jogador para pra comprar. Os dois
   // precisam ser separados: com o ponto de interação no centro do prédio ele cai dentro da parede e vira
@@ -38,7 +38,15 @@ export const PRECOS={
   // Cada insumo tem UM ponto de venda: vaso e terra na fazenda, semente no mercado. Os preços de
   // vaso/terra no mercado e de semente no receptador saíram junto com os botões — preço sem loja
   // que o use é a próxima coisa a divergir sem ninguém notar.
-  mercadoSemente:34,
+  // Semente saiu do Mercado e foi pra BIQUEIRA: semente se compra na boca, não no mercadinho. O
+  // preço não muda — o que muda é o lugar, e com ele o desenho do trajeto.
+  biqueiraSemente:34,
+  // O Mercado virou o que mercadinho é: comida e água. É cura BARATA E PARCIAL, ao lado da dose do
+  // bar (R$30, cura tudo) — um é o remendo do dia a dia, o outro é o conserto depois de apanhar.
+  // Marmita paga ~0,30 por ponto de vida e a dose do bar ~0,30 também no pior caso: quem está quase
+  // cheio come, quem está quase morto bebe.
+  mercadoMarmita:12,mercadoMarmitaCura:40,
+  mercadoAgua:5,mercadoAguaCura:15,
   armas:{
     pistola:{arma:0,municao:35,qtd:12},// arma:0 — já vem com o jogador, nunca aparece à venda
     rifle:{arma:420,municao:60,qtd:15},
@@ -53,6 +61,11 @@ export const PRECOS={
   // 34) e rende 2-3 pacotes. A R$26, dois pacotes dão R$52: lucro de R$4, o mínimo que ainda é lucro.
   // Subir isso mataria o Receptador, que é o pagamento de verdade e o que obriga a travessia.
   biqueiraPacote:26,
+  // ===== ENTREGA NA LAJE =====
+  // Paga MAIS que o Receptador porque o preço é o risco: pra entregar você fica de pé em cima de um
+  // telhado, no lugar mais visível do morro, exatamente onde o helicóptero enxerga. É o que dá função
+  // aos telhados agora que eles viraram laje contínua.
+  entregaLaje:58,
   // O bar cura por inteiro. R$30 é acima da diária da roça (R$25) de propósito: apanhar tem que
   // custar mais que um turno de trabalho, senão levar tiro vira só um pedágio.
   barDose:30,
