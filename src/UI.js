@@ -7,8 +7,9 @@ import{casasPos,refugios,BAR,BIQUEIRA,clienteLaje}from'./WorldGenerator.js';
 import{plantas,lojaPos,receptadorPos,fazendaPos,armasPos}from'./Economy.js';
 import{POLOS}from'./Poles.js';
 import{npcs}from'./NPCs.js';
+import{ALT_CANO,ALT_TORSO}from'./Combate.js';
 import{amostrarCelulasBloqueadas}from'./NavMesh.js';
-import{heli,policiais,policia}from'./Police.js';
+import{heli,policiais,policia,__estadoDeCombate as estadoDeCombate}from'./Police.js';
 
 // ===== RADAR (minimapa estilo GTA): canvas 2D separado, não usa o pipeline WebGL — custo desprezível por frame.
 const radarCanvas=document.getElementById('radar'),radarCtx=radarCanvas.getContext('2d');
@@ -85,7 +86,22 @@ function textoDoPainel(){
     `${String(c.pedestres).padStart(4)}  degraus (só NPC)`,
     `${String(c.andaveis).padStart(4)}  superfícies andáveis`,
     '',`${String(policiais.length).padStart(4)}  policiais em campo`,
-    `${String(npcs.length).padStart(4)}  moradores`].join('\n');
+    `${String(npcs.length).padStart(4)}  moradores`,
+    ...linhasDeCombate()].join('\n');
+}
+// ===== DEBUG DA TROCAÇÃO =====
+// A troca é um sistema de tempo real com sorteio dentro: olhar o código não diz se um policial está
+// mirando, avançando ou escondido. Aqui cada um mostra o papel, a distância, o erro de mira do último
+// tiro, se achou cobertura e quanto falta pro próximo disparo — que é o suficiente pra explicar
+// qualquer comportamento estranho sem adivinhação.
+function linhasDeCombate(){
+  const est=estadoDeCombate();
+  if(!est.length)return[];
+  const l=['','TROCAÇÃO  papel      dist   erro   tiros  cob'];
+  for(const p of est)l.push(
+    `          ${String(p.papel||'-').padEnd(10)}${String(p.dist).padStart(5)}m`+
+    `${String(p.espalhamento.toFixed(3)).padStart(7)}${String(p.tiros).padStart(7)}   ${p.temCobertura?'S':'-'}`);
+  return l;
 }
 function construirDebugColisao(){
   if(debugConstruido)return;debugConstruido=true;
@@ -102,8 +118,30 @@ export function atualizarDebugNavMesh(){
   const agora=performance.now()/1000;
   if(agora<proximaAmostraNav)return;
   proximaAmostraNav=agora+.25;
+  // 4x por segundo, não por quadro: o painel é texto e o DOM é caro no celular.
+  painelColisores.textContent=textoDoPainel();
+  desenharLinhasDeCombate();
   navPontos.geometry.dispose();
   navPontos.geometry=new THREE.BufferGeometry().setFromPoints(amostrarCelulasBloqueadas(player.position.x,player.position.z,20));
+}
+// Linhas da trocação: uma por policial vivo, do cano dele até para onde ele está mirando. Amarela =
+// vendo o jogador; laranja = indo pra última posição conhecida. É o jeito mais direto de ver "ele
+// ainda acha que estou ali".
+const linhasCombate=new THREE.Group();scene.add(linhasCombate);
+const matVendo=new THREE.LineBasicMaterial({color:0xffe17a});
+const matRastro=new THREE.LineBasicMaterial({color:0xff8a3a});
+function desenharLinhasDeCombate(){
+  for(const o of linhasCombate.children)o.geometry.dispose();
+  linhasCombate.clear();
+  linhasCombate.visible=debugGroup.visible;
+  if(!debugGroup.visible)return;
+  for(const pol of policiais){
+    if(!pol.vivo)continue;
+    const a=new THREE.Vector3(pol.pos.x,pol.grupo.position.y+ALT_CANO,pol.pos.z);
+    const b=new THREE.Vector3(player.position.x,player.position.y+ALT_TORSO,player.position.z);
+    linhasCombate.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([a,b]),
+      pol.viu?matVendo:matRastro));
+  }
 }
 const debugBtn=document.getElementById('debugBtn');
 const painelColisores=document.createElement('pre');
