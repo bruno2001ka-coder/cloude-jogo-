@@ -106,7 +106,18 @@ function linhasDeCombate(){
 function construirDebugColisao(){
   if(debugConstruido)return;debugConstruido=true;
   for(const box of obstaculos)debugGroup.add(new THREE.Box3Helper(box,0xff2222));
-  for(const surf of superficiesAndaveis)debugGroup.add(new THREE.Box3Helper(new THREE.Box3().setFromObject(surf),0x33ff55));
+  // A superfície andável virou MALHA FUNDIDA (todas as lajes do morro numa geometria só), e a caixa
+  // de contorno dela é o bairro inteiro: o debug desenhava uma gaiola verde de 100 m atravessando o
+  // céu, que não informa nada e ainda escondia o resto. Malha fundida se desenha em ARAME, que mostra
+  // onde cada laje realmente está; malha solta (a laje de refúgio) continua com a caixa.
+  for(const surf of superficiesAndaveis){
+    const geo=surf.geometry;
+    if(geo&&geo.getAttribute('position')?.count>200){
+      const arame=new THREE.Mesh(geo,new THREE.MeshBasicMaterial({color:0x33ff55,wireframe:true}));
+      arame.position.copy(surf.position);arame.quaternion.copy(surf.quaternion);arame.scale.copy(surf.scale);
+      debugGroup.add(arame);
+    }else debugGroup.add(new THREE.Box3Helper(new THREE.Box3().setFromObject(surf),0x33ff55));
+  }
   debugGroup.add(new THREE.Box3Helper(jogadorBoxDebugTemp,0xffee33));
   navPontos=new THREE.Points(new THREE.BufferGeometry(),navMat);navPontos.frustumCulled=false;debugGroup.add(navPontos);
 }

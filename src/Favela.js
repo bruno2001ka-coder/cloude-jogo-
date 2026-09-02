@@ -93,7 +93,8 @@ export const lotes=[];
 const PROF=3.9;                       // profundidade da casa, da rua pro fundo
 const LARG_MIN=3.3,LARG_MAX=5.2;
 const FOLGA=.05;                      // respiro entre vizinhas na mesma fileira
-const ENCOSTO=.78;                    // quanto da AABB a vizinha pode invadir (parede dividida)
+const ENCOSTO=.88;                    // quanto do vão a vizinha pode invadir (parede dividida)
+const FOLGA_FATIA=.16;                // erro da aproximação do retângulo girado por 4 fatias
 // AABB de um retângulo w x d girado de `a`: é ela que decide o espaçamento e o recuo da rua.
 export const aabbGirada=(w,d,a)=>{const c=Math.abs(Math.cos(a)),s=Math.abs(Math.sin(a));
   return{W:w*c+d*s,D:w*s+d*c}};
@@ -115,6 +116,12 @@ export function retangulosSeTocam(a,b,folga=.15){
 // Distância do centro de uma AABB W x D até a borda dela NA DIREÇÃO (dx,dz). É a função suporte da
 // caixa, e é ela — não a meia-profundidade — que diz quanto a casa avança pra um lado qualquer.
 const suporteAABB=(W,D,dx,dz)=>(W/2)*Math.abs(dx)+(D/2)*Math.abs(dz);
+// A mesma pergunta, mas pro retângulo GIRADO: quanto a casa avança na direção (dx,dz)? Os eixos
+// próprios dela no mundo são (cos,-sen) e (sen,cos) — os mesmos de `noLote`.
+const suporteGirado=(larg,prof,giro,dx,dz)=>{
+  const c=Math.cos(giro),sn=Math.sin(giro);
+  return (larg/2)*Math.abs(dx*c-dz*sn)+(prof/2)*Math.abs(dx*sn+dz*c);
+};
 
 // Pendura lotes nos dois lados de uma curva.
 //
@@ -156,19 +163,22 @@ function pendurarLotes(curva,larguraDaVia,semente){
       const cardeal=Math.round(giroRua/(Math.PI/2))*(Math.PI/2);
       const giro=(giroRua+cardeal)/2;
       const{W,D}=aabbGirada(larg,PROF,giro);
-      const off=larguraDaVia/2+suporteAABB(W,D,nx,nz);
+      // O recuo é o quanto a CASA avança na direção da rua, mais a folga da aproximação por fatias.
+      //
+      // Ele já foi D/2 (errado: D é da AABB, alinhada ao mundo, e a rua aponta pra qualquer lado) e
+      // depois o suporte da AABB (certo, mas caro — a AABB é 57 cm maior que a casa de cada lado, e
+      // recuar por ela empurra a fileira inteira pra longe da rua). Agora que o COLISOR são fatias que
+      // seguem o retângulo girado, o recuo pode ser o do próprio retângulo: é onde a parede está.
+      //
+      // E não é PROF/2: a casa é torcida METADE do ângulo da rua, então ela não olha exatamente pra
+      // ela — chega a 22,5° de diferença, o que soma 71 cm ao avanço. Usar PROF/2 aqui derrubou a
+      // favela de 127 casas pra 6 num teste, porque toda casa invadia o próprio corredor.
+      const off=larguraDaVia/2+suporteGirado(larg,PROF,giro,nx,nz)+FOLGA_FATIA;
       lotes.push({x:p.x+nx*off,z:p.z+nz*off,giro,larg,prof:PROF,W,D,curva,u,lado,sem});
-      // Avança pelo quanto a AABB ocupa NA DIREÇÃO DA RUA — mesma conta, outro eixo — vezes ENCOSTO.
-      //
-      // O fator existe porque casa de favela DIVIDE PAREDE com a vizinha, e avançar pela AABB inteira
-      // deixava um vão de terra batida entre cada duas casas: de cima o morro lia como um loteamento
-      // de casas soltas, não como um morro. Encostando a 78% da AABB, as casas se tocam na tela.
-      //
-      // As AABBs passam a se sobrepor um pouco, e isso é INOFENSIVO aqui: elas são colisores, a união
-      // de dois blocos sólidos é um bloco sólido, e o corredor da rua continua garantido porque quem
-      // o garante é o RECUO (a outra direção), que não mudou. O que precisa ser vigiado é a porta, e
-      // ela tem regra própria na poda.
-      s+=2*suporteAABB(W,D,t.x,t.z)*ENCOSTO+FOLGA;
+      // Avança pelo que a casa ocupa NA DIREÇÃO DA RUA, vezes ENCOSTO. O fator existe porque casa de
+      // favela DIVIDE PAREDE com a vizinha, e avançar pelo vão inteiro deixava uma fresta de terra
+      // batida entre cada duas casas: de cima o morro lia como loteamento, não como morro.
+      s+=2*suporteGirado(larg,PROF,giro,t.x,t.z)*ENCOSTO+FOLGA;
     }
   }
 }
@@ -271,10 +281,13 @@ for(const{curva,meia}of corredores){
 // próprio corredor — a poda passou de 109 casas pra 8. O corredor é um TUBO de raio r em volta do
 // eixo da rua, e tubo se testa com distância, não com retângulo.
 function corredorInvadido(l){
-  const hw=l.W/2,hd=l.D/2;
+  // Distância ao RETÂNGULO GIRADO, que é onde a parede está de verdade agora que o colisor a segue por
+  // fatias. Contra a AABB o teste era conservador demais e sozinho derrubava a densidade do morro.
+  const c=Math.cos(l.giro),sn=Math.sin(l.giro),hw=l.larg/2+FOLGA_FATIA,hd=l.prof/2+FOLGA_FATIA;
   for(let i=0;i<amostrasCorredor.length;i+=3){
-    const px=amostrasCorredor[i],pz=amostrasCorredor[i+1],r=amostrasCorredor[i+2];
-    const dx=Math.max(0,Math.abs(px-l.x)-hw),dz=Math.max(0,Math.abs(pz-l.z)-hd);
+    const px=amostrasCorredor[i]-l.x,pz=amostrasCorredor[i+1]-l.z,r=amostrasCorredor[i+2];
+    const lx=px*c-pz*sn,lz=px*sn+pz*c;
+    const dx=Math.max(0,Math.abs(lx)-hw),dz=Math.max(0,Math.abs(lz)-hd);
     if(dx*dx+dz*dz<r*r)return true;
   }
   return false;
@@ -364,7 +377,18 @@ export function alturaDaLaje(l){return l.baseY+l.andares*ANDAR_ALT+.12}
     // A casa se assenta pela SOLEIRA, não pelo centro: numa encosta de 19° o centro pode estar mais
     // de um metro acima do terreno na frente da porta, e o passo do jogador é 0,22 m — a porta ficava
     // intransponível. Medido: 1,34 m de degrau na soleira antes desta correção.
-    l.baseY=obterElevacao(l.x+Math.sin(l.giro)*l.prof/2,l.z+Math.cos(l.giro)*l.prof/2);
+    //
+    // E pelo PONTO MAIS ALTO da soleira, não pelo ponto do meio dela. Com um ponto só, a casa afundava
+    // no barranco quando o terreno subia logo à frente: numa foto o térreo inteiro tinha sumido na
+    // terra e sobrava o telheiro saindo do chão, sem porta nenhuma embaixo. Sete amostras ao longo da
+    // fachada, e uma delas 1 m à frente da porta — a soleira fica acima de todas, e o desnível do
+    // outro lado quem resolve é o `afundar` da parede.
+    let soleira=-Infinity;
+    for(const u of[-.5,-.25,0,.25,.5])for(const fora of[0,1.0]){
+      const p=noLote(l,u*l.larg,l.prof/2+fora);
+      soleira=Math.max(soleira,obterElevacao(p.x,p.z));
+    }
+    l.baseY=soleira;
     l.andares=1+(l.sem%100<42?0:l.sem%100<82?1:2);// 42% térrea, 40% dois, 18% três
   }
   // Puxa a altura pra caber no pulo, do lote mais baixo pro mais alto.
@@ -474,11 +498,10 @@ function matrizEm(x,y,z,giro,escala=1){
   return _m.compose(_v,_q,_s);
 }
 
-const GEO_PORTA=new THREE.BoxGeometry(.95,2.05,.09);
 const GEO_JANELA=new THREE.BoxGeometry(.92,.78,.06);
 const GEO_MOLDURA=new THREE.BoxGeometry(1.06,.92,.05);
 const GEO_CAIXA_DAGUA=new THREE.CylinderGeometry(.36,.36,.6,10);
-[GEO_PORTA,GEO_JANELA,GEO_MOLDURA].forEach(uvPorMetro);
+[GEO_JANELA,GEO_MOLDURA].forEach(uvPorMetro);
 
 function construirCasa(l){
   const cor=CORES_PAREDE[l.sem%CORES_PAREDE.length];
@@ -507,53 +530,117 @@ function construirCasa(l){
     // barranco, e o que vira "pilar/parede de tijolo descendo até o chão" visto de fora.
     let alturaParede=alt,centroY=y+alt/2;
     if(andar===0){
+      // A PAREDE DESCE ATÉ ABAIXO DO CHÃO EM VOLTA, não até a quina do lote.
+      //
+      // Amostrar só as quatro quinas dava casa BOIANDO no barranco — e foi o que apareceu na foto: a
+      // fiada de tijolo terminando no ar, com o morro caindo por baixo. O terreno não para na divisa
+      // do lote; ele continua descendo, e num barranco de 19° cada metro a mais come 34 cm.
+      // Amostrando um anel 1,4 m PRA FORA da casa, a parede alcança o chão que o jogador vê ao lado
+      // dela. Custa 12 consultas de altura por casa, uma vez, no carregamento.
       let menor=y;
-      for(const sx of[-1,1])for(const sz of[-1,1]){
-        const p=noLote(l,sx*larg/2,sz*prof/2);
+      for(const sx of[-1,1])for(const sz of[-1,1])for(const fora of[0,1.4]){
+        const p=noLote(l,sx*(larg/2+fora),sz*(prof/2+fora));
         menor=Math.min(menor,obterElevacao(p.x,p.z));
       }
-      const afundar=Math.max(0,y-menor)+.15;
+      for(const[dx,dz]of[[0,prof/2+1.4],[0,-prof/2-1.4],[larg/2+1.4,0],[-larg/2-1.4,0]]){
+        const p=noLote(l,dx,dz);menor=Math.min(menor,obterElevacao(p.x,p.z));
+      }
+      const afundar=Math.max(0,y-menor)+.25;
       alturaParede=alt+afundar;centroY=y+alt/2-afundar/2;
     }
     caixa(pele,larg,alturaParede,prof,centro.x,centroY,centro.z,l.giro,false,MPM_PAREDE);
 
     // REMENDOS DE TIJOLO. Placas finas coladas na fachada, sorteadas por andar. Material sem tinta,
     // então o vermelho é vermelho em qualquer casa — e todas as placas do mapa viram um draw call.
+    // ===== AS QUATRO FACES, NÃO SÓ A DA RUA =====
+    // Remendo, infiltração e janela só existiam na fachada. De dentro do beco isso não aparece — mas
+    // do barranco ao lado a casa era um bloco liso de uma cor só, e foi assim que ela apareceu na
+    // foto. Casa de morro não tem "fundo": o vizinho de trás vê a mesma parede encardida que a rua vê.
+    //
+    // `ponto(u,fora)` devolve o mundo a partir de coordenadas DA FACE: u corre ao longo dela, `fora`
+    // afasta da parede. Com isso o mesmo código serve pras quatro sem repetir a conta do giro.
+    const faces=[
+      {giro:l.giro,          eixo:'z',sinal: 1,vao:larg,rua:true },// fachada, olhando a rua
+      {giro:l.giro+Math.PI,  eixo:'z',sinal:-1,vao:larg,rua:false},// fundo
+      {giro:l.giro+Math.PI/2,eixo:'x',sinal: 1,vao:prof,rua:false},// lateral direita
+      {giro:l.giro-Math.PI/2,eixo:'x',sinal:-1,vao:prof,rua:false},// lateral esquerda
+    ];
+    const pontoDaFace=(f,u,fora)=>f.eixo==='z'
+      ? noLote(l,u*f.sinal,f.sinal*(prof/2+fora))
+      : noLote(l,f.sinal*(larg/2+fora),-u*f.sinal);
+
     // REMENDOS. Numa parede rebocada é o tijolo aparecendo onde o reboco caiu; numa parede crua é o
     // contrário, a mancha de reboco de quem começou a rebocar e parou. Os dois lados da mesma moeda,
     // e é essa alternância que impede o morro de virar duas listas de casas iguais.
     const remendo=cru?reboco:tijolo;
-    const nRemendos=1+((l.sem>>(andar*3))%3);
-    for(let r=0;r<nRemendos;r++){
-      const h=hashInt(l.sem+andar*31,r*7);
-      const lw=.7+((h%100)/100)*1.3,lh=.5+(((h>>5)%100)/100)*1.1;
-      const px=(((h>>11)%100)/100-.5)*Math.max(.2,larg-lw-.3);
-      const py=y+.2+(((h>>17)%100)/100)*Math.max(.2,alt-lh-.4);
-      const p=noLote(l,px,prof/2+.025);
-      caixa(remendo,lw,lh,.05,p.x,py+lh/2,p.z,l.giro,false,MPM_PAREDE);
+    for(let fi=0;fi<faces.length;fi++){
+      const f=faces[fi];
+      const nRemendos=(l.sem>>(andar*3+fi))%3;// 0 a 2 por face: nem toda parede tem remendo
+      for(let r=0;r<nRemendos;r++){
+        const h=hashInt(l.sem+andar*31+fi*97,r*7);
+        const lw=.6+((h%100)/100)*Math.min(1.3,f.vao*.5),lh=.5+(((h>>5)%100)/100)*1.1;
+        const pu=(((h>>11)%100)/100-.5)*Math.max(.2,f.vao-lw-.3);
+        const py=y+.2+(((h>>17)%100)/100)*Math.max(.2,alt-lh-.4);
+        const p=pontoDaFace(f,pu,.025);
+        caixa(remendo,lw,lh,.05,p.x,py+lh/2,p.z,f.giro,false,MPM_PAREDE);
+      }
+      // Infiltração: faixa escura rente ao chão do andar, nas quatro faces. É o que dá o "pé sujo"
+      // que toda parede de alvenaria térrea tem.
+      const b=pontoDaFace(f,0,.02);
+      caixa(concreto,f.vao*.96,.35,.04,b.x,y+.17,b.z,f.giro);
     }
-    // Infiltração: faixa escura rente ao chão do andar. Concreto sem tinta, fina, colada na parede.
-    {const p=noLote(l,0,prof/2+.02);
-     caixa(concreto,larg*.96,.35,.04,p.x,y+.17,p.z,l.giro);}
 
-    // Porta só no térreo; janelas em todos os andares.
+    // Porta só no térreo, e só na fachada.
     if(andar===0){
+      // A PORTA VAI PELA FUSÃO, NÃO PELA INSTANCIAÇÃO — e isso foi medido, não escolhido.
+      //
+      // Instanciada, ela saía PRETA (RGB 1,1,1) numa fachada clara. O diagnóstico levou quatro passos:
+      // a malha estava no lugar (troquei o material por um MeshBasic vermelho e ela ficou vermelha);
+      // o material era o certo e estava íntegro (mapas carregados, uv1 presente, metalness efetiva
+      // 0,009); e não era sombra (desliguei projetar e receber, continuou preta). Ou seja: geometria
+      // certa, material certo, e zero luz chegando.
+      //
+      // A porta era a ÚNICA InstancedMesh do jogo com material PBR texturizado completo — todas as
+      // outras instâncias (janela, moldura, caixa d'água, poste, cadeira) usam material liso. Não
+      // fechei o mecanismo exato dentro do three; o que está medido é que a MESMA porta, no MESMO
+      // lugar, com o MESMO material, sai preta pelo caminho instanciado e sai de madeira pelo caminho
+      // fundido (54,38,30). Como são ~119 portas idênticas, fundir custa um draw call — o mesmo que
+      // instanciar — então não há o que defender do outro lado.
       const p=noLote(l,0,prof/2+.05);
-      instanciar('porta',GEO_PORTA,porta,matrizEm(p.x,y+1.025,p.z,l.giro));
+      caixa(porta,.95,2.05,.09,p.x,y+1.025,p.z,l.giro);
       // Telheiro de zinco sobre a porta, inclinado pra frente. É o detalhe que mais aparece na
       // referência depois do tijolo, e na horizontal não lê como telheiro — lê como prateleira.
-      const t=noLote(l,0,prof/2+.42);
-      const gt=new THREE.BoxGeometry(1.5,.06,.85);
+      //
+      // E de perfil ele LIA como prateleira mesmo: 6 cm de chapa saindo da parede sem nada segurando,
+      // visto de lado no barranco, é uma tábua flutuando. Chapa mais grossa e DUAS MÃOS-FRANCESAS
+      // embaixo resolvem — é o que sustenta um telheiro de verdade, e é o que o olho procura.
+      const t=noLote(l,0,prof/2+.47);
+      const gt=new THREE.BoxGeometry(1.6,.09,.95);
       uvPorMetro(gt);gt.rotateX(.2);
       gt.rotateY(l.giro);gt.translate(t.x,y+2.34,t.z);
       acumularPronta(telha,gt);
+      const madeira=matMadeira(0x6b4a30);
+      for(const sx of[-.62,.62]){
+        const m=noLote(l,sx,prof/2+.26);
+        const gm=new THREE.BoxGeometry(.07,.07,.62);
+        uvPorMetro(gm);gm.rotateX(-.72);// escora em diagonal, da parede pra ponta do telheiro
+        gm.rotateY(l.giro);gm.translate(m.x,y+2.12,m.z);
+        acumularPronta(madeira,gm);
+      }
     }
-    for(const lx of[-larg*.28,larg*.28]){
-      const p=noLote(l,lx,prof/2+.04);
-      const acesa=((hashInt(l.sem+andar,lx>0?1:0))%100)<22;
-      instanciar('moldura',GEO_MOLDURA,molduraJanela,matrizEm(p.x,y+alt*.62,p.z,l.giro));
-      instanciar(acesa?'janelaAcesa':'janela',GEO_JANELA,acesa?janelaAcesa:janela,
-        matrizEm(p.x,y+alt*.62,p.z+.03,l.giro));
+    // JANELAS: duas na fachada sempre; nas outras faces uma, e só se a parede tiver vão pra ela e o
+    // sorteio mandar. Janela em toda face de toda casa deixa o morro com cara de prédio de escritório
+    // — e são 119 casas x 3 andares, então o que se sorteia aqui aparece muito.
+    for(const f of faces){
+      const posicoes=f.rua?[-.28,.28]:(((hashInt(l.sem+andar,Math.round(f.giro*10))%100)<58&&f.vao>2.6)?[0]:[]);
+      for(const frac of posicoes){
+        const p=pontoDaFace(f,frac*f.vao,.04);
+        const acesa=((hashInt(l.sem+andar,Math.round(f.giro*10)+(frac>0?1:0)))%100)<22;
+        instanciar('moldura',GEO_MOLDURA,molduraJanela,matrizEm(p.x,y+alt*.62,p.z,f.giro));
+        const v=pontoDaFace(f,frac*f.vao,.07);
+        instanciar(acesa?'janelaAcesa':'janela',GEO_JANELA,acesa?janelaAcesa:janela,
+          matrizEm(v.x,y+alt*.62,v.z,f.giro));
+      }
     }
 
     y+=alt;
@@ -948,9 +1035,9 @@ for(const[chave,{geo,material,ms}]of instancias){
   for(let i=0;i<ms.length;i++)im.setMatrixAt(i,ms[i]);
   im.instanceMatrix.needsUpdate=true;
   im.receiveShadow=true;
-  // Só o que tem corpo projeta sombra. Porta, poste e caixa d'água passam; vidro, moldura, cadeira e
-  // perna de mesa não — sombra de peça de 5 cm ninguém enxerga, e o passe de sombra redesenha tudo.
-  im.castShadow=chave==='porta'||chave==='poste'||chave==='caixaDagua';
+  // Só o que tem corpo projeta sombra: poste e caixa d'água passam; vidro, moldura, cadeira e perna
+  // de mesa não — sombra de peça de 5 cm ninguém enxerga, e o passe de sombra redesenha tudo.
+  im.castShadow=chave==='poste'||chave==='caixaDagua';
   // A esfera de contorno do InstancedMesh sai da GEOMETRIA (que está na origem), não das instâncias:
   // com culling ligado, o bairro inteiro sumiria quando a origem saísse da tela.
   im.frustumCulled=false;
@@ -968,15 +1055,55 @@ instancias.clear();
 // exatamente com essa AABB que o lote se afastou da rua lá em `pendurarLotes`, então a largura livre
 // da rua já está garantida por construção. O refúgio é a exceção: ele registra a própria casca oca.
 export const CHAO_PROFUNDIDADE=4;
+
+// ===== UMA CAIXA SÓ NÃO SERVE: A CASA VIRA FATIAS =====
+// A AABB de uma casa girada é MUITO maior que a casa. Com 4,5 x 3,9 m a 22,5°, ela mede 5,65 x 5,33 —
+// sobram 57 cm de PAREDE INVISÍVEL de cada lado. Num beco de 2 m isso é metade da passagem, e o
+// sintoma que o Bruno fotografou é o mais feio possível: a câmera de terceira pessoa recua pra dentro
+// de uma parede que não existe e a tela inteira fica preta.
+//
+// A física do jogo é AABB pura, então a saída não é OBB — é picar. O retângulo girado é convexo, e um
+// convexo é bem aproximado por FATIAS alinhadas ao eixo: cada fatia cobre uma faixa de X e vai do
+// menor ao maior Z do polígono dentro dela. Com 4 fatias o erro cai de 57 cm pra ~14 cm, ao custo de
+// 4 caixas por casa em vez de 1 (a física custa 0,045 ms/quadro com 300 caixas; 500 continua barato).
+//
+// Como o polígono é CONVEXO, o mínimo e o máximo de Z dentro de uma faixa só podem estar nas bordas
+// da faixa ou num vértice dentro dela — não precisa recortar polígono, basta olhar esses pontos.
+const FATIAS_CASA=4;
+function fatiarRetangulo(cx,cz,w,d,giro){
+  const c=Math.cos(giro),sn=Math.sin(giro);
+  const cantos=[[-w/2,-d/2],[w/2,-d/2],[w/2,d/2],[-w/2,d/2]]
+    .map(([lx,lz])=>({x:cx+lx*c+lz*sn,z:cz-lx*sn+lz*c}));
+  const xs=cantos.map(p=>p.x),x0=Math.min(...xs),x1=Math.max(...xs);
+  const fatias=[];
+  for(let i=0;i<FATIAS_CASA;i++){
+    const a=x0+(x1-x0)*i/FATIAS_CASA,b=x0+(x1-x0)*(i+1)/FATIAS_CASA;
+    let minZ=Infinity,maxZ=-Infinity;
+    const anota=z=>{if(z<minZ)minZ=z;if(z>maxZ)maxZ=z};
+    for(const p of cantos)if(p.x>=a-1e-9&&p.x<=b+1e-9)anota(p.z);
+    for(let k=0;k<4;k++){
+      const p=cantos[k],q=cantos[(k+1)%4];
+      if(p.x===q.x)continue;
+      for(const xf of[a,b]){
+        const t=(xf-p.x)/(q.x-p.x);
+        if(t>=0&&t<=1)anota(p.z+(q.z-p.z)*t);
+      }
+    }
+    if(minZ<=maxZ)fatias.push({x0:a,x1:b,z0:minZ,z1:maxZ});
+  }
+  return fatias;
+}
 let colisoresCasa=0;
 for(const l of lotes){
   if(l.papel==='refugio')continue;
-  registrarCaixa(new THREE.Box3(
-    new THREE.Vector3(l.x-l.W/2,l.baseY-CHAO_PROFUNDIDADE,l.z-l.D/2),
-    // O topo para 2 cm ABAIXO da laje: a colisão horizontal do jogador começa em y+ALTURA_DEGRAU
-    // (0,216 m), então parado em cima da laje ele não encosta no próprio colisor da casa.
-    new THREE.Vector3(l.x+l.W/2,(l.lajeY??l.baseY+2.5)-.02,l.z+l.D/2)),'casa');
-  colisoresCasa++;
+  // O topo para 2 cm ABAIXO da laje: a colisão horizontal do jogador começa em y+ALTURA_DEGRAU
+  // (0,216 m), então parado em cima da laje ele não encosta no próprio colisor da casa.
+  const yBaixo=l.baseY-CHAO_PROFUNDIDADE,yAlto=(l.lajeY??l.baseY+2.5)-.02;
+  for(const f of fatiarRetangulo(l.x,l.z,l.larg,l.prof,l.giro)){
+    registrarCaixa(new THREE.Box3(new THREE.Vector3(f.x0,yBaixo,f.z0),
+                                  new THREE.Vector3(f.x1,yAlto,f.z1)),'casa');
+    colisoresCasa++;
+  }
 }
 // AS MURETAS NÃO VIRAM COLISOR, E ISSO É DECISÃO DE JOGO. Parapeito de 50 cm é alto demais pro passo
 // (0,216 m) e baixo demais pro pulo servir de algo: como colisor ele TRANCA o telhado, que é
