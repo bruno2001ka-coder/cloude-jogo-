@@ -113,6 +113,17 @@ export const coleteMat=new THREE.MeshStandardMaterial({color:0x14181f,roughness:
 // Faixa/ombreira um tico mais clara: sem ela o colete vira um bloco preto chapado contra a camisa escura.
 export const coleteFaixaMat=new THREE.MeshStandardMaterial({color:0x2b323d,roughness:.7});
 
+// ===== GRAFFITE =====
+// Decalque: um plano fino colado na fachada, com o traço no ALFA. É o jeito de ter pichação sem uma
+// segunda textura por casa — o atlas tem 4 tags e cada parede escolhe uma pela UV da própria
+// geometria (ver `geometriaGraffite` no WorldGenerator), então as 4 dividem UMA textura e UM material.
+// `depthWrite:false` + polygonOffset: o plano fica a 3 cm da parede e sem isso brigaria por z-fighting
+// com ela nas distâncias em que o buffer de profundidade perde precisão.
+const texGraffite=tex('assets/tex/graffite.png',true);
+export const graffiteMat=new THREE.MeshStandardMaterial({
+  map:texGraffite,transparent:true,alphaTest:.06,roughness:.95,metalness:0,
+  depthWrite:false,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2});
+
 // Mochila dos pacotes: lona escura esverdeada com detalhe mais claro, pra ler como mochila e não
 // como o colete (que é preto-azulado). A diferença de tom é o que deixa distinguir os dois de longe.
 export const mochilaMat=new THREE.MeshStandardMaterial({color:0x2f3a28,roughness:.85});

@@ -5,10 +5,21 @@ import{scene,camera}from'./core.js';
 import{ground}from'./Terrain.js';
 import{obstaculos,superficiesAndaveis}from'./Physics.js';
 import{criarSombraContato,folhaMat,folhaClara}from'./Materials.js';
-import{criarEsconderijo,refugioEmQueEsta,alternarPortaRefugio,porteiraFazenda,alternarPorteira,pertoDaPorteira}from'./WorldGenerator.js';
+import{criarEsconderijo,refugioEmQueEsta,alternarPortaRefugio,porteiraFazenda,alternarPorteira,pertoDaPorteira,BAR,BIQUEIRA}from'./WorldGenerator.js';
 import{player}from'./Player.js';
 import{POLOS,PRECOS}from'./Poles.js';
 import{ARMAS,ORDEM_ARMAS,equiparArma}from'./Weapons.js';
+// ===== GANCHOS DA POLÍCIA (saúde e procurado) =====
+// NÃO dá pra importar Police aqui. Police já importa `inventario` deste módulo, e importar de volta
+// fecha o ciclo com a Economy avaliando DEPOIS: `inventario` é uma const, e const acessada antes da
+// inicialização lança — foi exatamente isto que aconteceu na primeira tentativa
+// ("Cannot access 'inventario' before initialization"), e é o mesmo TDZ que já travou o jogo uma vez.
+// Então a dependência anda no sentido que já existe: Police REGISTRA os ganchos ao ser avaliado.
+// Os no-op de partida deixam o bar e a biqueira funcionarem (sem curar/denunciar) mesmo se a polícia
+// não tiver carregado — degradação silenciosa é melhor que botão que lança.
+let ganchosPolicia={curar:()=>false,precisaCurar:()=>false,denunciar:()=>{}};
+export function registrarGanchosPolicia(g){ganchosPolicia={...ganchosPolicia,...g}}
+const jogadorPrecisaCurar=()=>ganchosPolicia.precisaCurar();
 
 export let dinheiro=1000;
 // `municao` e `colete` são consumidos pelo sistema de combate (Police.js). Ficam no inventário, e não
@@ -119,6 +130,11 @@ export function contextoAtual(){
   // e só enquanto o jogador está parado no balcão.
   if(distXZ(p,fazendaPos)<POLOS.fazenda.raio)return{tipo:'fazenda',chave:'fazenda'+esperaDaDiaria()};
   if(distXZ(p,armasPos)<POLOS.armas.raio)return{tipo:'armas'};
+  // Bar e biqueira ficam DEPOIS dos polos: os dois moram no morro, longe dos quatro, então não
+  // disputam contexto — a ordem aqui é só pra manter os pontos de compra e venda juntos no painel.
+  // A chave do bar carrega a vida porque o botão muda de "cheio" pra vendável quando o jogador apanha.
+  if(distXZ(p,{x:BAR.x,z:BAR.z})<BAR.raio)return{tipo:'bar',chave:'bar'+(jogadorPrecisaCurar()?'F':'C')};
+  if(distXZ(p,{x:BIQUEIRA.x,z:BIQUEIRA.z})<BIQUEIRA.raio)return{tipo:'biqueira',chave:'biqueira'+inventario.pacote};
   const plantaProxima=plantas.find(pl=>!pl.colhida&&Math.hypot(pl.x-p.x,pl.z-p.z)<1.6);
   if(plantaProxima)return{tipo:'planta',planta:plantaProxima};
   return null;
@@ -159,6 +175,27 @@ export function trabalharNaRoca(){
   return true;
 }
 export function venderPacotes(){if(inventario.pacote>0){dinheiro+=inventario.pacote*PRECOS.receptadorPacote;inventario.pacote=0;atualizarStatusEconomia();renderizarAcoes();renderizarInventario()}}
+// ===== BIQUEIRA: vender no morro =====
+// Paga menos que o Receptador E sobe o procurado. É venda na rua, à vista: a polícia fica sabendo.
+// A conta está em PRECOS — a R$26 dois pacotes cobrem o ciclo de R$48 com R$4 de sobra, que é o
+// mínimo que ainda é lucro. O Receptador continua sendo o pagamento de verdade, e é o que mantém a
+// travessia do mapa (que é o miolo do risco do jogo) valendo a pena.
+export function venderNaBiqueira(){
+  if(inventario.pacote<=0)return;
+  dinheiro+=inventario.pacote*PRECOS.biqueiraPacote;inventario.pacote=0;
+  ganchosPolicia.denunciar();
+  atualizarStatusEconomia();renderizarAcoes();renderizarInventario();
+}
+// ===== BAR: a única cura instantânea =====
+// A regeneração normal só corre em patrulha (Police.js), então quem apanha no meio de uma
+// perseguição não tem como sarar. R$30 é acima da diária da roça de propósito: apanhar precisa
+// custar mais que um turno de trabalho, senão levar tiro vira pedágio.
+export function beberNoBar(){
+  if(dinheiro<PRECOS.barDose||!jogadorPrecisaCurar())return;
+  if(!ganchosPolicia.curar())return;
+  dinheiro-=PRECOS.barDose;
+  atualizarStatusEconomia();renderizarAcoes();
+}
 export function plantarAqui(){
   const alvo=calcularAlvoPlantio();
   if(inventario.vaso>0&&inventario.terra>0&&inventario.semente>0&&alvo&&alvo.valido){
@@ -312,6 +349,23 @@ export function renderizarAcoes(){
     // Só ESCOAMENTO. A venda de semente saiu daqui pra semente ter um ponto único (o Mercado): com
     // dois pontos vendendo, o receptador virava atalho e o trajeto até o centro deixava de existir.
     const b2=document.createElement('button');b2.textContent=`Vender ${inventario.pacote} pacote(s) (+R$${inventario.pacote*PRECOS.receptadorPacote})`;b2.disabled=inventario.pacote<=0;b2.onclick=venderPacotes;acaoPanel.appendChild(b2);
+    acaoPanel.style.display='flex';
+  }else if(tipo==='bar'){
+    const b=document.createElement('button');
+    const precisa=jogadorPrecisaCurar();
+    b.textContent=precisa?`🍺 Dose (R$${PRECOS.barDose}) — cura tudo`:'🍺 Você está inteiro';
+    b.disabled=!precisa||dinheiro<PRECOS.barDose;
+    b.onclick=beberNoBar;acaoPanel.appendChild(b);
+    acaoPanel.style.display='flex';
+  }else if(tipo==='biqueira'){
+    const b=document.createElement('button');
+    b.textContent=`📦 Vender ${inventario.pacote} na boca (+R$${inventario.pacote*PRECOS.biqueiraPacote}) ⚠`;
+    b.disabled=inventario.pacote<=0;
+    b.onclick=venderNaBiqueira;acaoPanel.appendChild(b);
+    const aviso=document.createElement('span');
+    aviso.textContent=`Paga menos que o receptador (R$${PRECOS.receptadorPacote}) e a polícia fica sabendo.`;
+    aviso.style.cssText='font-size:11px;opacity:.75;align-self:center';
+    acaoPanel.appendChild(aviso);
     acaoPanel.style.display='flex';
   }else if(tipo==='planta'){
     const nomes=['Broto','Vegetativa','Flora (pronta)'],pronta=ctx.planta.estagio===2;

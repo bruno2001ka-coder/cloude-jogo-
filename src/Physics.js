@@ -37,7 +37,70 @@ const caixasMoveis=new Set();
 let gradeMontada=false,carimbos=null,carimboAtual=0;
 const celulaDe=v=>Math.min(GRADE_DIM-1,Math.max(0,Math.floor(v/GRADE_CELULA)+GRADE_OFFSET));
 
+// ===== FUSÃO DE COLISORES (compound collider) =====
+// O bairro registrava 600 caixas, e 418 delas eram MURETA DE TELHADO: cada casa contribui até 4, e as
+// muretas de casas vizinhas na mesma fileira nascem coladas (6,12 m de largura num passo de 6 m, então
+// elas se sobrepõem) ou exatamente em cima uma da outra (a mureta lateral direita de uma casa e a
+// esquerda da vizinha ocupam o MESMO plano). Cada uma dessas era um colisor separado.
+//
+// A fusão aqui é EXATA, não aproximada: só junta caixas que coincidem em DOIS eixos e se tocam no
+// terceiro. É a diferença entre um compound collider e uma caixa envolvente — uma envolvente frouxa
+// inventaria volume sólido no ar, e no telhado isso vira parede invisível ou jogador presoseguindo.
+// Por isso a tolerância de face é 6 cm: muretas de casas com alturas diferentes (h vale 2,8 / 3,2 /
+// 3,6) ficam 40 cm fora de fase em Y e NÃO se fundem — se fundissem, a caixa resultante desceria
+// abaixo da laje da casa mais alta e prenderia quem estivesse andando no telhado dela.
+const TOL_FACE=.06,TOL_JUNTA=.30;
+const EIXOS=['x','y','z'];
+function contida(dentro,fora){
+  for(const k of EIXOS)if(dentro.min[k]<fora.min[k]-TOL_FACE||dentro.max[k]>fora.max[k]+TOL_FACE)return false;
+  return true;
+}
+// Fundível = casa em dois eixos e encosta no terceiro. Devolve o eixo solto, ou -1 se são a mesma
+// caixa, ou null se não dá.
+function eixoDeFusao(a,b){
+  let solto=-1;
+  for(let e=0;e<3;e++){
+    const k=EIXOS[e];
+    if(Math.abs(a.min[k]-b.min[k])<=TOL_FACE&&Math.abs(a.max[k]-b.max[k])<=TOL_FACE)continue;
+    // COLISOR DE PAREDE PODE DESCER, NUNCA SUBIR. Duas paredes vizinhas de mesma altura tinham a
+    // base em cotas diferentes — cada casa se assenta no terreno esticando a parede pra BAIXO até o
+    // canto mais fundo do lote (ver `afundar`), e no morro isso muda de casa pra casa. Exigir as
+    // duas faces em Y impedia a fusão de um quarteirão inteiro por causa de uma diferença que está
+    // toda ENTERRADA. Casar só o topo e unir pra baixo resolve, e é seguro: o volume extra fica
+    // dentro do terreno. Unir pra CIMA é que não pode — subiria acima da laje da casa mais baixa e
+    // prenderia quem estivesse andando no telhado dela.
+    if(k==='y'&&Math.abs(a.max.y-b.max.y)<=TOL_FACE)continue;
+    if(solto>=0)return null;// dois eixos soltos: juntar criaria volume que não existe
+    solto=e;
+  }
+  if(solto<0)return -1;
+  const k=EIXOS[solto];
+  return Math.max(a.min[k],b.min[k])-Math.min(a.max[k],b.max[k])<=TOL_JUNTA?solto:null;
+}
+let otimizado=false;
+function otimizarObstaculos(){
+  otimizado=true;
+  // Roda em passadas: fundir A com B pode deixar A colada em C. Para quando uma passada não muda nada.
+  for(let passada=0;passada<6;passada++){
+    let mudou=false;
+    for(let i=0;i<obstaculos.length;i++){
+      const a=obstaculos[i];
+      if(caixasMoveis.has(a))continue;// porta/porteira trocam de conteúdo: fundir congelaria o buraco
+      for(let j=i+1;j<obstaculos.length;j++){
+        const b=obstaculos[j];
+        if(caixasMoveis.has(b))continue;
+        const eixo=contida(b,a)?-1:eixoDeFusao(a,b);
+        if(eixo===null)continue;
+        if(eixo>=0)a.union(b);
+        obstaculos.splice(j,1);j--;mudou=true;
+      }
+    }
+    if(!mudou)break;
+  }
+}
+
 function montarGrade(){
+  if(!otimizado)otimizarObstaculos();
   gradeMontada=true;
   gradeBaldes.fill(undefined);
   obstaculosMoveis.length=0;
@@ -58,10 +121,10 @@ function montarGrade(){
 export function marcarObstaculoMovel(box){caixasMoveis.add(box);gradeMontada=false;return box}
 // Um obstáculo registrado depois da grade montada entraria invisível pra broadphase — falha silenciosa,
 // das piores de achar. Por isso `registrarObstaculo` invalida a grade.
-export function invalidarGradeDeObstaculos(){gradeMontada=false}
+export function invalidarGradeDeObstaculos(){gradeMontada=false;otimizado=false}
 
 export function registrarObstaculo(meshParede){
-  gradeMontada=false;
+  gradeMontada=false;otimizado=false;
   // Atualiza a hierarquia antes de converter o espaço local para world space.
   meshParede.updateWorldMatrix(true,false);
   // A AABB é calculada somente da parede recebida, nunca do grupo/telhado.
@@ -77,8 +140,31 @@ export function registrarObstaculoPedestre(mesh){
   return box;
 }
 
+// Candidatas a uma CAIXA (não a um segmento): as células que o retângulo XZ cobre, mais as móveis.
+// Sem isto, todo teste de movimento — jogador, morador, policial, animal, a cada quadro — varria as
+// centenas de caixas do mapa inteiro. A grade já existia, mas SÓ o teste de segmento (bala, linha de
+// visão) usava ela; o de caixa, que é o que roda mais vezes por segundo, continuava linear.
+const _candidatasCaixa=[];
+function candidatasDaCaixa(minX,minZ,maxX,maxZ){
+  if(!gradeMontada)montarGrade();
+  _candidatasCaixa.length=0;
+  for(const b of obstaculosMoveis)_candidatasCaixa.push(b);
+  carimboAtual++;
+  const cx0=celulaDe(minX),cx1=celulaDe(maxX),cz0=celulaDe(minZ),cz1=celulaDe(maxZ);
+  for(let cx=cx0;cx<=cx1;cx++)for(let cz=cz0;cz<=cz1;cz++){
+    const balde=gradeBaldes[cx*GRADE_DIM+cz];if(!balde)continue;
+    for(let j=0;j<balde.length;j++){
+      const idx=balde[j];
+      if(carimbos[idx]===carimboAtual)continue;
+      carimbos[idx]=carimboAtual;
+      _candidatasCaixa.push(obstaculos[idx]);
+    }
+  }
+  return _candidatasCaixa;
+}
+
 export function caixaColideComObstaculos(box){
-  return obstaculos.some(o=>{
+  return candidatasDaCaixa(box.min.x,box.min.z,box.max.x,box.max.z).some(o=>{
     const overlapX=Math.min(o.max.x,box.max.x)-Math.max(o.min.x,box.min.x);
     const overlapY=Math.min(o.max.y,box.max.y)-Math.max(o.min.y,box.min.y);
     const overlapZ=Math.min(o.max.z,box.max.z)-Math.max(o.min.z,box.min.z);
@@ -97,12 +183,15 @@ function colideNaLista(lista,x,z,y,meiaLarg,meiaProf,altura){
 }
 
 export function colideObstaculoXZ(x,z,y,meiaLarg,meiaProf,altura){
-  return colideNaLista(obstaculos,x,z,y,meiaLarg,meiaProf,altura);
+  return colideNaLista(candidatasDaCaixa(x-meiaLarg,z-meiaProf,x+meiaLarg,z+meiaProf),
+                       x,z,y,meiaLarg,meiaProf,altura);
 }
 
-// Colisão de quem anda a pé: paredes E escadarias.
+// Colisão de quem anda a pé: paredes E escadarias. A lista de pedestres (os degraus) segue linear de
+// propósito: são ~130 caixas e só quem anda a pé consulta, enquanto os obstáculos são consultados
+// também por bala, câmera e jogador. Passar ela pra grade custaria uma segunda grade pra pouco.
 export function colidePedestreXZ(x,z,y,meiaLarg,meiaProf,altura){
-  return colideNaLista(obstaculos,x,z,y,meiaLarg,meiaProf,altura)
+  return colideObstaculoXZ(x,z,y,meiaLarg,meiaProf,altura)
       ||colideNaLista(obstaculosPedestres,x,z,y,meiaLarg,meiaProf,altura);
 }
 

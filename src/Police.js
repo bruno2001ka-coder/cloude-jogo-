@@ -41,7 +41,7 @@ import{player,zonasDeAcertoJogador,PLAYER_HEIGHT,encararDirecao,definirAnimacaoT
 import{ORDEM_ARMAS,armaEquipada,idArmaEquipada,equiparArma,obterBocaDaArma,direcaoComDispersao}from'./Weapons.js';
 import{estaEscondido,refugioEmQueEsta,refugios}from'./WorldGenerator.js';
 import{colidePedestre,waypointsVielas}from'./NPCs.js';
-import{plantas,confiscarPlanta,aplicarMulta,inventario,atualizarStatusEconomia,isInventarioAberto}from'./Economy.js';
+import{plantas,confiscarPlanta,aplicarMulta,inventario,atualizarStatusEconomia,isInventarioAberto,registrarGanchosPolicia}from'./Economy.js';
 import{dispararBala,atualizarBalas,limparBalas}from'./Bullets.js';
 import{aplicarDano,renderizarVidaJogador,criarBarraMundo}from'./HealthBar.js';
 import{droneState,miraState}from'./Camera.js';
@@ -1060,6 +1060,19 @@ export function jogadorComColete(){return !jogadorRendido&&(armaduraJogador>0||i
 // A mochila é o FLAGRANTE: aparece enquanto houver pacote e é vendo ela que a polícia decide
 // abordar (`chamaAtencao`). Rendido, some junto com a carga apreendida.
 export function jogadorComMochila(){return !jogadorRendido&&inventario.pacote>0}
+// ===== GANCHOS DO BAR E DA BIQUEIRA =====
+// Ficam aqui porque saúde e procurado moram aqui, e Economy não pode importar o estado interno da
+// polícia sem fechar ciclo (Police já importa `inventario` de Economy).
+// Beber no bar recupera vida: é a única cura instantânea do jogo — a regeneração normal só corre em
+// patrulha (ver o fim de `atualizarPolicia`), então quem apanha em perseguição não tem como sarar.
+export function curarJogador(){if(jogadorRendido)return false;saudeJogador=JOGADOR_HP_MAX;atualizarHudSaude();return true}
+export function jogadorPrecisaCurar(){return !jogadorRendido&&saudeJogador<JOGADOR_HP_MAX}
+// Vender na biqueira é venda NA RUA, à vista de todo mundo: sobe uma estrela.
+export function denunciarBoca(){somarProcurado(1);mostrarAviso('Venderam na tua cara. A polícia soube.',2600)}
+// Entrega os ganchos pra Economy no momento em que este módulo é avaliado. É o sentido de
+// dependência que já existia (Police -> Economy); o contrário fecharia ciclo e explodiria no TDZ
+// da const `inventario`.
+registrarGanchosPolicia({curar:curarJogador,precisaCurar:jogadorPrecisaCurar,denunciar:denunciarBoca});
 export function estadoPoliciaParaSave(){return{procurado:policia.procurado,jaFoiPreso}}
 export function aplicarEstadoPoliciaDoSave(s){
   try{
