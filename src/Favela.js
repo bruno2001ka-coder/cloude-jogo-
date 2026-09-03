@@ -871,7 +871,7 @@ function postesDaVia(curva,passo){
 // porta gira, e geometria fundida não gira.
 import{registrarObstaculo,registrarCaixa,marcarSemFusao,marcarObstaculoMovel,superficiesAndaveis}from'./Physics.js';
 
-export const ESP_PAREDE=.18,PORTA_ALTURA=2.35,VAO_PORTA=1.8,PORTA_ABERTA_RAD=1.9;
+export const ESP_PAREDE=.18,PORTA_ALTURA=2.55,VAO_PORTA=1.8,PORTA_ABERTA_RAD=1.9;
 export const refugios=[];
 const refugioMat=new THREE.MeshStandardMaterial({color:0xb5342a,roughness:.7,emissive:0x5a1712,emissiveIntensity:.35});
 // Verde da casa de cliente, na mesma cor da zona de entrega (DeliveryPoints): é o que liga a placa
