@@ -55,6 +55,8 @@ export const PRECOS={
   },
   armasColete:70,
   receptadorPacote:40,
+  // Receptadores das casas pagam menos: são pontos alternativos e não substituem o polo principal.
+  entregaCasaPacote:10,
   // ===== BIQUEIRA E BAR (no morro) =====
   // A biqueira paga MENOS que o Receptador e sobe o procurado: é a troca "não atravessa o mapa, mas
   // a polícia fica sabendo". O número não é solto — um ciclo custa R$48 (vaso 8 + terra 6 + semente

@@ -386,7 +386,8 @@ export function renderizarAcoes(){
     acaoPanel.style.display='flex';
   }else if(tipo==='entregaCasa'){
     const quantos=inventario.pacote;
-    const b=document.createElement('button');b.textContent=`📦 Entregar ${quantos} pacote(s) (+R${quantos*PRECOS.receptadorPacote})`;b.disabled=quantos<=0;b.onclick=()=>{dinheiro+=quantos*PRECOS.receptadorPacote;inventario.pacote=0;atualizarStatusEconomia();renderizarAcoes();renderizarInventario()};acaoPanel.appendChild(b);
+    const valor=quantos*PRECOS.entregaCasaPacote;
+    const b=document.createElement('button');b.textContent=`📦 Entregar ${quantos} pacote(s) (+R${valor})`;b.disabled=quantos<=0;b.onclick=()=>{dinheiro+=quantos*PRECOS.entregaCasaPacote;inventario.pacote=0;atualizarStatusEconomia();renderizarAcoes();renderizarInventario()};acaoPanel.appendChild(b);
     const aviso=document.createElement('span');aviso.textContent='Receptador aguardando na entrada da casa';aviso.style.cssText='font-size:11px;opacity:.75;align-self:center';acaoPanel.appendChild(aviso);acaoPanel.style.display='flex';
   }else if(tipo==='receptador'){
     // Só ESCOAMENTO. A venda de semente saiu daqui pra semente ter um ponto único (o Mercado): com
