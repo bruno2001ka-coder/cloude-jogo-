@@ -923,6 +923,12 @@ function construirCasaOca(l){
   const c=P(0,0);
   const laje=pecaSolta(new THREE.BoxGeometry(larg+.14,.12,prof+.14),telha,c.x,y0+alt+.06,c.z,l.giro,g);
   superficiesAndaveis.push(laje);
+  // Piso interno nivelado: sem ele o jogador caminhava sobre o relevo irregular dentro da casa e a
+  // altura mudava de um canto para outro. O topo fica exatamente na cota da soleira, então a entrada
+  // continua sem degrau e todos os esconderijos têm o mesmo chão plano por dentro.
+  const piso=pecaSolta(new THREE.BoxGeometry(larg-ESP_PAREDE*2,.12,prof-ESP_PAREDE*2),matConcreto,
+    c.x,y0-.06,c.z,l.giro,g);
+  superficiesAndaveis.push(piso);
   for(const[dx,dz,mw,md]of[[0,prof/2,larg+.14,ESP_MURETA],[0,-prof/2,larg+.14,ESP_MURETA],
                             [larg/2,0,ESP_MURETA,prof+.14],[-larg/2,0,ESP_MURETA,prof+.14]]){
     const p=P(dx,dz);pecaSolta(new THREE.BoxGeometry(mw,ALT_MURETA,md),telha,p.x,y0+alt+.12+ALT_MURETA/2,p.z,l.giro,g);
@@ -966,11 +972,9 @@ function construirCasaOca(l){
     papel:ehCliente?'cliente':'esconderijo',
     fechadaRad:l.giro,abertaRad:l.giro+PORTA_ABERTA_RAD,
     meiaLarg:larg/2-recuo,meiaProf:prof/2-recuo,larg,prof,alt,
-    // Onde o PISO realmente está. A casca não tem piso: o interior é o morro, e numa casa cravada no
-    // barranco ele desce bem abaixo da soleira — é justamente o que `afundar` mede pra a parede
-    // alcançar o chão. Sem este número, o teste de "está dentro" pela altura barrava o jogador que
-    // entrou de verdade (medido: 8 de 13 casas, com o chão até 1,57 m abaixo da soleira).
-    piso:y0-afundar};
+    // O piso interno é plano e tem o topo na soleira. A fundação continua descendo por fora para cobrir
+    // o barranco, mas isso não altera a cota de caminhada dentro do esconderijo.
+    piso:y0};
   refugios.push(r);
   l.lajeY=y0+alt+.12;
   return r;
