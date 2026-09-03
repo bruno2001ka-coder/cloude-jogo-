@@ -23,7 +23,7 @@ export const AJUSTE={
   // Posição e giro da ARMA na mão. Ela já nasce alinhada aos eixos do corpo; isto é o ajuste fino.
   arma:{x:0,y:0,z:0,giroX:0,giroY:0,giroZ:0},
   // COLETE: escala relativa ao tronco medido, e deslocamento em metros a partir do centro do peito.
-  colete:{escala:.65,x:0,y:0,z:0},
+  colete:{escala:.68,x:0,y:0,z:0},
 };
 
 // Nomes das animações dentro do GLB. Ficam aqui em cima porque são o contrato com o arquivo: trocar o
