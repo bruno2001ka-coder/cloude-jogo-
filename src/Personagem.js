@@ -22,8 +22,8 @@ export const AJUSTE={
   mochila:{escala:1,x:0,y:.02,z:-.12},
   // Posição e giro da ARMA na mão. Ela já nasce alinhada aos eixos do corpo; isto é o ajuste fino.
   arma:{x:0,y:0,z:0,giroX:0,giroY:0,giroZ:0},
-  // COLETE: escala relativa ao tronco medido, e deslocamento em metros a partir do centro do peito.
-  colete:{escala:.75,x:0,y:0,z:0},
+  // COLETE: escala relativa ao tronco medido; `largura` afina só as laterais, sem reduzir a altura.
+  colete:{escala:.75,largura:.88,x:0,y:0,z:0},
 };
 
 // Nomes das animações dentro do GLB. Ficam aqui em cima porque são o contrato com o arquivo: trocar o
@@ -248,7 +248,7 @@ function tentarVestirColete(){
   // A largura do tronco vem da profundidade medida, e não da medida em X, porque na altura do peito
   // os braços entram na conta. O 1,08 é a folga de vestir por cima da roupa.
   const alvo=m.profundidade*1.5*1.08*AJUSTE.colete.escala;
-  if(larg>0)coleteModelo.scale.multiplyScalar(alvo/larg);
+  if(larg>0){coleteModelo.scale.multiplyScalar(alvo/larg);coleteModelo.scale.x*=AJUSTE.colete.largura}
 
   // Centra no tronco. O deslocamento é medido em MUNDO e `position` vive no espaço do PAI, então quem
   // converte é a escala do pai — dividir pela escala do próprio modelo (o erro anterior) deixava o
