@@ -51,6 +51,25 @@ document.addEventListener('visibilitychange',()=>{if(document.hidden)clearKeys()
 const jumpBtn=document.getElementById('jumpBtn');
 jumpBtn.addEventListener('pointerdown',e=>{e.preventDefault();pularOuSubir()});
 
+// ===== CORRER NO CELULAR =====
+// A corrida existia só no Shift, e o jogo é jogado no telefone: na prática ninguém correu até hoje.
+// O botão é de SEGURAR, igual ao Shift — apertar pra ligar e apertar pra desligar deixaria o jogador
+// correndo sem querer depois de qualquer toque perdido, e correr muda a mira e a animação.
+//
+// `pointerup` e `pointercancel` no DOCUMENTO, não no botão: com o dedo deslizando pra fora do círculo
+// (o que acontece o tempo todo com o polegar apoiado), o `pointerup` sai em cima de outro elemento e
+// o botão nunca receberia a soltura — o jogador ficaria correndo pra sempre.
+const correrBtn=document.getElementById('correrBtn');
+if(correrBtn){
+  const pintar=()=>correrBtn.classList.toggle('correndo',inputState.correndo);
+  correrBtn.addEventListener('pointerdown',e=>{
+    e.preventDefault();correrBtn.setPointerCapture?.(e.pointerId);
+    inputState.correndo=true;pintar();
+  });
+  for(const ev of['pointerup','pointercancel'])
+    document.addEventListener(ev,()=>{if(inputState.correndo){inputState.correndo=false;pintar()}});
+}
+
 const stickBase=document.getElementById('stickBase'),stick=document.getElementById('stick');
 function updateJoy(e){const r=stickBase.getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2,max=r.width*.34;let dx=e.clientX-cx,dy=e.clientY-cy;const len=Math.hypot(dx,dy);if(len>max){dx=dx/len*max;dy=dy/len*max}inputState.joyX=dx/max;inputState.joyY=dy/max;stick.style.transform=`translate(${dx}px,${dy}px)`}
 function releaseJoy(e){if(inputState.joyId!==null&&e.pointerId!==inputState.joyId)return;inputState.joyX=0;inputState.joyY=0;inputState.joyActive=false;inputState.joyId=null;stick.style.transform='translate(0,0)'}

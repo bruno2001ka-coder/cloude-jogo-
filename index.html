@@ -68,17 +68,22 @@ if('serviceWorker' in navigator && location.protocol.indexOf('http')===0){
 canvas{display:block;width:100%;height:100%;touch-action:none}
 #vinheta{position:fixed;inset:0;z-index:4;pointer-events:none;background:radial-gradient(ellipse at center,rgba(0,0,0,0) 55%,rgba(5,8,4,.35) 100%)}
 #danoFlash{position:fixed;inset:0;z-index:15;pointer-events:none;background:radial-gradient(ellipse at center,rgba(200,20,20,.05) 40%,rgba(180,10,10,.55) 100%);opacity:0;transition:opacity .12s ease-out}
-#alertaPolicia{display:none;position:fixed;z-index:9;top:14px;left:50%;transform:translateX(-50%);padding:8px 16px;border-radius:20px;background:rgba(120,10,10,.85);border:1px solid #ff6b6b;color:#ffd6d6;font-size:12px;font-weight:800;letter-spacing:.08em;box-shadow:0 6px 18px rgba(0,0,0,.4);animation:piscaAlerta 1s infinite}
+#alertaPolicia{display:none;position:fixed;z-index:9;top:104px;left:50%;transform:translateX(-50%);padding:8px 16px;border-radius:20px;background:rgba(120,10,10,.85);border:1px solid #ff6b6b;color:#ffd6d6;font-size:12px;font-weight:800;letter-spacing:.08em;box-shadow:0 6px 18px rgba(0,0,0,.4);animation:piscaAlerta 1s infinite}
 /* PROCURANDO: perderam voce de vista mas a busca continua. Sem um estado visual proprio o jogador
    nao distingue "estao em cima de mim" de "estao me procurando", e metade do valor da busca some. */
 #alertaPolicia.procurando{background:rgba(120,72,10,.85);border-color:#f0b357;color:#ffe6bd;animation:pulsaBusca 1.15s ease-in-out infinite}
 @keyframes pulsaBusca{0%,100%{opacity:1;transform:translateX(-50%) scale(1)}50%{opacity:.45;transform:translateX(-50%) scale(.97)}}
 @keyframes piscaAlerta{0%,100%{opacity:1}50%{opacity:.45}}
-/* POR QUE A POLÍCIA ESTÁ DE OLHO. Sem isto, "a polícia está me seguindo" e "a polícia está passando"
+/* OS DOIS AVISOS FICAM ABAIXO DO HUD, não no topo. Estavam os dois em top:14px, a mesma altura da
+   caixa de status — e no celular, que é onde este jogo é jogado, a caixa é larga o bastante pra o
+   aviso cair EM CIMA dela: numa foto do Bruno o "Ficha quente · 4:19" tapava o dinheiro e as
+   sementes. 104 px passa da caixa (14 de topo + ~90 de altura) e 150 deixa o segundo aviso embaixo
+   do primeiro, pro caso raro dos dois aparecerem juntos.
+   POR QUE A POLÍCIA ESTÁ DE OLHO. Sem isto, "a polícia está me seguindo" e "a polícia está passando"
    são a mesma imagem na tela, e o jogador não tem como saber qual é — foi reclamado três vezes.
    Só aparece quando ela REALMENTE tem motivo, e diz qual. Silêncio aqui significa: quem passou do
    seu lado estava de ronda. */
-#atencaoPolicia{display:none;position:fixed;z-index:9;top:14px;left:50%;transform:translateX(-50%);padding:7px 14px;border-radius:18px;background:rgba(90,70,10,.88);border:1px solid #e0b45a;color:#ffeec2;font-size:11px;font-weight:800;letter-spacing:.06em;box-shadow:0 6px 18px rgba(0,0,0,.35)}
+#atencaoPolicia{display:none;position:fixed;z-index:9;top:150px;left:50%;transform:translateX(-50%);padding:7px 14px;border-radius:18px;background:rgba(90,70,10,.88);border:1px solid #e0b45a;color:#ffeec2;font-size:11px;font-weight:800;letter-spacing:.06em;box-shadow:0 6px 18px rgba(0,0,0,.35)}
 #refugioIndicador{display:none;position:fixed;z-index:9;top:56px;left:50%;transform:translateX(-50%);padding:6px 14px;border-radius:16px;background:rgba(20,30,50,.85);border:1px solid #6ba0ff;color:#c6dcff;font-size:11px;font-weight:800;letter-spacing:.06em}
 #avisoPolicia{display:none;position:fixed;z-index:11;top:96px;left:50%;transform:translateX(-50%);max-width:88vw;text-align:center;padding:10px 16px;border-radius:12px;background:rgba(10,14,10,.92);border:1px solid #e7c568;color:#f4f0da;font-size:12px;font-weight:600;line-height:1.4;box-shadow:0 8px 24px rgba(0,0,0,.4);transition:opacity .3s}
 #miraCombate{display:none;position:fixed;z-index:6;top:50%;left:50%;transform:translate(-50%,-50%);width:26px;height:26px;pointer-events:none;transition:width .1s,height .1s}
@@ -104,6 +109,12 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
 #armaMunicao{font-size:11px;font-weight:800;letter-spacing:.04em}
 /* Modo de mira: alternador do lado do gatilho (o polegar direito não consegue segurar dois botões).
    Fica à ESQUERDA do botão de tiro pra não competir com o dedo que atira. */
+/* CORRER NO CELULAR. Sprint só existia no Shift do teclado, e este jogo é jogado no telefone — ou
+   seja, a corrida simplesmente não existia pra quem joga de verdade. Fica à DIREITA do joystick, no
+   alcance do mesmo polegar que anda: correr é uma coisa que se faz ENQUANTO anda, e um botão do outro
+   lado da tela obrigaria a soltar a direção pra usar. */
+#correrBtn{display:flex;align-items:center;justify-content:center;position:fixed;z-index:8;left:206px;bottom:52px;width:74px;height:74px;border-radius:50%;border:2px solid #8fd0f0;background:rgba(14,40,58,.85);color:#bfe6fb;font-size:26px;box-shadow:0 6px 18px rgba(0,0,0,.35);touch-action:none;-webkit-tap-highlight-color:transparent;cursor:pointer;user-select:none}
+#correrBtn.correndo{background:rgba(60,150,205,.95);border-color:#d6f0ff;transform:scale(.94)}
 #miraBtn{display:none;align-items:center;justify-content:center;position:fixed;z-index:8;right:112px;bottom:160px;width:62px;height:62px;border-radius:50%;border:2px solid #7ee0a8;background:rgba(12,38,26,.85);color:#7ee0a8;font-size:24px;box-shadow:0 6px 18px rgba(0,0,0,.35);touch-action:none;-webkit-tap-highlight-color:transparent;cursor:pointer;user-select:none}
 #miraBtn.on{background:rgba(90,220,150,.92);color:#07231a;border-color:#d8ffe9}
 #miraBtn:active{transform:scale(.92)}
@@ -121,6 +132,33 @@ body.debug #debugBtn{display:block}
 #barraArmadura{position:absolute;left:0;top:0;height:3px;width:0;border-radius:2px;background:#5eb8ff;box-shadow:0 0 5px rgba(94,184,255,.7);transition:width .18s ease-out,opacity .2s}
 #textoVida{position:absolute;right:5px;top:-1px;font-size:9px;font-weight:800;letter-spacing:.04em;color:#f2f7ee;text-shadow:0 1px 2px rgba(0,0,0,.85);line-height:12px}
 #municaoHud{color:#ffc98a;font-weight:800}
+
+/* ===== ESTE BLOCO PRECISA SER O ÚLTIMO DA FOLHA =====
+   Ele estava no meio e o `#miraBtn` não obedecia: media query NÃO aumenta especificidade, e a regra
+   base do mira vinha depois — pela ordem do arquivo, ela ganhava. O botão continuava com 62 px onde
+   a versão deitada pede 54, e por isso encostava no de tiro. Regra nova daqui pra baixo volta a
+   quebrar isto em silêncio. */
+/* ===== CELULAR DEITADO: A COLUNA DA DIREITA NÃO CABE =====
+   Medido numa tela de 900 x 412, que é um celular na horizontal: o botão de trocar arma caía DENTRO
+   do radar (x 806-870 contra o radar em 756-886), e a barra de dicas passava por baixo do joystick,
+   do pular e do correr. Com 412 px de altura a coluna radar + arma + tiro + pular simplesmente não
+   tem onde caber no tamanho de tela cheia.
+   Abaixo de 520 px de altura tudo encolhe e se reorganiza: os alvos continuam com 54 px ou mais (o
+   mínimo pra o dedo acertar) e nenhum encosta no outro. */
+@media (max-height:520px){
+  #jumpBtn{width:78px;height:78px;bottom:20px;right:18px;font-size:12px}
+  #fireBtn{width:66px;height:66px;bottom:110px;right:24px;font-size:19px}
+  #miraBtn{width:54px;height:54px;bottom:118px;right:100px;font-size:20px}
+  #armaBtn{width:54px;height:54px;bottom:186px;right:24px}
+  #correrBtn{width:64px;height:64px;left:196px;bottom:34px;font-size:22px}
+  #touch{width:150px;height:150px;bottom:22px}
+  #stick{width:58px;height:58px;margin:-29px}
+  #alertaPolicia{top:92px}
+  #atencaoPolicia{top:130px}
+}
+/* A barra de dicas é TEXTO, e texto não pode roubar toque. Ela cruza o joystick e o pular em tela
+   deitada; sem isto, um dedo que encosta na borda dela não chega no botão que está atrás. */
+#hint{pointer-events:none}
 </style>
 </head>
 <body>
@@ -143,6 +181,7 @@ body.debug #debugBtn{display:block}
 
 <div id="touch" aria-label="Joystick de movimento"><div id="stickBase"><div id="stick"></div></div></div>
 <button id="jumpBtn" aria-label="Pular">PULAR</button>
+<button id="correrBtn" aria-label="Correr">🏃</button>
 <button id="fireBtn" aria-label="Atirar">🔫</button>
 <button id="armaBtn" aria-label="Trocar de arma"><span id="armaIcone">🔫</span><span id="armaMunicao">24</span></button>
 <button id="miraBtn" aria-label="Modo de mira">🎯</button>

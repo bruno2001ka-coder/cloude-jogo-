@@ -89,7 +89,12 @@ const POLICIAL_DANO_MIN=10,POLICIAL_DANO_MAX=18,POLICIAL_COOLDOWN_MIN=1.1,POLICI
 const PROCURADO_MAX=5;
 // 18 s por estrela (faixa pedida: 15–25). Com 6 s o esconderijo zerava uma ficha 5 em meio minuto e
 // a escalada nunca chegava a doer; 18 s obriga a planejar a fuga (ficha 5 = 1min30 dentro da casa).
-const ESCONDIDO_PARA_SUMIR=3,ESCONDIDO_POR_NIVEL=18,CACA_ATRASO=4;
+// ===== O JOGO AINDA ESTÁ EM TESTE, E O RELÓGIO ERA DE JOGO PRONTO =====
+// Era 18 s por estrela: cinco estrelas custavam 90 SEGUNDOS trancado dentro de um barraco, sem nada
+// pra fazer além de esperar. Num jogo publicado isso é tensão; em teste é o Bruno perdendo minuto e
+// meio de sessão por rodada pra conferir outra coisa. 5 s por estrela — 25 s no pior caso — mantém a
+// mecânica (o esconderijo continua sendo o único lugar onde a ficha desce) e devolve o tempo dele.
+const ESCONDIDO_PARA_SUMIR=3,ESCONDIDO_POR_NIVEL=5,CACA_ATRASO=4;
 // ===== O HELICÓPTERO NÃO É PERMANENTE =====
 // Antes ele sobrevoava a favela 24 h por dia, e isso matava duas coisas ao mesmo tempo: a favela nunca
 // ficava tranquila e a chegada dele deixava de significar alguma coisa. Agora existem dois regimes:
@@ -342,7 +347,9 @@ function zonasDoPolicial(pol){
 const policia={estado:'patrulha',alvoPlanta:null,pontoAlvo:{x:0,z:0},tempoEstado:0,cooldownAte:0,
   tempoEscondido:0,tempoNivel:0,retomarCacaEm:0,procurado:0,
   // Levas de rapel já descidas neste encontro, e quando a próxima pode vir (ver `combate`).
-  levasDescidas:0,proximaLeva:0};
+  levasDescidas:0,proximaLeva:0,
+  // Policiais abatidos NESTE encontro. É o que autoriza a próxima leva — ver `combate`.
+  baixasNoEncontro:0};
 // ===== O QUE CHAMA ATENÇÃO DA POLÍCIA =====
 // Antes bastava EXISTIR: a abordagem à plantação já elevava a ficha por si só, e a partir daí o
 // jogador era caçado pra sempre sem ter feito nada além de plantar. Agora a polícia só se interessa
@@ -360,7 +367,10 @@ const policia={estado:'patrulha',alvoPlanta:null,pontoAlvo:{x:0,z:0},tempoEstado
 // isso, ele volta a ser mais um morador — e o que o marca de novo é o que ele FIZER, não o que já fez.
 // Cinco minutos é longo o bastante pra a prisão ter consequência e curto o bastante pra caber numa
 // sessão: dá pra sentir a diferença entre andar marcado e andar limpo dentro da mesma jogada.
-const FICHA_QUENTE=300;
+// 30 s, não 300. Cinco minutos de marca depois de UMA prisão é mais tempo do que uma sessão de teste
+// inteira — na prática significava jogar a partida toda marcado. Meio minuto ainda faz a prisão pesar
+// e cabe na cabeça de quem está jogando.
+const FICHA_QUENTE=30;
 let vigiadoAte=0;
 function levandoPacote(){return inventario.pacote>0}
 export function chamaAtencao(){return levandoPacote()||performance.now()/1000<vigiadoAte}
@@ -1012,6 +1022,11 @@ function atingirPolicial(pol,dano){
     // Matar policial é o que mais suja a ficha — e a ficha é o que dimensiona a próxima guarnição.
     // Sem esconderijo isso é uma escalada só de ida: cada baixa traz mais gente na volta.
     somarProcurado(1);
+    // ===== É A BAIXA QUE CHAMA O REFORÇO =====
+    // O reforço vinha por RELÓGIO: bastava o confronto durar e mais dois desciam, mesmo sem o jogador
+    // ter encostado num policial. Do lado de dentro isso lê como "a polícia aumenta do nada" — e foi
+    // exatamente essa a reclamação. Reforço tem que ter CAUSA, e a causa é perder gente.
+    policia.baixasNoEncontro++;
     // Matar em plena rua é avistamento na certa: o rádio espalha a posição na hora. É o que impede
     // "limpar a ronda um por um sem ninguém notar".
     compartilharAvistamento(player.position.x,player.position.z,performance.now()/1000);
@@ -1215,7 +1230,11 @@ const ESTADOS={
       // Vem quando o confronto DURA, e só enquanto houver leva pra descer e vaga no teto. O aviso é
       // parte da mecânica: reforço que aparece sem anúncio lê como spawn, e reforço anunciado lê como
       // "corre agora" — que é a jogada que ele deve provocar.
+      // A leva N+1 exige N baixas: a segunda leva só desce depois do primeiro policial abatido, a
+      // terceira depois do segundo. Enquanto ninguém cai, a guarnição é a que desceu no rapel e pronto.
+      // O relógio continua existindo, mas agora ele só decide QUANDO — quem decide SE é a baixa.
       if(policia.levasDescidas<ONDAS_MAX&&policiais.length<POLICIAIS_MAX
+         &&policia.baixasNoEncontro>=policia.levasDescidas
          &&agora>=policia.proximaLeva&&!jogadorEscondido()){
         const{base,dx,dz}=pontoDeDescida({x:player.position.x,z:player.position.z});
         // Nunca passa do teto, mesmo que a leva seja maior que a vaga que sobrou.
@@ -1238,7 +1257,7 @@ const ESTADOS={
       policiais.length=0;limparBalas();
       // Zera as levas AQUI, no único ponto de limpeza do encontro. Deixar isso pro `aoEntrar` do rapel
       // seria zerar tarde: quem conta as levas é o combate, e ele começa antes.
-      policia.levasDescidas=0;policia.proximaLeva=0;
+      policia.levasDescidas=0;policia.proximaLeva=0;policia.baixasNoEncontro=0;
       transitar('patrulha');
     }
   },
@@ -1358,7 +1377,7 @@ export function __separarCorposParaTeste(){separarCorpos()}
 export function __forcarCombateParaTeste(){
   for(const pol of policiais){scene.remove(pol.grupo);pol.barra.descartar();despirPolicial(pol.corpo)}
   policiais.length=0;limparCordas();
-  policia.levasDescidas=0;policia.proximaLeva=0;policia.procurado=3;
+  policia.levasDescidas=0;policia.proximaLeva=0;policia.baixasNoEncontro=0;policia.procurado=3;
   policia.pontoAlvo.x=player.position.x;policia.pontoAlvo.z=player.position.z;
   policia.estado='rapel';ESTADOS.rapel.aoEntrar();
   policia.estado='combate';policia.tempoEstado=0;
@@ -1367,7 +1386,13 @@ export function __passoDoCombateDoEstado(dt){
   ESTADOS.combate.aoAtualizar(dt,performance.now()/1000);
 }
 export function __contarPoliciais(){return{emCampo:policiais.length,levas:policia.levasDescidas,
-  teto:POLICIAIS_MAX,porOnda:ONDA_TAMANHO,ondasMax:ONDAS_MAX}}
+  baixas:policia.baixasNoEncontro,teto:POLICIAIS_MAX,porOnda:ONDA_TAMANHO,ondasMax:ONDAS_MAX}}
+// Abate um policial em campo, pra o teste medir que o reforço só vem DEPOIS de uma baixa.
+export function __abaterUmParaTeste(){
+  const vivo=policiais.find(p=>p.vivo);
+  if(vivo)atingirPolicial(vivo,POLICIAL_HP*3);
+  return !!vivo;
+}
 // Rende o jogador na marra, pra o teste medir o que ACONTECE quando ele morre sem precisar levar
 // tiro de verdade por trinta segundos.
 export function __renderJogadorParaTeste(){receberDanoJogador(9999)}
@@ -1545,7 +1570,7 @@ export function atualizarPolicia(dt){
   // ===== ESCONDERIJO: o único lugar onde a ficha desce =====
   // Dois relógios separados, e é a separação que faz a mecânica funcionar:
   //   tempoEscondido → aos 3 s a guarnição em campo perde o rastro e recua;
-  //   tempoNivel     → a cada 18 s apaga UMA estrela (ESCONDIDO_POR_NIVEL).
+  //   tempoNivel     → a cada 5 s apaga UMA estrela (ESCONDIDO_POR_NIVEL).
   // Sair antes de zerar deixa ficha, e com ficha a patrulha recomeça a caçada — é o "se ainda tiver
   // nível de procurado, a polícia volta a procurar".
   const escondido=jogadorEscondido();
@@ -1670,10 +1695,15 @@ export function atualizarPolicia(dt){
     miraBtn.style.display=fireBtn.style.display;
     if(!podeMirar&&miraState.ativo)miraState.ativo=false;// entrou no drone/inventário mirando
   }
-  // Com uma arma só, o botão de troca seria um no-op comendo espaço de polegar: só aparece com 2+.
+  // ===== O BOTÃO DE TROCAR ARMA NÃO PODE DEPENDER DO DE ATIRAR =====
+  // Ele dependia, e isso era uma armadilha fechada. `temArma` significa "tem munição NA ARMA
+  // EQUIPADA"; sem munição, `fireBtn` some — e o botão de troca sumia junto. Ou seja: acabou a bala
+  // da pistola e o jogador ficava PRESO nela, sem nenhum jeito de passar pro rifle carregado que
+  // estava no inventário. No celular, onde não existe tecla 1-4, isso é o fim da linha.
+  // Agora a única condição é a que sempre fez sentido: ter mais de uma arma pra alternar.
   if(armaBtn){
     const temTroca=ORDEM_ARMAS.filter(id=>inventario.armas[id]).length>1;
-    armaBtn.style.display=(temTroca&&fireBtn.style.display==='flex')?'flex':'none';
+    armaBtn.style.display=(temTroca&&!droneState.ativo&&!jogadorRendido&&!isInventarioAberto())?'flex':'none';
   }
 }
 
