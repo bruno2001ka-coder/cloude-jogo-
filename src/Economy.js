@@ -133,16 +133,20 @@ export function contextoAtual(){
   // O refúgio vem PRIMEIRO: dentro da casa, a única ação que importa é a porta. `chave` inclui o
   // estado dela porque o painel só se redesenha quando a chave muda — sem isso o botão continuaria
   // escrito "Fechar" depois de fechar.
+  // A CASA DE CLIENTE ENTRA POR AQUI TAMBÉM. Ela tem a mesma casca e a mesma porta do esconderijo,
+  // então `refugioEmQueEsta` acha as duas — e como este teste vem PRIMEIRO, sem tratar o papel a
+  // entrega dentro da casa nunca apareceria no painel: o jogador entraria, veria só "fechar a porta"
+  // e não teria como entregar. A chave carrega o papel e a quantidade pelo mesmo motivo de sempre:
+  // o painel só se redesenha quando ela muda.
   const refugio=refugioEmQueEsta(p);
-  if(refugio)return{tipo:'refugio',refugio,chave:'refugio'+(refugio.aberta?'A':'F')};
+  if(refugio)return{tipo:'refugio',refugio,
+    chave:`refugio${refugio.papel}${refugio.aberta?'A':'F'}x${inventario.pacote}`};
   // A porteira vem antes dos polos: ela fica a 21 m do Depósito Rural, então não disputam contexto —
   // a ordem aqui é só pra deixar as duas ações de abrir/fechar juntas no topo.
   if(pertoDaPorteira(p))return{tipo:'porteira',chave:'porteira'+(porteiraFazenda.aberta?'A':'F')};
   // A chave carrega se precisa curar: o painel só se redesenha quando ela muda, e sem isso o botão
   // continuaria escrito "Você está inteiro" depois de levar tiro parado no balcão.
   if(distXZ(p,lojaPos)<POLOS.sementes.raio)return{tipo:'loja',chave:'loja'+(jogadorPrecisaCurar()?'F':'C')};
-  const entrega=pontoDeEntregaAtual(p);
-  if(entrega&&inventario.pacote>0)return{tipo:'entregaCasa',entrega,chave:`entregaCasa${entrega.id}x${inventario.pacote}`};
   if(distXZ(p,receptadorPos)<POLOS.receptador.raio)return{tipo:'receptador'};
   // A chave inclui a espera da diária: o painel só se redesenha quando a chave muda, e sem isso o
   // "volte em 45s" ficava congelado no número do momento do clique. Redesenha uma vez por segundo,
@@ -337,10 +341,34 @@ export function renderizarAcoes(){
   acaoPanel.innerHTML='';
   if(tipo==='refugio'){
     const r=ctx.refugio;
+    const cliente=r.papel==='cliente';
     const b=document.createElement('button');
-    b.textContent=r.aberta?'🚪 Fechar a porta e se esconder':'🚪 Abrir a porta e sair';
+    // O texto não pode prometer o que a casa não faz: só o esconderijo esconde (ver `estaEscondido`).
+    b.textContent=r.aberta
+      ?(cliente?'🚪 Fechar a porta':'🚪 Fechar a porta e se esconder')
+      :'🚪 Abrir a porta e sair';
     b.onclick=()=>{alternarPortaRefugio(r);renderizarAcoes()};
     acaoPanel.appendChild(b);
+    // Dentro da casa do cliente, a entrega vem JUNTO com a porta — senão entrar seria um beco sem
+    // saída de interface: a única ação disponível seria sair.
+    if(cliente){
+      const ponto=pontoDeEntregaAtual(p);
+      if(ponto&&inventario.pacote>0){
+        const lote=[1,2,3,5,7,10,12,15,20][Math.floor(Math.random()*9)];
+        const quantidade=Math.min(inventario.pacote,lote);
+        const valor=quantidade*PRECOS.receptadorPacote;
+        const e=document.createElement('button');
+        e.textContent=`📦 Entregar ${quantidade} pacote(s) (+R$${valor})`;
+        e.onclick=()=>{dinheiro+=valor;inventario.pacote-=quantidade;
+          atualizarStatusEconomia();renderizarAcoes();renderizarInventario()};
+        acaoPanel.appendChild(e);
+      }else{
+        const aviso=document.createElement('span');
+        aviso.textContent=inventario.pacote>0?'Chegue mais perto do cliente':'O cliente está esperando pacote';
+        aviso.style.cssText='font-size:11px;opacity:.75;align-self:center';
+        acaoPanel.appendChild(aviso);
+      }
+    }
     acaoPanel.style.display='flex';
   }else if(tipo==='porteira'){
     const b=document.createElement('button');
@@ -384,14 +412,6 @@ export function renderizarAcoes(){
     }
     botaoLoja(`🛡 Colete (R$${PRECOS.armasColete})`,PRECOS.armasColete,()=>comprar('colete',PRECOS.armasColete));
     acaoPanel.style.display='flex';
-  }else if(tipo==='entregaCasa'){
-    // As casas aceitam lotes variados: nunca drenam a mochila inteira e cada visita fica diferente.
-    // Os tamanhos maiores são limitados ao estoque disponível, mantendo R$40 por pacote.
-    const lotes=[1,2,3,5,7,10,12,15,20];
-    const quantidade=Math.min(inventario.pacote,lotes[Math.floor(Math.random()*lotes.length)]);
-    const valor=quantidade*PRECOS.receptadorPacote;
-    const b=document.createElement('button');b.textContent=`📦 Entregar ${quantidade} pacote(s) (+R${valor})`;b.disabled=inventario.pacote<=0;b.onclick=()=>{dinheiro+=valor;inventario.pacote-=quantidade;atualizarStatusEconomia();renderizarAcoes();renderizarInventario()};acaoPanel.appendChild(b);
-    const aviso=document.createElement('span');aviso.textContent='Receptador aguardando na entrada da casa';aviso.style.cssText='font-size:11px;opacity:.75;align-self:center';acaoPanel.appendChild(aviso);acaoPanel.style.display='flex';
   }else if(tipo==='receptador'){
     // Só ESCOAMENTO. A venda de semente saiu daqui pra semente ter um ponto único (o Mercado): com
     // dois pontos vendendo, o receptador virava atalho e o trajeto até o centro deixava de existir.

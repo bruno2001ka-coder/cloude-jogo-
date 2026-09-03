@@ -39,10 +39,10 @@ function bloco(geo,material,x,y,z,parent=bairro){if(material&&material.map)uvPor
 // foi. Cinco módulos (Economy, Police, NPCs, UI e main) importam a favela DAQUI; em vez de mandar os
 // cinco mudarem de endereço, este arquivo reexporta. É uma linha de indireção contra cinco de
 // mudança espalhada.
-import{favela,casasPos,BECOS,refugios,BAR,BIQUEIRA,sumirCaixa,alternarPortaRefugio,
+import{favela,casasPos,casasCliente,BECOS,refugios,BAR,BIQUEIRA,sumirCaixa,alternarPortaRefugio,
   refugioEmQueEsta,estaEscondido,atualizarRefugios}from'./Favela.js';
 bairro.add(favela);
-export{casasPos,BECOS,refugios,BAR,BIQUEIRA,sumirCaixa,alternarPortaRefugio,
+export{casasPos,casasCliente,BECOS,refugios,BAR,BIQUEIRA,sumirCaixa,alternarPortaRefugio,
   refugioEmQueEsta,estaEscondido,atualizarRefugios};
 
 // A árvore ficou aqui: ela é da FAZENDA (o pomar do sítio), não da favela.

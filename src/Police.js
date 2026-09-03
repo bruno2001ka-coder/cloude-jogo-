@@ -1136,7 +1136,9 @@ function pontoDeRonda(evitarJogador=false){
   // Com ficha suja eles vasculham os ESCONDERIJOS (é onde o jogador se enfia); limpos, andam pelas
   // vielas como qualquer ronda. É o "quando o jogador está procurado, vasculham os esconderijos".
   if(policia.procurado>0&&refugios.length&&Math.random()<.6){
-    const r=refugios[Math.floor(Math.random()*refugios.length)];
+    // Vasculham ESCONDERIJO, não casa de cliente: o que eles procuram é onde alguém se esconde.
+    const esconderijos=refugios.filter(q=>q.papel==='esconderijo');
+    const r=esconderijos[Math.floor(Math.random()*esconderijos.length)]||refugios[0];
     return{x:r.x+(Math.random()*2-1)*RUA_VASCULHAR_RAIO,z:r.z+RUA_VASCULHAR_RAIO};// na frente da porta
   }
   let wp=null;
@@ -1603,7 +1605,11 @@ export function atualizarPolicia(dt){
   }
   // O indicador conta a diferença entre "dentro da casa" e "escondido de verdade": dentro com a porta
   // ABERTA não esconde ninguém, e sem esse aviso o jogador acharia que o esconderijo está quebrado.
-  const refugioAqui=refugioEmQueEsta(player.position);
+  // Só o ESCONDERIJO conta pro indicador. A casa de cliente tem a mesma casca e cai no mesmo teste,
+  // e sem este filtro entrar pra entregar escreveria "ESCONDIDO" na tela — mentindo, porque a ficha
+  // não desce lá (ver `estaEscondido` em Favela.js).
+  const aqui=refugioEmQueEsta(player.position);
+  const refugioAqui=aqui&&aqui.papel==='esconderijo'?aqui:null;
   if(!refugioAqui)refugioEl.style.display='none';
   else{
     refugioEl.style.display='block';

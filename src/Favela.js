@@ -722,6 +722,35 @@ for(const l of lotes){
   const ab=aabbGirada(l.larg,l.prof,l.giro);l.W=ab.W;l.D=ab.D;
   l.papel='refugio';lotesRefugio.push(l);
 }
+// ===== AS CASAS DE CLIENTE =====
+// Mesma casca oca do refúgio, papel diferente: o cliente mora DENTRO, e a porta abre e fecha. Foi o
+// pedido dele, e a razão é concreta — a entrega na laje existe mas a laje não tem acesso, então o
+// jogador ficava pulando pra tentar entregar. Entrega tem que ser um lugar em que se ENTRA.
+//
+// As mesmas duas exigências geométricas do refúgio valem aqui, e pelo mesmo motivo (física é AABB
+// pura): a casa precisa estar perto de um eixo cardeal, senão a parede girada vira bloco maciço e a
+// porta não abre; e precisa ter largura pra ter interior.
+//
+// A terceira exigência é de jogo: LONGE DAS PORTAS DE ESCONDERIJO. A Manus tinha posto os quatro
+// clientes a 68 cm da porta de um refúgio, com zona de raio 2,15 — a zona engolia a porta. Entregar
+// dispara `alertarEntregaIlegal`, ou seja, dava motivo pra polícia olhar exatamente a porta em que o
+// jogador precisa entrar pra se salvar.
+const CLIENTE_ALVO=4,CLIENTE_DIST_MIN=18,CLIENTE_LONGE_DO_REFUGIO=16;
+const lotesCliente=[];
+for(const l of lotes){
+  if(lotesCliente.length>=CLIENTE_ALVO)break;
+  if(l.papel)continue;
+  const k=Math.round(l.giro/(Math.PI/2));
+  if(Math.abs(l.giro-k*Math.PI/2)>.30)continue;
+  if(l.larg<4.3)continue;
+  if(lotesRefugio.some(o=>Math.hypot(o.x-l.x,o.z-l.z)<CLIENTE_LONGE_DO_REFUGIO))continue;
+  if(lotesCliente.some(o=>Math.hypot(o.x-l.x,o.z-l.z)<CLIENTE_DIST_MIN))continue;
+  l.giro=k*Math.PI/2;
+  l.baseY=baseYDaSoleira(l);
+  const ab=aabbGirada(l.larg,l.prof,l.giro);l.W=ab.W;l.D=ab.D;
+  l.papel='cliente';lotesCliente.push(l);
+}
+
 // Bar e biqueira na via principal, longe um do outro: são os dois destinos do morro e ter os dois na
 // mesma esquina apagaria metade do trajeto.
 let loteBar=null,loteBiqueira=null;
@@ -845,6 +874,9 @@ import{registrarObstaculo,registrarCaixa,marcarSemFusao,marcarObstaculoMovel,sup
 export const ESP_PAREDE=.18,PORTA_ALTURA=2.35,VAO_PORTA=1.8,PORTA_ABERTA_RAD=1.9;
 export const refugios=[];
 const refugioMat=new THREE.MeshStandardMaterial({color:0xb5342a,roughness:.7,emissive:0x5a1712,emissiveIntensity:.35});
+// Verde da casa de cliente, na mesma cor da zona de entrega (DeliveryPoints): é o que liga a placa
+// na fachada ao círculo no chão sem precisar de tutorial.
+const clienteMat=new THREE.MeshStandardMaterial({color:0x2f9c6e,roughness:.7,emissive:0x11402c,emissiveIntensity:.35});
 // Malha solta (fora das pilhas), já posicionada no mundo.
 function pecaSolta(geo,material,x,y,z,giro,pai,sombra=true){
   uvPorMetro(geo);
@@ -853,7 +885,10 @@ function pecaSolta(geo,material,x,y,z,giro,pai,sombra=true){
   m.castShadow=sombra;m.receiveShadow=true;
   pai.add(m);return m;
 }
-function construirRefugio(l){
+// Casca oca com porta que abre: serve pro ESCONDERIJO e pra CASA DE CLIENTE. A diferença entre os
+// dois é papel, não geometria — o que muda é a placa na fachada e o que o jogo deixa fazer lá dentro
+// (só o esconderijo baixa a ficha; ver `estaEscondido`).
+function construirCasaOca(l){
   const g=new THREE.Group();favela.add(g);
   const cor=CORES_PAREDE[l.sem%CORES_PAREDE.length];
   const reboco=matReboco(cor),telha=matTelha(CORES_TELHA[(l.sem>>3)%CORES_TELHA.length]);
@@ -892,8 +927,11 @@ function construirRefugio(l){
                             [larg/2,0,ESP_MURETA,prof+.14],[-larg/2,0,ESP_MURETA,prof+.14]]){
     const p=P(dx,dz);pecaSolta(new THREE.BoxGeometry(mw,ALT_MURETA,md),telha,p.x,y0+alt+.12+ALT_MURETA/2,p.z,l.giro,g);
   }
-  // Placa vermelha: é assim que o jogador reconhece um esconderijo de longe.
-  {const p=P(0,prof/2+.32);pecaSolta(new THREE.BoxGeometry(1.5,.12,.5),refugioMat,p.x,y0+2.3,p.z,l.giro,g,false)}
+  // A PLACA É O QUE DIFERENCIA OS DOIS DE LONGE. Vermelha = esconderijo; verde = casa de cliente, na
+  // mesma cor da zona de entrega, pra o jogador ligar uma coisa na outra sem precisar de tutorial.
+  const ehCliente=l.papel==='cliente';
+  {const p=P(0,prof/2+.32);
+   pecaSolta(new THREE.BoxGeometry(1.5,.12,.5),ehCliente?clienteMat:refugioMat,p.x,y0+2.3,p.z,l.giro,g,false)}
 
   // A PORTA. Pivô na quina do vão, folha deslocada meia-largura: girar o pivô gira a folha em torno
   // da dobradiça, que é o único jeito de uma porta parecer porta.
@@ -921,8 +959,9 @@ function construirRefugio(l){
   // porta ali prendia o jogador no próprio colisor.
   const recuo=ESP_PAREDE+.25;
   const r={x:l.x,z:l.z,y:y0,giro:l.giro,pivo,folha,caixa:cx,caixaFechada,aberta:true,
+    papel:ehCliente?'cliente':'esconderijo',
     fechadaRad:l.giro,abertaRad:l.giro+PORTA_ABERTA_RAD,
-    meiaLarg:larg/2-recuo,meiaProf:prof/2-recuo};
+    meiaLarg:larg/2-recuo,meiaProf:prof/2-recuo,larg,prof};
   refugios.push(r);
   l.lajeY=y0+alt+.12;
   return r;
@@ -945,7 +984,16 @@ export function refugioEmQueEsta(pos){
   }
   return null;
 }
-export function estaEscondido(pos){const r=refugioEmQueEsta(pos);return !!r&&!r.aberta}
+// SÓ O ESCONDERIJO ESCONDE. A casa de cliente tem a mesma casca e a mesma porta, mas se ela também
+// baixasse a ficha o jogador entregaria e ficaria limpo no mesmo cômodo — a entrega deixaria de ter
+// risco, que é a única coisa que a torna uma decisão.
+export function estaEscondido(pos){
+  const r=refugioEmQueEsta(pos);
+  return !!r&&!r.aberta&&r.papel==='esconderijo';
+}
+// Só as casas de cliente, pra quem monta os pontos de entrega. Preenchida logo depois da construção
+// (ver o laço que chama `construirCasaOca`), porque `refugios` só existe cheia depois dela.
+export const casasCliente=[];
 export function atualizarRefugios(dt){
   const k=1-Math.exp(-9*dt);
   for(const r of refugios){
@@ -1058,11 +1106,14 @@ function construirBiqueira(l){
 
 // ===== CONSTRÓI O MORRO =====
 for(const l of lotes){
-  if(l.papel==='refugio')construirRefugio(l);
+  if(l.papel==='refugio'||l.papel==='cliente')construirCasaOca(l);
   else if(l.papel==='bar')construirBar(l);
   else if(l.papel==='biqueira')construirBiqueira(l);
   else construirCasa(l);
 }
+// A lista de casas de cliente só pode ser montada AQUI: `refugios` recebe os dois papéis durante a
+// construção, e antes deste laço ela está vazia.
+for(const r of refugios)if(r.papel==='cliente')casasCliente.push(r);
 acumularPronta(concreto,fitaDaVia(viaPrincipal,VIA_LARGURA));
 acumularPronta(concreto,fitaDaVia(viaBaixa,VIA_LARGURA));
 for(const b of becos)acumularPronta(concreto,fitaDaVia(b,BECO_MIN+.4));
@@ -1173,7 +1224,9 @@ function fatiarRetangulo(cx,cz,w,d,giro){
 // `l.larg` e `l.prof` são as dimensões do lote/casa; `l.giro` é aplicado antes da divisão em fatias.
 // Assim, cada caixa representa uma faixa do volume real e não a AABB de uma geometria agregada.
 export function calcularColisoresCasa(l){
-  if(l.papel==='refugio')return [];// refúgios têm casca oca e colisores próprios.
+  // Casca oca (refúgio e casa de cliente) registra as próprias paredes: um bloco maciço aqui lacraria
+  // a casa por fora, e foi assim que os nove esconderijos já ficaram fechados uma vez.
+  if(l.papel==='refugio'||l.papel==='cliente')return [];
   const yBaixo=l.baseY-CHAO_PROFUNDIDADE;
   const yAlto=(l.lajeY??l.baseY+2.5)-.02;
   return fatiarRetangulo(l.x,l.z,l.larg,l.prof,l.giro).map(f=>
@@ -1199,7 +1252,12 @@ for(const l of lotes){
 
 // ===== O QUE OS OUTROS MÓDULOS LEEM =====
 // `casasPos` alimenta o traçado das quadras no radar e o sorteio da laje do cliente.
+// `w`/`d` são a caixa ALINHADA AO MUNDO (é o que o radar desenha); `larg`/`prof`/`giro` são a casa
+// de verdade, girada. Quem quer só pintar um retângulo no radar usa os primeiros; quem precisa achar
+// a FRENTE da casa — pra pôr alguém na porta, por exemplo — precisa dos segundos. Faltavam, e por
+// isso o gerador de pontos de entrega caiu nos refúgios: era a única lista que trazia `giro`.
 export const casasPos=lotes.map(l=>({x:l.x,z:l.z,w:l.W,d:l.D,
+  larg:l.larg,prof:l.prof,giro:l.giro,papel:l.papel||null,
   h:(l.lajeY??l.baseY+2.5)-l.baseY,laje:l.lajeY??l.baseY+2.5}));
 // Ronda de morador e polícia: os pontos saem das CURVAS DE VERDADE (ver `pontosDeRonda`).
 export const BECOS=pontosDeRonda;
