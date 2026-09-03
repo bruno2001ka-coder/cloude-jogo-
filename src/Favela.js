@@ -935,10 +935,14 @@ function construirCasaOca(l){
 
   // A PORTA. Pivô na quina do vão, folha deslocada meia-largura: girar o pivô gira a folha em torno
   // da dobradiça, que é o único jeito de uma porta parecer porta.
+  // A parede desce até `y0-afundar` para acompanhar o terreno. A folha antiga começava em `y0`, então
+  // em casas de barranco sobrava um vão grande por baixo. Mantemos o topo na mesma altura e estendemos
+  // a folha para baixo até a base real da parede.
+  const basePorta=y0-afundar,alturaFolha=PORTA_ALTURA+afundar-.05;
   const dobra=P(-VAO_PORTA/2,prof/2);
-  const pivo=new THREE.Group();pivo.position.set(dobra.x,y0,dobra.z);pivo.rotation.y=l.giro;g.add(pivo);
-  const folha=pecaSolta(new THREE.BoxGeometry(VAO_PORTA-.06,PORTA_ALTURA-.05,.07),porta,
-    (VAO_PORTA-.06)/2,(PORTA_ALTURA-.05)/2,0,0,pivo);
+  const pivo=new THREE.Group();pivo.position.set(dobra.x,basePorta,dobra.z);pivo.rotation.y=l.giro;g.add(pivo);
+  const folha=pecaSolta(new THREE.BoxGeometry(VAO_PORTA-.06,alturaFolha,.07),porta,
+    (VAO_PORTA-.06)/2,alturaFolha/2,0,0,pivo);
 
   // A CASCA VAI PRA FÍSICA SEM FUSÃO. A fusão de colisores (Physics.otimizarObstaculos) junta caixas
   // que compartilham topo; com a verga e as duas abas da fachada compartilhando topo, a união desceu
