@@ -364,6 +364,17 @@ const FICHA_QUENTE=300;
 let vigiadoAte=0;
 function levandoPacote(){return inventario.pacote>0}
 export function chamaAtencao(){return levandoPacote()||performance.now()/1000<vigiadoAte}
+// ===== REPARAR EM ALGUÉM NÃO É IR ATRÁS DE ALGUÉM =====
+// `chamaAtencao` misturava as duas coisas, e a ficha quente sozinha bastava pra uma dupla de ronda
+// largar a rota e caminhar até o jogador. Era isso o "morri e a polícia continua atrás de mim": ele
+// renascia limpo de pacote, sem estrela nenhuma, e ainda assim era seguido — pela marca da prisão
+// que acabara de acontecer.
+//
+// Agora são duas perguntas separadas, e a diferença é exatamente a que o Bruno pediu duas vezes:
+//   · chamaAtencao()      → "eles reparam em mim" (é o que o aviso na tela mostra)
+//   · motivoDePerseguir() → "eles vêm atrás de mim", e isso exige FLAGRANTE (mochila com pacote) ou
+//                           FICHA SUJA (estrela). A marca da prisão, sozinha, não é motivo de caçada.
+function motivoDePerseguir(){return levandoPacote()||policia.procurado>0}
 // Quanto ainda falta da ficha quente, em segundos. A HUD mostra isso: marca sem prazo visível é
 // indistinguível de bug — foi assim que a versão permanente passou tanto tempo sem ser notada.
 export function segundosDeFichaQuente(){return Math.max(0,vigiadoAte-performance.now()/1000)}
@@ -445,10 +456,30 @@ function receberDanoJogador(dano){
 }
 function renderJogador(){
   jogadorRendido=true;
-  // Ficha QUENTE: pelos próximos FICHA_QUENTE segundos a polícia fica de olho nele mesmo sem
-  // flagrante. É a segunda (e única outra) razão de a polícia se interessar por alguém — ver
-  // `chamaAtencao`. Depois disso esfria sozinha.
+  // ===== SER PRESO ACERTA A CONTA =====
+  // A ficha NÃO caía aqui, e o efeito era o pior possível: o jogador era rendido com 5 estrelas,
+  // perdia plantação, pacotes, colete e dinheiro — e RENASCIA com as mesmas 5 estrelas e o rastro
+  // ainda quente, com a polícia de rua andando na direção dele antes de ele dar o primeiro passo.
+  // Punição em cima de punição, sem nenhuma saída no meio.
+  //
+  // Existia um comentário defendendo que a ficha não cai no fim do encontro, e ele continua certo:
+  // abater a guarnição ou fugir NÃO limpam nada, senão "matar todo mundo" viraria a estratégia
+  // dominante e o esconderijo perderia a função. Mas ser PRESO é o outro lado dessa moeda — é o
+  // único desfecho em que a polícia consegue o que queria. Conta acertada, ficha zerada.
+  policia.procurado=0;
+  rastro.ativo=false;rastro.buscaAte=0;
+  policia.tempoEscondido=0;policia.tempoNivel=0;
   vigiadoAte=performance.now()/1000+FICHA_QUENTE;
+  // A POLÍCIA DE RUA QUE JÁ ESTÁ EM CAMPO PRECISA RECUAR DE FATO. Zerar a ficha faz eles pararem de
+  // perseguir, mas o destino de ronda de cada um ainda aponta pro lugar onde a prisão aconteceu —
+  // eles continuariam andando pra lá, o que da parte do jogador é indistinguível de continuar sendo
+  // caçado. Cada um recebe um destino LONGE e a vida útil encurtada, então a dupla dispersa e some.
+  {const agora=performance.now()/1000;
+   for(const pol of policiaisRua){
+     pol.destinoRonda=pontoDeRonda(true);
+     pol.rota=null;pol.destinoRota=null;
+     pol.expiraEm=Math.min(pol.expiraEm,agora+8);
+   }}
   // O colete é apreendido junto: ser rendido é a "morte" deste jogo, e armadura que sobrevive à
   // rendição deixaria a placa no corpo depois do respawn sem o jogador ter pagado por ela.
   // A carga vai junto: ser rendido apreende os pacotes. Deixar a mochila cheia depois da prisão
@@ -1337,6 +1368,15 @@ export function __passoDoCombateDoEstado(dt){
 }
 export function __contarPoliciais(){return{emCampo:policiais.length,levas:policia.levasDescidas,
   teto:POLICIAIS_MAX,porOnda:ONDA_TAMANHO,ondasMax:ONDAS_MAX}}
+// Rende o jogador na marra, pra o teste medir o que ACONTECE quando ele morre sem precisar levar
+// tiro de verdade por trinta segundos.
+export function __renderJogadorParaTeste(){receberDanoJogador(9999)}
+export function __fichaParaTeste(){return{procurado:policia.procurado,rastroAtivo:rastro.ativo,
+  buscaAte:rastro.buscaAte,fichaQuente:+segundosDeFichaQuente().toFixed(0),
+  chamaAtencao:chamaAtencao(),perseguem:motivoDePerseguir()}}
+export function __ruaParaTeste(){return policiaisRua.map(p=>({x:+p.pos.x.toFixed(1),z:+p.pos.z.toFixed(1),
+  destino:p.destinoRonda?{x:+p.destinoRonda.x.toFixed(1),z:+p.destinoRonda.z.toFixed(1)}:null}))}
+export function __nascerDuplaParaTeste(x,z){nascerDupla(performance.now()/1000,{x,z})}
 export function __vidaJogadorParaTeste(){return saudeJogador}
 export function __curarJogadorParaTeste(){
   // Zera TAMBÉM o rendido: sem isso, o primeiro caso do teste matava o jogador, ele ficava rendido, e
@@ -1356,7 +1396,7 @@ function nascerDupla(agora,base){
     pol.grupo.position.set(pol.pos.x,pol.alturaAtual,pol.pos.z);
     // Longe do jogador também no primeiro destino: nascer a 20 m e mirar exatamente onde ele está
     // é a mesma perseguição-sem-motivo, só que começando antes.
-    pol.expiraEm=agora+RUA_DUPLA_VIDA;pol.destinoRonda=pontoDeRonda(!chamaAtencao());
+    pol.expiraEm=agora+RUA_DUPLA_VIDA;pol.destinoRonda=pontoDeRonda(!motivoDePerseguir());
     policiaisRua.push(pol);
   }
 }
@@ -1396,7 +1436,7 @@ function atualizarPoliciaDeRua(dt,agora){
     // acontecia, mas no instante em que a primeira dupla completava os 75 s de vida o acesso à const
     // ainda não inicializada lançava ReferenceError — dentro do laço do quadro, que matava o
     // requestAnimationFrame e congelava o jogo. Era o "trava depois de alguns minutos".
-    const deOlho=vendo&&chamaAtencao();
+    const deOlho=vendo&&motivoDePerseguir();
     // Expira e vai embora — mas nunca no meio de uma perseguição, que seria a polícia evaporando na
     // cara do jogador. Com rastro ativo eles ficam até o rastro esfriar.
     if(agora>pol.expiraEm&&!deOlho&&!rastroValido(agora)&&!emBusca(agora)){removerRua(i);continue}
