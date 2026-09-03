@@ -312,16 +312,20 @@ function criarFazenda(cx,cz){
   // a fileira de terra escura dá o desenho, e o pé de planta só mora nela.
   const canteiros=[],pes=[];
   const zIni=cz-meiaProf+2.2,zFim=cz+meiaProf-8,xIni=cx-meiaLarg+7.5,xFim=cx+meiaLarg-2.2;
-  const comprimento=xFim-xIni,meioX=(xIni+xFim)/2;
+  const comprimento=xFim-xIni,meioX=(xIni+xFim)/2,SEGMENTO_CANTEIRO=1.25;
   for(let z=zIni;z<=zFim;z+=1.7){
-    canteiros.push([meioX,z,comprimento]);
+    // Uma caixa única atravessava o relevo com a cota do centro e deixava as pontas suspensas. Segmentos
+    // curtos permitem apoiar cada parte na altura local sem perder o baixo custo do InstancedMesh.
+    for(let x0=xIni;x0<xFim-.001;x0+=SEGMENTO_CANTEIRO){
+      const comp=Math.min(SEGMENTO_CANTEIRO,xFim-x0);
+      canteiros.push([x0+comp/2,z,comp]);
+    }
     for(let x=xIni+.35;x<=xFim-.35;x+=.62)pes.push([x+(Math.random()-.5)*.16,z+(Math.random()-.5)*.22]);
   }
   const mesaCanteiro=new THREE.InstancedMesh(uvPorMetro(new THREE.BoxGeometry(1,.13,1.02)),matTerraArada(),canteiros.length);
   mesaCanteiro.castShadow=false;mesaCanteiro.receiveShadow=true;
   canteiros.forEach(([mx,mz,comp],i)=>{
-    // Meio enterrado: um canteiro apoiado por cima do chão vira barra de chocolate. Assentado, o que
-    // aparece é a leira de terra levantada, que é o que a enxada faz.
+    // Meio enterrado: cada segmento segue o terreno local, então nenhuma ponta fica no ar numa encosta.
     posV.set(mx,obterElevacao(mx,mz)+.02,mz);escalaV.set(comp,1,1);
     m4.compose(posV,new THREE.Quaternion(),escalaV);mesaCanteiro.setMatrixAt(i,m4);
   });

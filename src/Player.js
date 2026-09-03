@@ -3,8 +3,8 @@ import*as THREE from'three';
 import{scene}from'./core.js';
 import{obterElevacao}from'./Terrain.js';
 import{obstaculos,superficiesAndaveis,caixaColideComObstaculos,buscarPosicaoLivre}from'./Physics.js';
-import{criarSombraContato,coleteMat,coleteFaixaMat,mochilaMat,mochilaFaixaMat}from'./Materials.js';
-import{carregarPersonagem,atualizarAnimacaoPersonagem,personagemCarregado,ossoDaMao,ossoDoTronco,medidasTronco,esconderBonecoAntigo,carregarColete,coleteVestido,pendurarMochila,AJUSTE}from'./Personagem.js';
+import{criarSombraContato}from'./Materials.js';
+import{carregarPersonagem,atualizarAnimacaoPersonagem,personagemCarregado,ossoDaMao,esconderBonecoAntigo,carregarColete,pendurarMochila,AJUSTE}from'./Personagem.js';
 
 export const EYE_HEIGHT=0.8;
 export const PLAYER_HEIGHT=0.9;
@@ -18,33 +18,19 @@ const body=new THREE.Mesh(new THREE.BoxGeometry(1.05,1.55,.62),shirt);body.posit
 const bonecoCaixas=player.children.filter(o=>o.isMesh);
 criarSombraContato(.85,player);player.scale.setScalar(PLAYER_SCALE);player.position.set(0,obterElevacao(0,8),8);scene.add(player);
 
-// ===== COLETE À PROVA DE BALAS (só visual) =====
-// Grupo próprio em vez de meshes soltas no player: a visibilidade liga/desliga num único .visible, e o
-// colete nunca se mistura com os membros animados (legs/arms) nem com a mão que segura a arma.
-// É PURAMENTE cosmético — não entra em ZONAS_JOGADOR nem na hitbox, que continuam derivadas das medidas
-// do corpo; o dano/armadura é contabilizado pelo combate, que só chama definirColeteVisivel().
-// Medidas em unidades CRUAS (antes do PLAYER_SCALE), como o resto do boneco: um bloco 1.10x.95x.70
-// (o corpo é 1.05x1.55x.62) centrado em y=1.95, ou seja, colado por FORA do tronco e terminando exatamente
-// na linha dos ombros (topo do corpo = 2.425) — sobra a barriga à mostra, que é como colete tático parece.
-const colete=new THREE.Group();colete.visible=false;
-{
-  const placa=new THREE.Mesh(new THREE.BoxGeometry(1.10,.95,.70),coleteMat);placa.position.y=1.95;colete.add(placa);
-  // Ombreiras: dois blocos atravessando o ombro. Puro sinal de leitura à distância — com a câmera no
-  // ombro o tronco escuro sobre camisa escura quase não muda de silhueta sem elas.
-  for(const x of [-.33,.33]){const om=new THREE.Mesh(new THREE.BoxGeometry(.24,.14,.76),coleteFaixaMat);om.position.set(x,2.44,0);colete.add(om)}
-  // Faixa frontal clara na altura do peito, levemente à frente da placa pra não brigar por z-fighting.
-  const faixa=new THREE.Mesh(new THREE.BoxGeometry(1.12,.13,.02),coleteFaixaMat);faixa.position.set(0,1.72,.36);colete.add(faixa);
-  for(const m of colete.children){m.castShadow=true;m.receiveShadow=true}
-}
-player.add(colete);
+// ===== COLETE 3D (sem fallback de caixas) =====
+// O grupo nasce vazio e invisível. Assim o colete antigo não aparece durante os primeiros segundos:
+// quando a armadura é ligada antes do GLB chegar, só existe um grupo vazio; o modelo 3D entra nele
+// assim que termina o carregamento. A armadura continua sendo lógica do combate, não uma hitbox.
+const colete=new THREE.Group();colete.visible=false;player.add(colete);
 // ===== O MODELO 3D SÓ BAIXA QUANDO FOR APARECER =====
 // `carregarColete` e `pendurarMochila` eram chamados AQUI, no topo do módulo, incondicionalmente.
 // Medido pela auditoria: 1,79 MB de download e 35 MB de VRAM (a mochila sozinha traz uma textura
 // 2048x2048 = 22,4 MB, mais que o bairro inteiro) — para dois objetos que nascem `visible=false` e
 // que a maioria das partidas nunca mostra. No celular isso é memória de vídeo e tempo de carregamento
 // pagos adiantado por nada.
-// Agora o download acontece na primeira vez que a peça é LIGADA. As caixas simples continuam sendo
-// o que aparece até o modelo chegar, exatamente como antes.
+// Agora o download acontece na primeira vez que a peça é LIGADA. O grupo permanece vazio até o modelo
+// chegar; não há colete provisório de caixas aparecendo durante o carregamento.
 let coletePedido=false;
 function garantirColete(){if(coletePedido)return;coletePedido=true;carregarColete(colete)}
 // API mínima pro combate/save: quem decide se o jogador ESTÁ com colete é a economia (inventario.colete),
@@ -52,29 +38,13 @@ function garantirColete(){if(coletePedido)return;coletePedido=true;carregarColet
 export function definirColeteVisivel(v){if(v)garantirColete();colete.visible=!!v}
 export function coleteEstaVisivel(){return colete.visible}
 
-// ===== MOCHILA DOS PACOTES =====
-// É o FLAGRANTE do jogo: enquanto houver pacote no inventário a mochila aparece nas costas, e é vendo
-// ela que a polícia decide abordar (Police.js). Sem carga, ela some e o jogador volta a ser um
-// morador qualquer. Mesma técnica do colete — grupo próprio, nasce escondido, o jogo só alterna
-// `.visible` e nunca constrói malha em pleno jogo.
-// Medidas em unidades CRUAS, como o resto do boneco (o corpo é 1.05 x 1.55 x .62).
-const mochila=new THREE.Group();mochila.visible=false;
-{
-  const corpoM=new THREE.Mesh(new THREE.BoxGeometry(.82,.92,.42),mochilaMat);corpoM.position.set(0,1.95,-.48);mochila.add(corpoM);
-  // Bolso da frente e alça horizontal: sem eles a mochila lê como um caixote colado nas costas.
-  const bolso=new THREE.Mesh(new THREE.BoxGeometry(.56,.40,.14),mochilaFaixaMat);bolso.position.set(0,1.78,-.72);mochila.add(bolso);
-  const alcaH=new THREE.Mesh(new THREE.BoxGeometry(.84,.10,.06),mochilaFaixaMat);alcaH.position.set(0,2.18,-.70);mochila.add(alcaH);
-  // Alças por cima dos ombros, indo do topo da mochila até o peito.
-  for(const x of[-.30,.30]){
-    const alca=new THREE.Mesh(new THREE.BoxGeometry(.12,.86,.10),mochilaFaixaMat);
-    alca.position.set(x,2.16,-.12);alca.rotation.x=-.22;mochila.add(alca);
-  }
-  for(const m of mochila.children){m.castShadow=true;m.receiveShadow=true}
-}
-player.add(mochila);
-// Pendura no osso do tronco quando o boneco 3D chega, pra ela acompanhar a animação em vez de ficar
-// rígida. Se o modelo não carregar, ela fica onde está e o jogador vê a mochila simples.
-let mochilaPedida=false;
+// ===== MOCHILA 3D DOS PACOTES =====
+// O fallback antigo de caixas foi removido: o grupo nasce vazio e recebe exclusivamente o GLB.
+const mochila=new THREE.Group();mochila.visible=false;player.add(mochila);
+// O GLB é solicitado já na inicialização. Assim o modelo termina de carregar antes da primeira colheita
+// ou entrega, evitando que uma corrida entre save, inventário e renderização deixe a mochila invisível.
+let mochilaPedida=true;
+pendurarMochila(mochila);
 function garantirMochila(){if(mochilaPedida)return;mochilaPedida=true;pendurarMochila(mochila)}
 export function definirMochilaVisivel(v){if(v)garantirMochila();mochila.visible=!!v}
 
@@ -122,37 +92,9 @@ carregarPersonagem(player,PLAYER_HEIGHT,()=>{
   esconderBonecoAntigo(bonecoCaixas);
 });
 
-// O colete foi desenhado por cima do boneco de CAIXAS (tronco de 1,05 de largura). No corpo humano,
-// bem mais estreito, ele virava um caixote preto cobrindo tronco e braços. Aqui ele é refeito nas
-// medidas do tronco de verdade e pendurado no osso do peito, pra acompanhar a animação em vez de ficar
-// rígido enquanto o corpo se inclina.
-function ajustarColeteAoCorpo(){
-  // Com o colete 3D vestido, quem dimensiona é o Personagem — refazer as caixas aqui apagaria o modelo.
-  if(coleteVestido())return;
-  const osso=ossoDoTronco(),m=medidasTronco();
-  if(!osso||!m)return;
-  const escalaOsso=new THREE.Vector3();osso.getWorldScale(escalaOsso);
-  if(!(escalaOsso.x>0))return;
-  // Do mundo pro espaço do osso: é nele que a geometria nova precisa estar.
-  const k=1/escalaOsso.x;
-  // A largura NÃO vem da medida em X: naquela faixa de altura os braços entram na conta e o colete
-  // saía transbordando os ombros. A profundidade do tronco é livre de braços, e peito humano tem por
-  // volta de 1,5x a espessura em largura — daí ela ser a referência.
-  const prof=m.profundidade*k*1.12;// folga: o colete veste POR FORA da roupa
-  const larg=m.profundidade*k*1.55,alt=m.altura*k*.92;
-  for(const filho of colete.children.slice()){colete.remove(filho);filho.geometry.dispose()}
-  const placa=new THREE.Mesh(new THREE.BoxGeometry(larg,alt,prof),coleteMat);colete.add(placa);
-  for(const lado of[-1,1]){
-    const om=new THREE.Mesh(new THREE.BoxGeometry(larg*.22,alt*.16,prof*1.04),coleteFaixaMat);
-    om.position.set(lado*larg*.42,alt*.52,0);colete.add(om);
-  }
-  const faixa=new THREE.Mesh(new THREE.BoxGeometry(larg*1.02,alt*.14,prof*.06),coleteFaixaMat);
-  faixa.position.set(0,-alt*.16,prof*.53);colete.add(faixa);
-  for(const meshColete of colete.children){meshColete.castShadow=true;meshColete.receiveShadow=true}
-  osso.add(colete);
-  colete.position.copy(osso.worldToLocal(m.centro.clone()));
-  colete.rotation.set(0,0,0);colete.scale.setScalar(1);
-}
+// O antigo colete de caixas foi removido. O GLB é dimensionado e pendurado no osso do tronco
+// pelo próprio Personagem.js assim que chega; não há fallback visual durante o carregamento.
+function ajustarColeteAoCorpo(){}
 
 // Vira o boneco pra uma direção horizontal (a da câmera, na hora do tiro). Sem isso, atirar parado ou
 // andando pra trás dispara com o personagem virado pro outro lado e a bala sai de lado — a rotação só

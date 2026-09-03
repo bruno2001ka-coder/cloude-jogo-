@@ -21,7 +21,8 @@ let ganchosPolicia={curar:()=>false,precisaCurar:()=>false,denunciar:()=>{}};
 export function registrarGanchosPolicia(g){ganchosPolicia={...ganchosPolicia,...g}}
 const jogadorPrecisaCurar=()=>ganchosPolicia.precisaCurar();
 
-export let dinheiro=1000;
+// Saldo inicial de teste para validar lojas, armas, munição e atividades sem grind.
+export let dinheiro=10000;
 // `municao` e `colete` são consumidos pelo sistema de combate (Police.js). Ficam no inventário, e não
 // dentro do Police, porque Economy → Police seria dependência circular: o Police já importa a Economy.
 // `armas` (o que o jogador POSSUI) e `municao` (estoque POR ARMA) seguem a mesma regra: o Weapons.js
@@ -48,20 +49,33 @@ export const fazendaPos=new THREE.Vector3(POLOS.fazenda.x,0,POLOS.fazenda.z);
 export const armasPos=new THREE.Vector3(POLOS.armas.x,0,POLOS.armas.z);
 criarEsconderijo(receptadorPos.x,receptadorPos.z);
 
-// Planta em vaso, estilizada em 3 estágios (broto/vegetativa/flora), com a mesma técnica de aglomerados das árvores.
+// Planta em vaso com três estágios visuais usando assets fotorealistas transparentes.
+// Cada sprite já inclui vaso e solo; assim não há uma segunda geometria procedural sobreposta.
+const carregadorTexturaPlanta=new THREE.TextureLoader();
+const TEXTURAS_PLANTA=['assets/planta_estagio_1_muda.png','assets/planta_estagio_2_vegetativa.png','assets/planta_estagio_3_madura.png'].map(url=>carregadorTexturaPlanta.load(url,
+  textura=>{textura.colorSpace=THREE.SRGBColorSpace;textura.needsUpdate=true},
+  undefined,
+  erro=>console.warn('Quintal 3D: falha ao carregar asset de planta',url,erro)));
+function spritePlanta(parent,texture,escala,estagio){
+  const material=new THREE.SpriteMaterial({map:texture,transparent:true,alphaTest:.05,depthWrite:false});
+  const sprite=new THREE.Sprite(material);
+  // O centro padrão do Sprite fica no meio e fazia a base variar com o tamanho do estágio. Ancorar quase
+  // no rodapé mantém o vaso no chão mesmo quando a textura tem transparência ao redor do recorte.
+  sprite.center.set(.5,.03);sprite.position.set(0,.03,0);
+  sprite.scale.set(escala,escala,1);sprite.renderOrder=2;
+  sprite.castShadow=true;sprite.receiveShadow=true;sprite.userData.estagio=estagio;
+  parent.add(sprite);return sprite;
+}
 function criarPlanta(x,y,z){
   const g=new THREE.Group();g.position.set(x,y,z);scene.add(g);
-  bloco(new THREE.CylinderGeometry(.2,.16,.26,8),potMat,0,.13,0,g);
-  const caule=bloco(new THREE.CylinderGeometry(.022,.032,.32,6),caulePlantaMat,0,.42,0,g);
-  const broto=bloco(new THREE.DodecahedronGeometry(.12,0),folhaClara,0,.42,0,g);
-  const vegFolhas=[[-.11,.5,.06,.15],[.11,.52,-.05,.14],[0,.58,.09,.13]].map(p=>{const m=bloco(new THREE.DodecahedronGeometry(p[3]+Math.random()*.02,0),Math.random()<.5?folhaMat:folhaClara,p[0],p[1],p[2],g);m.rotation.set(Math.random()*Math.PI,Math.random()*Math.PI,Math.random()*Math.PI);return m});
-  const florFolhas=[[0,.76,.1,.13],[-.15,.7,-.06,.12],[.15,.7,-.06,.12],[-.08,.83,.03,.1],[.08,.83,-.03,.1]].map(p=>{const m=bloco(new THREE.DodecahedronGeometry(p[3]+Math.random()*.02,0),floraMat,p[0],p[1],p[2],g);m.rotation.set(Math.random()*Math.PI,Math.random()*Math.PI,Math.random()*Math.PI);return m});
-  const florAcentos=[[0,.87,.12],[-.15,.79,-.04],[.15,.79,-.04]].map(p=>bloco(new THREE.SphereGeometry(.035,6,6),floraAcentoMat,p[0],p[1],p[2],g));
-  const revelaEm=[[caule,0],[broto,0],...vegFolhas.map(m=>[m,1]),...florFolhas.map(m=>[m,2]),...florAcentos.map(m=>[m,2])];
-  [...vegFolhas,...florFolhas,...florAcentos].forEach(m=>m.visible=false);
-  criarSombraContato(.45,g,0,0);
-  const planta={grupo:g,x,y,z,plantadoEm:performance.now()/1000,estagio:0,revelaEm,colhida:false};
-  return planta;
+  const revelaEm=[
+    [spritePlanta(g,TEXTURAS_PLANTA[0],.82,0),0],
+    [spritePlanta(g,TEXTURAS_PLANTA[1],1.18,1),1],
+    [spritePlanta(g,TEXTURAS_PLANTA[2],1.42,2),2],
+  ];
+  revelaEm.forEach(([m,estagio])=>m.visible=estagio===0);
+  criarSombraContato(.52,g,0,.02);
+  return{grupo:g,x,y,z,plantadoEm:performance.now()/1000,estagio:0,revelaEm,colhida:false};
 }
 // Crescimento cumulativo: cada parte some visível a partir do seu próprio estágio e continua visível depois (a planta não "encolhe").
 function atualizarEstagioPlanta(planta){planta.revelaEm.forEach(([m,estagioMin])=>m.visible=planta.estagio>=estagioMin)}

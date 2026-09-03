@@ -43,12 +43,13 @@ import{estaEscondido,refugioEmQueEsta,refugios}from'./WorldGenerator.js';
 import{colidePedestre,waypointsVielas}from'./NPCs.js';
 import{ALT_TORSO,ALT_OLHO,ALT_CANO,atualizarCombate,espalhamentoDoTiro,tempoDeReacao,
   distribuirPapeis,destinoDoPapel,procurarCobertura,PAPEL,velJogador,LEAD_FATOR,LEAD_RUIDO}from'./Combate.js';
-import{plantas,confiscarPlanta,aplicarMulta,inventario,atualizarStatusEconomia,isInventarioAberto,registrarGanchosPolicia}from'./Economy.js';
+import{plantas,confiscarPlanta,aplicarMulta,definirDinheiro,inventario,atualizarStatusEconomia,isInventarioAberto,registrarGanchosPolicia}from'./Economy.js';
 import{dispararBala,atualizarBalas,limparBalas,VELOCIDADE_BALA}from'./Bullets.js';
 import{aplicarDano,renderizarVidaJogador,criarBarraMundo}from'./HealthBar.js';
 import{droneState,miraState}from'./Camera.js';
 
 const HELI_ALTURA=38,HELI_VELOCIDADE=12,MAPA_LIMITE=95;
+const SALDO_RESPAWN=300;
 // Raio de detecção dimensionado pra funcionar em SOBREVOO, agora que o heli não vai mais direto na
 // coordenada da muda: mapa de 190x190 = 36.100 m², heli a 12 m/s, faixa varrida = 2R x v.
 //   R=10 →  240 m²/s → mapa inteiro em 150 s → na prática a polícia nunca achava nada
@@ -427,9 +428,13 @@ function renderJogador(){
   mostrarAviso('Você foi rendido pela polícia — plantação perdida e multa aplicada.',3400);
   if(policia.alvoPlanta&&!policia.alvoPlanta.colhida)confiscarPlanta(policia.alvoPlanta);
   aplicarMulta(MULTA_RENDICAO);
+  // Define o saldo no início da rendição para o HUD e o autosave já refletirem a reserva de respawn.
+  definirDinheiro(SALDO_RESPAWN);
   transitar('recuando');
   setTimeout(()=>{
     player.position.set(SPAWN_X,obterElevacao(SPAWN_X,SPAWN_Z),SPAWN_Z);
+    // Reaplica a reserva no instante exato em que o personagem nasce no spawn.
+    definirDinheiro(SALDO_RESPAWN);
     saudeJogador=JOGADOR_HP_MAX;jogadorRendido=false;atualizarHudSaude();
   },1400);
 }
@@ -1378,7 +1383,9 @@ registrarGanchosPolicia({curar:curarJogador,precisaCurar:jogadorPrecisaCurar,den
 // O save guarda o RESTO da ficha quente, em segundos — não um instante absoluto. `performance.now()`
 // zera a cada carregamento da página, então gravar o prazo em tempo de máquina faria toda ficha
 // salva vencer no instante em que o jogo reabre.
-export function estadoPoliciaParaSave(){return{procurado:policia.procurado,fichaQuente:segundosDeFichaQuente()}}
+// A armadura equipada também é persistida: o colete do inventário é consumido ao vestir, então salvar
+// apenas `inventario.colete` fazia o colete desaparecer ao sair e entrar novamente.
+export function estadoPoliciaParaSave(){return{procurado:policia.procurado,fichaQuente:segundosDeFichaQuente(),armadura:armaduraJogador}}
 export function aplicarEstadoPoliciaDoSave(s){
   try{
     const n=Math.floor(Number(s&&s.procurado));
@@ -1391,6 +1398,8 @@ export function aplicarEstadoPoliciaDoSave(s){
     // Save novo traz o prazo restante e ele é respeitado; save velho começa do zero.
     const resto=Number(s&&s.fichaQuente);
     const restante=Number.isFinite(resto)?Math.max(0,Math.min(FICHA_QUENTE,resto)):0;
+    const arm=Number(s&&s.armadura);
+    armaduraJogador=Number.isFinite(arm)?Math.min(JOGADOR_ARMADURA_MAX,Math.max(0,Math.floor(arm))):0;
     vigiadoAte=performance.now()/1000+restante;
   }catch(e){policia.procurado=0;vigiadoAte=0}
 }

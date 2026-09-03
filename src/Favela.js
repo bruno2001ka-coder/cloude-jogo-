@@ -393,6 +393,17 @@ for(const beco of becos){
 // Sem isso o parkour seria sorte, e sorte que falha em silêncio é o pior tipo de defeito.
 const ANDAR_ALT=2.55,RECUO_ANDAR=1.15;
 export function alturaDaLaje(l){return l.baseY+l.andares*ANDAR_ALT+.12}
+// A soleira precisa ser recalculada sempre que o lote muda de orientação. Os esconderijos são
+// alinhados a um eixo cardeal depois da primeira seleção; usar a cota calculada antes dessa rotação
+// deixa a porta numa cota antiga e faz a casa parecer flutuar ou afundar no barranco.
+function baseYDaSoleira(l){
+  let soleira=-Infinity;
+  for(const u of[-.5,-.25,0,.25,.5])for(const fora of[0,1.0]){
+    const p=noLote(l,u*l.larg,l.prof/2+fora);
+    soleira=Math.max(soleira,obterElevacao(p.x,p.z));
+  }
+  return soleira;
+}
 {
   for(const l of lotes){
     // A casa se assenta pela SOLEIRA, não pelo centro: numa encosta de 19° o centro pode estar mais
@@ -404,12 +415,7 @@ export function alturaDaLaje(l){return l.baseY+l.andares*ANDAR_ALT+.12}
     // terra e sobrava o telheiro saindo do chão, sem porta nenhuma embaixo. Sete amostras ao longo da
     // fachada, e uma delas 1 m à frente da porta — a soleira fica acima de todas, e o desnível do
     // outro lado quem resolve é o `afundar` da parede.
-    let soleira=-Infinity;
-    for(const u of[-.5,-.25,0,.25,.5])for(const fora of[0,1.0]){
-      const p=noLote(l,u*l.larg,l.prof/2+fora);
-      soleira=Math.max(soleira,obterElevacao(p.x,p.z));
-    }
-    l.baseY=soleira;
+    l.baseY=baseYDaSoleira(l);
     l.andares=1+(l.sem%100<42?0:l.sem%100<82?1:2);// 42% térrea, 40% dois, 18% três
   }
   // Puxa a altura pra caber no pulo, do lote mais baixo pro mais alto.
@@ -586,9 +592,13 @@ function construirCasa(l){
       {giro:l.giro+Math.PI/2,eixo:'x',sinal: 1,vao:prof,rua:false},// lateral direita
       {giro:l.giro-Math.PI/2,eixo:'x',sinal:-1,vao:prof,rua:false},// lateral esquerda
     ];
+    // Os andares superiores recuam para o fundo. Todas as peças aplicadas na fachada precisam usar
+    // exatamente o mesmo deslocamento; sem isso janelas, molduras e remendos ficam suspensos à frente
+    // da parede recuada, sobretudo no terceiro andar.
+    const recuoDaFace=-recuoAcumulado/2;
     const pontoDaFace=(f,u,fora)=>f.eixo==='z'
-      ? noLote(l,u*f.sinal,f.sinal*(prof/2+fora))
-      : noLote(l,f.sinal*(larg/2+fora),-u*f.sinal);
+      ? noLote(l,u*f.sinal,f.sinal*(prof/2+fora)+recuoDaFace)
+      : noLote(l,f.sinal*(larg/2+fora),-u*f.sinal+recuoDaFace);
 
     // REMENDOS. Numa parede rebocada é o tijolo aparecendo onde o reboco caiu; numa parede crua é o
     // contrário, a mancha de reboco de quem começou a rebocar e parou. Os dois lados da mesma moeda,
@@ -655,10 +665,10 @@ function construirCasa(l){
     for(const f of faces){
       const posicoes=f.rua?[-.28,.28]:(((hashInt(l.sem+andar,Math.round(f.giro*10))%100)<58&&f.vao>2.6)?[0]:[]);
       for(const frac of posicoes){
-        const p=pontoDaFace(f,frac*f.vao,.04);
+        const p=pontoDaFace(f,frac*f.vao,.025);
         const acesa=((hashInt(l.sem+andar,Math.round(f.giro*10)+(frac>0?1:0)))%100)<22;
         instanciar('moldura',GEO_MOLDURA,molduraJanela,matrizEm(p.x,y+alt*.62,p.z,f.giro));
-        const v=pontoDaFace(f,frac*f.vao,.07);
+        const v=pontoDaFace(f,frac*f.vao,.035);
         instanciar(acesa?'janelaAcesa':'janela',GEO_JANELA,acesa?janelaAcesa:janela,
           matrizEm(v.x,y+alt*.62,v.z,f.giro));
       }
@@ -707,6 +717,8 @@ for(const l of lotes){
   if(l.larg<4.3)continue;// menos que isso e a casa oca não tem interior utilizável
   if(lotesRefugio.some(o=>Math.hypot(o.x-l.x,o.z-l.z)<REFUGIO_DIST_MIN))continue;
   l.giro=k*Math.PI/2;
+  // O giro foi normalizado para abrir o refúgio de verdade; a base precisa acompanhar a nova fachada.
+  l.baseY=baseYDaSoleira(l);
   const ab=aabbGirada(l.larg,l.prof,l.giro);l.W=ab.W;l.D=ab.D;
   l.papel='refugio';lotesRefugio.push(l);
 }
@@ -830,7 +842,7 @@ function postesDaVia(curva,passo){
 // porta gira, e geometria fundida não gira.
 import{registrarObstaculo,registrarCaixa,marcarSemFusao,marcarObstaculoMovel,superficiesAndaveis}from'./Physics.js';
 
-export const ESP_PAREDE=.18,PORTA_ALTURA=2.05,VAO_PORTA=1.15,PORTA_ABERTA_RAD=1.9;
+export const ESP_PAREDE=.18,PORTA_ALTURA=2.35,VAO_PORTA=1.8,PORTA_ABERTA_RAD=1.9;
 export const refugios=[];
 const refugioMat=new THREE.MeshStandardMaterial({color:0xb5342a,roughness:.7,emissive:0x5a1712,emissiveIntensity:.35});
 // Malha solta (fora das pilhas), já posicionada no mundo.
@@ -847,16 +859,31 @@ function construirRefugio(l){
   const reboco=matReboco(cor),telha=matTelha(CORES_TELHA[(l.sem>>3)%CORES_TELHA.length]);
   const larg=l.larg,prof=l.prof,y0=l.baseY,alt=ANDAR_ALT+.25;
   const P=(dx,dz)=>noLote(l,dx,dz);
+  // O piso usa a cota da soleira, mas o morro pode descer vários centímetros (ou metros) atrás
+  // dela. Se as paredes começarem em `y0`, a parte de baixo fica no ar. A casa comum já corrige isso
+  // com `afundar`; o refúgio precisa aplicar a mesma regra à sua casca oca.
+  let menorTerreno=y0;
+  for(const sx of[-1,1])for(const sz of[-1,1])for(const fora of[0,1.4]){
+    const p=P(sx*(larg/2+fora),sz*(prof/2+fora));
+    menorTerreno=Math.min(menorTerreno,obterElevacao(p.x,p.z));
+  }
+  for(const[dx,dz]of[[0,prof/2+1.4],[0,-prof/2-1.4],[larg/2+1.4,0],[-larg/2-1.4,0]]){
+    const p=P(dx,dz);menorTerreno=Math.min(menorTerreno,obterElevacao(p.x,p.z));
+  }
+  const afundar=Math.max(0,y0-menorTerreno)+.25;
   const casca=[];
-  const parede=(lw,ld,dx,dz,h,dy)=>{const p=P(dx,dz);
-    casca.push(pecaSolta(new THREE.BoxGeometry(lw,h,ld),reboco,p.x,y0+dy+h/2,p.z,l.giro,g))};
+  const parede=(lw,ld,dx,dz,h,dy,descer=true)=>{const p=P(dx,dz);
+    const altura=h+(descer?afundar:0),base=y0+dy-(descer?afundar:0);
+    casca.push(pecaSolta(new THREE.BoxGeometry(lw,altura,ld),reboco,p.x,base+altura/2,p.z,l.giro,g))};
   parede(larg,ESP_PAREDE,0,-prof/2,alt,0);                 // fundo
   parede(ESP_PAREDE,prof,-larg/2,0,alt,0);                 // lateral esquerda
   parede(ESP_PAREDE,prof, larg/2,0,alt,0);                 // lateral direita
   const aba=(larg-VAO_PORTA)/2;
   parede(aba,ESP_PAREDE,-(larg+VAO_PORTA)/4,prof/2,alt,0); // fachada, à esquerda do vão
   parede(aba,ESP_PAREDE, (larg+VAO_PORTA)/4,prof/2,alt,0); // fachada, à direita do vão
-  parede(VAO_PORTA,ESP_PAREDE,0,prof/2,alt-PORTA_ALTURA,PORTA_ALTURA);// verga sobre a porta
+  // A verga não pode descer com as paredes: ela começa no topo do vão e, se for estendida para baixo,
+  // transforma a porta em uma parede maciça justamente quando o terreno exige mais afundamento.
+  parede(VAO_PORTA,ESP_PAREDE,0,prof/2,alt-PORTA_ALTURA,PORTA_ALTURA,false);// verga sobre a porta
   // Laje: é telhado e é piso de quem está em cima.
   const c=P(0,0);
   const laje=pecaSolta(new THREE.BoxGeometry(larg+.14,.12,prof+.14),telha,c.x,y0+alt+.06,c.z,l.giro,g);
@@ -932,6 +959,19 @@ export function atualizarRefugios(dt){
 // tem porta escancarada nem fechada, tem a portinhola levantada até a altura do ombro), luz amarela
 // dura vazando por baixo, mesa e cadeira de plástico na calçada.
 export const BAR={x:0,y:0,z:0,raio:0};
+// Calcula quanto a fundação precisa descer para alcançar o relevo mais baixo sob a construção.
+// O topo permanece na cota da soleira; apenas a base é enterrada, sem mover balcão, porta ou telhado.
+function afundarEstrutura(l,larg,prof,y0){
+  let menor=y0;
+  for(const sx of[-1,1])for(const sz of[-1,1])for(const fora of[0,1.4]){
+    const p=noLote(l,sx*(larg/2+fora),sz*(prof/2+fora));
+    menor=Math.min(menor,obterElevacao(p.x,p.z));
+  }
+  for(const[dx,dz]of[[0,prof/2+1.4],[0,-prof/2-1.4],[larg/2+1.4,0],[-larg/2-1.4,0]]){
+    const p=noLote(l,dx,dz);menor=Math.min(menor,obterElevacao(p.x,p.z));
+  }
+  return Math.max(0,y0-menor)+.25;
+}
 const GEO_CADEIRA=new THREE.BoxGeometry(.42,.06,.42);
 const GEO_PERNA=new THREE.BoxGeometry(.05,.42,.05);
 const GEO_ENCOSTO=new THREE.BoxGeometry(.42,.42,.05);
@@ -939,13 +979,14 @@ const GEO_MESA=new THREE.CylinderGeometry(.36,.36,.05,8);
 function construirBar(l){
   const azulejo=matReboco(0xe6e2d6),telha=matTelha(0xa8a49c);
   MAT_SOMBRA.add(azulejo);MAT_SOMBRA.add(telha);
-  const larg=l.larg,prof=l.prof,y0=l.baseY,alt=2.9;
+  const larg=l.larg,prof=l.prof,y0=l.baseY,alt=2.9,afundar=afundarEstrutura(l,larg,prof,y0);
+  const yParede=y0+alt/2-afundar/2,altParede=alt+afundar;
   const P=(dx,dz)=>noLote(l,dx,dz);
-  // Caixa fechada nos três lados; a frente vira o vão da portinhola.
-  caixaNoLote(l,azulejo,larg,alt,ESP_PAREDE,0,-prof/2,y0+alt/2);
-  for(const sx of[-1,1])caixaNoLote(l,azulejo,ESP_PAREDE,alt,prof,sx*larg/2,0,y0+alt/2);
+  // Caixa fechada nos três lados; a frente vira o vão da portinhola. A fundação desce até o relevo.
+  caixaNoLote(l,azulejo,larg,altParede,ESP_PAREDE,0,-prof/2,yParede);
+  for(const sx of[-1,1])caixaNoLote(l,azulejo,ESP_PAREDE,altParede,prof,sx*larg/2,0,yParede);
   // Interior escuro atrás do vão: sem isto o bar é uma caixa vazia com o morro aparecendo do outro lado.
-  caixaNoLote(l,bmat(0x17140f),larg-.3,alt,.1,0,-prof/2+.5,y0+alt/2);
+  caixaNoLote(l,bmat(0x17140f),larg-.3,altParede,.1,0,-prof/2+.5,yParede);
   // Balcão.
   caixaNoLote(l,concreto,larg*.8,1.05,.55,0,prof/2-1.1,y0+.52);
   // A PORTA DE AÇO, meio levantada. Ela ocupa a metade de cima do vão; o resto é o vão por onde a luz
@@ -989,13 +1030,14 @@ export const BIQUEIRA={x:0,y:0,z:0,raio:0};
 function construirBiqueira(l){
   const reboco=matReboco(0x7d7466),telha=matTelha(0x9e9a92);
   MAT_SOMBRA.add(reboco);MAT_SOMBRA.add(telha);
-  const larg=l.larg,prof=l.prof,y0=l.baseY,alt=2.5;
+  const larg=l.larg,prof=l.prof,y0=l.baseY,alt=2.5,afundar=afundarEstrutura(l,larg,prof,y0);
+  const yParede=y0+alt/2-afundar/2,altParede=alt+afundar;
   const P=(dx,dz)=>noLote(l,dx,dz);
-  caixaNoLote(l,reboco,larg,alt,prof,0,0,y0+alt/2);
+  caixaNoLote(l,reboco,larg,altParede,prof,0,0,yParede);
   {const c=P(0,0);caixa(telha,larg+.16,.14,prof+.16,c.x,y0+alt+.07,c.z,l.giro,true)}
   // Muro baixo na frente: é atrás dele que a boca funciona, e é ele que dá o "canto" sem fechar o beco.
   {const p=P(-larg*.15,prof/2+1.25);
-   caixa(reboco,larg*.7,1.15,.2,p.x,y0+.58,p.z,l.giro);
+   caixa(reboco,larg*.7,1.15+afundar,.2,p.x,y0+.58-afundar/2,p.z,l.giro);
    // Pichação: geometria SEPARADA num material sem tinta, colada 2 cm à frente do muro.
    const q=P(-larg*.15,prof/2+1.37);
    caixa(graffiteMat,larg*.62,.85,.02,q.x,y0+.62,q.z,l.giro);}
@@ -1114,15 +1156,22 @@ function fatiarRetangulo(cx,cz,w,d,giro){
   }
   return fatias;
 }
+// Calcula os colisores a partir do retângulo físico da casa, não de uma malha visual fundida.
+// `l.larg` e `l.prof` são as dimensões do lote/casa; `l.giro` é aplicado antes da divisão em fatias.
+// Assim, cada caixa representa uma faixa do volume real e não a AABB de uma geometria agregada.
+export function calcularColisoresCasa(l){
+  if(l.papel==='refugio')return [];// refúgios têm casca oca e colisores próprios.
+  const yBaixo=l.baseY-CHAO_PROFUNDIDADE;
+  const yAlto=(l.lajeY??l.baseY+2.5)-.02;
+  return fatiarRetangulo(l.x,l.z,l.larg,l.prof,l.giro).map(f=>
+    new THREE.Box3(new THREE.Vector3(f.x0,yBaixo,f.z0),
+                   new THREE.Vector3(f.x1,yAlto,f.z1)));
+}
+
 let colisoresCasa=0;
 for(const l of lotes){
-  if(l.papel==='refugio')continue;
-  // O topo para 2 cm ABAIXO da laje: a colisão horizontal do jogador começa em y+ALTURA_DEGRAU
-  // (0,216 m), então parado em cima da laje ele não encosta no próprio colisor da casa.
-  const yBaixo=l.baseY-CHAO_PROFUNDIDADE,yAlto=(l.lajeY??l.baseY+2.5)-.02;
-  for(const f of fatiarRetangulo(l.x,l.z,l.larg,l.prof,l.giro)){
-    registrarCaixa(new THREE.Box3(new THREE.Vector3(f.x0,yBaixo,f.z0),
-                                  new THREE.Vector3(f.x1,yAlto,f.z1)),'casa');
+  for(const box of calcularColisoresCasa(l)){
+    registrarCaixa(box,'casa');
     colisoresCasa++;
   }
 }
