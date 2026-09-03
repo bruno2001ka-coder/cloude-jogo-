@@ -128,6 +128,9 @@ export function acaoPrimaria(){
   if(ctx.tipo==='planta'&&ctx.planta.estagio===2){colher(ctx.planta);return 'colheu'}
   return null;
 }
+// Tamanhos de lote que o cliente pede. Ficam aqui em cima porque o sorteio mudou de lugar: ele era
+// feito dentro do `renderizarAcoes` e sorteava de novo a cada redesenho do painel.
+const LOTES_ENTREGA=[1,2,3,5,7,10,12,15,20];
 export function contextoAtual(){
   const p=player.position;
   // O refúgio vem PRIMEIRO: dentro da casa, a única ação que importa é a porta. `chave` inclui o
@@ -139,8 +142,21 @@ export function contextoAtual(){
   // e não teria como entregar. A chave carrega o papel e a quantidade pelo mesmo motivo de sempre:
   // o painel só se redesenha quando ela muda.
   const refugio=refugioEmQueEsta(p);
-  if(refugio)return{tipo:'refugio',refugio,
-    chave:`refugio${refugio.papel}${refugio.aberta?'A':'F'}x${inventario.pacote}`};
+  if(refugio){
+    // A ENTREGA É RESOLVIDA AQUI, onde a posição do jogador existe. Eu tinha chamado
+    // `pontoDeEntregaAtual(p)` lá dentro de `renderizarAcoes`, e `p` é local DESTA função: dava
+    // `ReferenceError: p is not defined` a cada quadro em que o jogador estivesse dentro da casa do
+    // cliente. O laço do jogo captura o erro e segue, então não aparecia tela vermelha — aparecia o
+    // jogo travando e um aviso, que foi exatamente o que o Bruno viu.
+    const entrega=refugio.papel==='cliente'?pontoDeEntregaAtual(p):null;
+    // O LOTE TAMBÉM SAI DAQUI. Sorteado dentro do `renderizarAcoes`, ele mudava a cada redesenho do
+    // painel — o preço dançava na tela enquanto o jogador olhava pro botão. Aqui ele é sorteado uma
+    // vez por CHAVE, ou seja, uma vez por visita, e fica firme até algo mudar de verdade.
+    const lote=entrega&&inventario.pacote>0
+      ?Math.min(inventario.pacote,LOTES_ENTREGA[Math.floor(Math.random()*LOTES_ENTREGA.length)]):0;
+    return{tipo:'refugio',refugio,entrega,lote,
+      chave:`refugio${refugio.papel}${refugio.aberta?'A':'F'}x${inventario.pacote}`};
+  }
   // A porteira vem antes dos polos: ela fica a 21 m do Depósito Rural, então não disputam contexto —
   // a ordem aqui é só pra deixar as duas ações de abrir/fechar juntas no topo.
   if(pertoDaPorteira(p))return{tipo:'porteira',chave:'porteira'+(porteiraFazenda.aberta?'A':'F')};
@@ -352,10 +368,8 @@ export function renderizarAcoes(){
     // Dentro da casa do cliente, a entrega vem JUNTO com a porta — senão entrar seria um beco sem
     // saída de interface: a única ação disponível seria sair.
     if(cliente){
-      const ponto=pontoDeEntregaAtual(p);
-      if(ponto&&inventario.pacote>0){
-        const lote=[1,2,3,5,7,10,12,15,20][Math.floor(Math.random()*9)];
-        const quantidade=Math.min(inventario.pacote,lote);
+      const quantidade=ctx.lote;
+      if(quantidade>0){
         const valor=quantidade*PRECOS.receptadorPacote;
         const e=document.createElement('button');
         e.textContent=`📦 Entregar ${quantidade} pacote(s) (+R$${valor})`;

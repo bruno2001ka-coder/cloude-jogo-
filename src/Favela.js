@@ -961,7 +961,12 @@ function construirCasaOca(l){
   const r={x:l.x,z:l.z,y:y0,giro:l.giro,pivo,folha,caixa:cx,caixaFechada,aberta:true,
     papel:ehCliente?'cliente':'esconderijo',
     fechadaRad:l.giro,abertaRad:l.giro+PORTA_ABERTA_RAD,
-    meiaLarg:larg/2-recuo,meiaProf:prof/2-recuo,larg,prof};
+    meiaLarg:larg/2-recuo,meiaProf:prof/2-recuo,larg,prof,alt,
+    // Onde o PISO realmente está. A casca não tem piso: o interior é o morro, e numa casa cravada no
+    // barranco ele desce bem abaixo da soleira — é justamente o que `afundar` mede pra a parede
+    // alcançar o chão. Sem este número, o teste de "está dentro" pela altura barrava o jogador que
+    // entrou de verdade (medido: 8 de 13 casas, com o chão até 1,57 m abaixo da soleira).
+    piso:y0-afundar};
   refugios.push(r);
   l.lajeY=y0+alt+.12;
   return r;
@@ -980,7 +985,17 @@ export function refugioEmQueEsta(pos){
   for(const r of refugios){
     const dx=pos.x-r.x,dz=pos.z-r.z,c=Math.cos(r.giro),sn=Math.sin(r.giro);
     const lx=dx*c-dz*sn,lz=dx*sn+dz*c;
-    if(Math.abs(lx)<=r.meiaLarg&&Math.abs(lz)<=r.meiaProf)return r;
+    if(Math.abs(lx)>r.meiaLarg||Math.abs(lz)>r.meiaProf)continue;
+    // ===== E TEM QUE ESTAR NA ALTURA DO CÔMODO =====
+    // O teste era só de X e Z, e por isso quem estava EM CIMA DA LAJE contava como estando dentro da
+    // casa. Duas consequências reais: dava pra se esconder da polícia de pé no telhado (a ficha
+    // descia com o jogador exposto ao céu), e a entrega em cima da laje devolvia o contexto do
+    // refúgio em vez do cliente, escondendo o botão de entregar — foi assim que o teste da entrega
+    // na laje pegou isto.
+    // A faixa começa 60 cm ABAIXO da soleira porque a casca oca não tem piso: o interior é o morro,
+    // e ele pode estar mais baixo que a soleira num canto.
+    if(Number.isFinite(pos.y)&&(pos.y<r.piso-.3||pos.y>r.y+r.alt))continue;
+    return r;
   }
   return null;
 }
