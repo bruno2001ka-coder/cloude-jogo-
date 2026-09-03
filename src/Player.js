@@ -248,6 +248,11 @@ export function vigiarTravamento(dt,querendoAndar){
 const VELOCIDADE=PLAYER_HEIGHT*4.6;
 let walk=0;const velocity=new THREE.Vector3(),desired=new THREE.Vector3();
 const _frente=new THREE.Vector3(),_lado=new THREE.Vector3();
+// O terreno ocupa de -130 a +130 em X/Z. Os limites antigos (-100..92 em X e -100..100 em Z)
+// eram menores que a área renderizada e criavam uma parede invisível antes do fim do mapa.
+// A margem evita que a hitbox atravesse a borda da malha, mas deixa o jogador explorar todo o terreno.
+const LIMITE_TERRENO=130, MARGEM_BORDA=.6;
+const LIMITE_JOGADOR=LIMITE_TERRENO-MARGEM_BORDA;
 export function atualizarMovimentoJogador(dt,keys,joyX,joyY,yaw,fatorVelocidade=1){
   const smooth=1-Math.exp(-18*dt);
   let x=(keys.KeyD?1:0)-(keys.KeyA?1:0)+joyX,z=(keys.KeyS?1:0)-(keys.KeyW?1:0)+joyY;
@@ -272,8 +277,8 @@ export function atualizarMovimentoJogador(dt,keys,joyX,joyY,yaw,fatorVelocidade=
   const py=player.position.y;
   if(jogadorColideAcimaDoDegrau(player.position.x+velocity.x*dt,player.position.z,py))velocity.x=0;else player.position.x+=velocity.x*dt;
   if(jogadorColideAcimaDoDegrau(player.position.x,player.position.z+velocity.z*dt,py))velocity.z=0;else player.position.z+=velocity.z*dt;
-  player.position.x=THREE.MathUtils.clamp(player.position.x,-100,92);
-  player.position.z=THREE.MathUtils.clamp(player.position.z,-100,100);
+  player.position.x=THREE.MathUtils.clamp(player.position.x,-LIMITE_JOGADOR,LIMITE_JOGADOR);
+  player.position.z=THREE.MathUtils.clamp(player.position.z,-LIMITE_JOGADOR,LIMITE_JOGADOR);
   atualizarFisicaVertical(dt);
   preencherHitboxJogador(jogadorBoxDebugTemp,player.position.x,player.position.z);
   const speed=Math.hypot(velocity.x,velocity.z);
