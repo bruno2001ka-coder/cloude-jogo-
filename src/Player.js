@@ -22,7 +22,12 @@ criarSombraContato(.85,player);player.scale.setScalar(PLAYER_SCALE);player.posit
 // O grupo nasce vazio e invisível. Assim o colete antigo não aparece durante os primeiros segundos:
 // quando a armadura é ligada antes do GLB chegar, só existe um grupo vazio; o modelo 3D entra nele
 // assim que termina o carregamento. A armadura continua sendo lógica do combate, não uma hitbox.
-const colete=new THREE.Group();colete.visible=false;player.add(colete);
+// O nome não é enfeite: colete e mochila terminam pendurados no MESMO osso (Spine02), quase no mesmo
+// ponto — o colete envolve o tronco, então o centro dele coincide com o centro do tronco em 2 mm.
+// Sem nome, só sobra "quem está mais pra frente" pra distinguir os dois, e 2 mm de folga é o que
+// separa um diagnóstico certo de um errado (foi exatamente o que fez um teste jurar que o colete
+// tinha sumido). Com nome, qualquer ferramenta acha a peça certa de primeira.
+const colete=new THREE.Group();colete.name='ancoraColete';colete.visible=false;player.add(colete);
 // ===== O MODELO 3D SÓ BAIXA QUANDO FOR APARECER =====
 // `carregarColete` e `pendurarMochila` eram chamados AQUI, no topo do módulo, incondicionalmente.
 // Medido pela auditoria: 1,79 MB de download e 35 MB de VRAM (a mochila sozinha traz uma textura
@@ -40,7 +45,7 @@ export function coleteEstaVisivel(){return colete.visible}
 
 // ===== MOCHILA 3D DOS PACOTES =====
 // O fallback antigo de caixas foi removido: o grupo nasce vazio e recebe exclusivamente o GLB.
-const mochila=new THREE.Group();mochila.visible=false;player.add(mochila);
+const mochila=new THREE.Group();mochila.name='ancoraMochila';mochila.visible=false;player.add(mochila);
 // O GLB é solicitado já na inicialização. Assim o modelo termina de carregar antes da primeira colheita
 // ou entrega, evitando que uma corrida entre save, inventário e renderização deixe a mochila invisível.
 let mochilaPedida=true;

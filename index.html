@@ -109,12 +109,11 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
 #armaMunicao{font-size:11px;font-weight:800;letter-spacing:.04em}
 /* Modo de mira: alternador do lado do gatilho (o polegar direito não consegue segurar dois botões).
    Fica à ESQUERDA do botão de tiro pra não competir com o dedo que atira. */
-/* CORRER NO CELULAR. Sprint só existia no Shift do teclado, e este jogo é jogado no telefone — ou
-   seja, a corrida simplesmente não existia pra quem joga de verdade. Fica à DIREITA do joystick, no
-   alcance do mesmo polegar que anda: correr é uma coisa que se faz ENQUANTO anda, e um botão do outro
-   lado da tela obrigaria a soltar a direção pra usar. */
-#correrBtn{display:flex;align-items:center;justify-content:center;position:fixed;z-index:8;left:206px;bottom:52px;width:74px;height:74px;border-radius:50%;border:2px solid #8fd0f0;background:rgba(14,40,58,.85);color:#bfe6fb;font-size:26px;box-shadow:0 6px 18px rgba(0,0,0,.35);touch-action:none;-webkit-tap-highlight-color:transparent;cursor:pointer;user-select:none}
-#correrBtn.correndo{background:rgba(60,150,205,.95);border-color:#d6f0ff;transform:scale(.94)}
+/* CORRER É EMPURRAR O JOYSTICK ATÉ O BATENTE (ver LIMIAR_CORRIDA em Input.js). O botão dedicado que
+   existia aqui saiu: correr é coisa que se faz ENQUANTO anda, e botão obriga o polegar a soltar a
+   direção. A borda acende pra o jogador ver que ligou — sem esse retorno, "correndo" e "andando" são
+   a mesma imagem na tela e ele não tem como saber se pegou. */
+#stickBase.correndo{border-color:#8fd0f0;box-shadow:inset 0 0 0 10px rgba(143,208,240,.16),0 0 22px rgba(143,208,240,.5),0 8px 24px rgba(0,0,0,.25)}
 #miraBtn{display:none;align-items:center;justify-content:center;position:fixed;z-index:8;right:112px;bottom:160px;width:62px;height:62px;border-radius:50%;border:2px solid #7ee0a8;background:rgba(12,38,26,.85);color:#7ee0a8;font-size:24px;box-shadow:0 6px 18px rgba(0,0,0,.35);touch-action:none;-webkit-tap-highlight-color:transparent;cursor:pointer;user-select:none}
 #miraBtn.on{background:rgba(90,220,150,.92);color:#07231a;border-color:#d8ffe9}
 #miraBtn:active{transform:scale(.92)}
@@ -150,7 +149,6 @@ body.debug #debugBtn{display:block}
   #fireBtn{width:66px;height:66px;bottom:110px;right:24px;font-size:19px}
   #miraBtn{width:54px;height:54px;bottom:118px;right:100px;font-size:20px}
   #armaBtn{width:54px;height:54px;bottom:186px;right:24px}
-  #correrBtn{width:64px;height:64px;left:196px;bottom:34px;font-size:22px}
   #touch{width:150px;height:150px;bottom:22px}
   #stick{width:58px;height:58px;margin:-29px}
   #alertaPolicia{top:92px}
@@ -172,7 +170,7 @@ body.debug #debugBtn{display:block}
 <canvas id="radar" aria-label="Radar"></canvas>
 <button id="droneBtn" aria-label="Modo drone">🚁</button>
 <button id="destravarBtn" aria-label="Destravar personagem">DESTRAVAR</button>
-<div id="hint"><span id="hintPC">WASD andar · Shift correr · Espaço pular · Mouse olhar · Botão esq. atirar · Botão dir. mirar · E colher/porta · Q inventário · Tab/X ou rodinha trocar arma · 1-4 arma · F rajada</span><span id="hintTouch">Joystick para andar · arraste para olhar · segure 🔫 pra rajada · 🎯 mira fechada · toque na arma pra trocar</span><br><span style="opacity:.8">🔵 sementes · 🟠 armas · 🟡 fazenda · 🔴 receptador · 🟢 sua muda · 🟥 refúgio (entre na casa)</span></div>
+<div id="hint"><span id="hintPC">WASD andar · Shift correr · Espaço pular · Mouse olhar · Botão esq. atirar · Botão dir. mirar · E colher/porta · Q inventário · Tab/X ou rodinha trocar arma · 1-4 arma · F rajada</span><span id="hintTouch">Joystick para andar · empurre até o fim pra CORRER · arraste para olhar · segure 🔫 pra rajada · 🎯 mira fechada · toque na arma pra trocar</span><br><span style="opacity:.8">🔵 sementes · 🟠 armas · 🟡 fazenda · 🔴 receptador · 🟢 sua muda · 🟥 refúgio (entre na casa)</span></div>
 <div id="alertaPolicia">🚁 ALERTA POLICIAL</div>
 <div id="atencaoPolicia"></div>
 <div id="refugioIndicador">🫥 ESCONDIDO</div>
@@ -181,7 +179,6 @@ body.debug #debugBtn{display:block}
 
 <div id="touch" aria-label="Joystick de movimento"><div id="stickBase"><div id="stick"></div></div></div>
 <button id="jumpBtn" aria-label="Pular">PULAR</button>
-<button id="correrBtn" aria-label="Correr">🏃</button>
 <button id="fireBtn" aria-label="Atirar">🔫</button>
 <button id="armaBtn" aria-label="Trocar de arma"><span id="armaIcone">🔫</span><span id="armaMunicao">24</span></button>
 <button id="miraBtn" aria-label="Modo de mira">🎯</button>

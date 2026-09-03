@@ -13,12 +13,12 @@ export const SENSIBILIDADE_MOUSE=.0035;      // giro horizontal (yaw) com pointe
 export const SENSIBILIDADE_MOUSE_VERTICAL=.0025;// giro vertical (pitch) com pointer lock
 export const SENSIBILIDADE_TOQUE=.009,SENSIBILIDADE_TOQUE_VERTICAL=.006;// arraste de dedo/mouse sem lock
 
-export const inputState={yaw:0,targetYaw:0,pitch:.28,targetPitch:.28,joyX:0,joyY:0,joyActive:false,joyId:null,correndo:false};
+export const inputState={yaw:0,targetYaw:0,pitch:.28,targetPitch:.28,joyX:0,joyY:0,joyActive:false,joyId:null,joyForca:0,correndo:false};
 export const keys=Object.create(null);
 const keyMap={w:'KeyW',a:'KeyA',s:'KeyS',d:'KeyD',ArrowUp:'KeyW',ArrowLeft:'KeyA',ArrowDown:'KeyS',ArrowRight:'KeyD'};
 // Solta o gatilho junto com as teclas: trocar de aba com F pressionado deixaria o tiro preso ligado.
 // Solta também a corrida: se o Shift ficar "preso" ao trocar de aba, o jogador voltaria correndo sozinho.
-const clearKeys=()=>{for(const k in keys)keys[k]=false;inputState.correndo=false;definirGatilho(false);if(document.pointerLockElement)definirMira(false)};
+const clearKeys=()=>{for(const k in keys)keys[k]=false;inputState.correndo=false;inputState.joyForca=0;definirGatilho(false);if(document.pointerLockElement)definirMira(false)};
 
 function pularOuSubir(){if(droneState.ativo){subirDrone()}else{pularJogador()}}
 
@@ -51,28 +51,28 @@ document.addEventListener('visibilitychange',()=>{if(document.hidden)clearKeys()
 const jumpBtn=document.getElementById('jumpBtn');
 jumpBtn.addEventListener('pointerdown',e=>{e.preventDefault();pularOuSubir()});
 
-// ===== CORRER NO CELULAR =====
-// A corrida existia só no Shift, e o jogo é jogado no telefone: na prática ninguém correu até hoje.
-// O botão é de SEGURAR, igual ao Shift — apertar pra ligar e apertar pra desligar deixaria o jogador
-// correndo sem querer depois de qualquer toque perdido, e correr muda a mira e a animação.
+// ===== CORRER É EMPURRAR O JOYSTICK ATÉ O BATENTE =====
+// Foi um BOTÃO por uma versão, e o Bruno pediu o jeito de jogo de tiro: "pra correr rápido tem que
+// arrastar o joystick até o finalzinho". Ele tem razão, e o botão saiu — por dois motivos.
 //
-// `pointerup` e `pointercancel` no DOCUMENTO, não no botão: com o dedo deslizando pra fora do círculo
-// (o que acontece o tempo todo com o polegar apoiado), o `pointerup` sai em cima de outro elemento e
-// o botão nunca receberia a soltura — o jogador ficaria correndo pra sempre.
-const correrBtn=document.getElementById('correrBtn');
-if(correrBtn){
-  const pintar=()=>correrBtn.classList.toggle('correndo',inputState.correndo);
-  correrBtn.addEventListener('pointerdown',e=>{
-    e.preventDefault();correrBtn.setPointerCapture?.(e.pointerId);
-    inputState.correndo=true;pintar();
-  });
-  for(const ev of['pointerup','pointercancel'])
-    document.addEventListener(ev,()=>{if(inputState.correndo){inputState.correndo=false;pintar()}});
-}
+// O primeiro é a mão: correr é coisa que se faz ENQUANTO anda, e um botão obriga o polegar a fazer
+// duas coisas ao mesmo tempo ou a soltar a direção pra apertar. No batente, andar e correr são o
+// MESMO gesto, só que mais longe. É por isso que todo jogo de tiro de celular faz assim.
+// O segundo é espaço: o botão comia 74 px de tela num aparelho onde área de polegar é o recurso mais
+// escasso, e a tela dele já estava cheia.
+//
+// O limiar é 0,88 e não 1,00: o dedo raramente encosta no batente exato, e exigir o batente exato
+// daria uma corrida que só liga por acidente. A 88% ele já está claramente empurrando pra fora, e a
+// borda do joystick acende pra ele ver que pegou.
+const LIMIAR_CORRIDA=.88;
 
 const stickBase=document.getElementById('stickBase'),stick=document.getElementById('stick');
-function updateJoy(e){const r=stickBase.getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2,max=r.width*.34;let dx=e.clientX-cx,dy=e.clientY-cy;const len=Math.hypot(dx,dy);if(len>max){dx=dx/len*max;dy=dy/len*max}inputState.joyX=dx/max;inputState.joyY=dy/max;stick.style.transform=`translate(${dx}px,${dy}px)`}
-function releaseJoy(e){if(inputState.joyId!==null&&e.pointerId!==inputState.joyId)return;inputState.joyX=0;inputState.joyY=0;inputState.joyActive=false;inputState.joyId=null;stick.style.transform='translate(0,0)'}
+function updateJoy(e){const r=stickBase.getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2,max=r.width*.34;let dx=e.clientX-cx,dy=e.clientY-cy;const len=Math.hypot(dx,dy);if(len>max){dx=dx/len*max;dy=dy/len*max}inputState.joyX=dx/max;inputState.joyY=dy/max;
+  // Quanto o polegar empurrou, de 0 (centro) a 1 (batente). É daqui que sai a corrida.
+  inputState.joyForca=Math.min(1,len/max);
+  stickBase.classList.toggle('correndo',inputState.joyForca>=LIMIAR_CORRIDA);
+  stick.style.transform=`translate(${dx}px,${dy}px)`}
+function releaseJoy(e){if(inputState.joyId!==null&&e.pointerId!==inputState.joyId)return;inputState.joyX=0;inputState.joyY=0;inputState.joyForca=0;inputState.joyActive=false;inputState.joyId=null;stickBase.classList.remove('correndo');stick.style.transform='translate(0,0)'}
 stickBase.addEventListener('pointerdown',e=>{e.preventDefault();inputState.joyActive=true;inputState.joyId=e.pointerId;stickBase.setPointerCapture?.(e.pointerId);updateJoy(e)});
 stickBase.addEventListener('pointermove',e=>{if(inputState.joyActive&&e.pointerId===inputState.joyId)updateJoy(e)});
 stickBase.addEventListener('pointerup',releaseJoy);
@@ -170,6 +170,10 @@ export function atualizarSuavizacaoInput(dt){
 export const VEL_CORRIDA=1.7,VEL_MIRA=.45;
 export function fatorVelocidadeDesejado(){
   const f=miraState.fator;
-  const base=inputState.correndo&&f<.15?VEL_CORRIDA:1;
+  // Duas fontes, uma pergunta: Shift no teclado OU joystick no batente. Ficam separadas em vez de uma
+  // escrever na outra — se `updateJoy` escrevesse em `correndo`, o dedo saindo do joystick apagaria um
+  // Shift que o teclado ainda está segurando.
+  const correndo=inputState.correndo||inputState.joyForca>=LIMIAR_CORRIDA;
+  const base=correndo&&f<.15?VEL_CORRIDA:1;
   return base+(VEL_MIRA-base)*f;
 }

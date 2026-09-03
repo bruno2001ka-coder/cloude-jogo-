@@ -1402,6 +1402,8 @@ export function __fichaParaTeste(){return{procurado:policia.procurado,rastroAtiv
 export function __ruaParaTeste(){return policiaisRua.map(p=>({x:+p.pos.x.toFixed(1),z:+p.pos.z.toFixed(1),
   destino:p.destinoRonda?{x:+p.destinoRonda.x.toFixed(1),z:+p.destinoRonda.z.toFixed(1)}:null}))}
 export function __nascerDuplaParaTeste(x,z){nascerDupla(performance.now()/1000,{x,z})}
+export function __armaduraParaTeste(){return armaduraJogador}
+export function __zerarArmaduraParaTeste(){armaduraJogador=0}
 export function __vidaJogadorParaTeste(){return saudeJogador}
 export function __curarJogadorParaTeste(){
   // Zera TAMBÉM o rendido: sem isso, o primeiro caso do teste matava o jogador, ele ficava rendido, e

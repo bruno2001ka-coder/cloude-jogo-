@@ -318,40 +318,44 @@ function tentarVestirColete(){
   coleteModelo.position.add(destino.sub(centro).divideScalar(escalaDe(coleteGrupo)));
 }
 // ===== MOCHILA =====
-// Diferente do colete, a mochila não tem arquivo: as caixas que o Player montou continuam sendo as
-// caixas. O que este módulo faz é pendurá-las no osso do tronco e redimensionar pela medida REAL do
-// tronco do modelo — sem isso ficariam do tamanho do boneco de caixas (tronco de 1,05 de largura) e
-// engoliriam o humanoide, que foi exatamente o que aconteceu com o colete antes de ser ajustado.
-let mochilaModelo=null;
+// A mochila é um GLB pendurado no osso do tronco e redimensionado pela medida REAL do tronco do
+// modelo — sem isso ela sai no tamanho do arquivo e engole o boneco, que foi o que aconteceu com o
+// colete antes de ser ajustado. Não existe mais fallback de caixas: ou é o GLB, ou não é nada.
+let mochilaModelo=null,mochilaFalhou=false;
 const mochilasPendentes=[];
 export function pendurarMochila(grupo){
   mochilasPendentes.push(grupo);
-  // Pede o modelo 3D. Se chegar, troca as caixas por ele DENTRO do mesmo grupo — o liga/desliga
-  // continua sendo um `.visible` só. Se falhar, as caixas ficam e o jogador vê a mochila simples.
-  if(!mochilaModelo)new GLTFLoader().load('assets/mochila.glb',gltf=>{
+  if(!mochilaModelo&&!mochilaFalhou)new GLTFLoader().load('assets/mochila.glb',gltf=>{
     mochilaModelo=gltf.scene;tentarPendurarMochilas();
   },undefined,err=>{
-    console.warn('Quintal 3D: mochila 3D não carregou, seguindo com a mochila simples.',err);
-    tentarPendurarMochilas();
+    // Sem fallback, não há o que pendurar: marcar a falha evita que cada chamada peça o arquivo de novo.
+    mochilaFalhou=true;
+    console.warn('Quintal 3D: mochila 3D não carregou.',err);
   });
   tentarPendurarMochilas();
 }
 function tentarPendurarMochilas(){
-  if(!mochilasPendentes.length||!troncoOsso||aNormalizar)return;
+  // `!mochilaModelo` NÃO É REDUNDANTE, é o conserto da mochila que não aparecia.
+  // Isto aqui é chamado de três lugares, e um deles é o quadro seguinte à normalização do boneco
+  // (Personagem, logo depois de `aNormalizar=false`). Quando esse quadro chegava ANTES do GLB — que
+  // é uma corrida de rede, então acontecia uma partida sim, outra não — o `splice(0)` abaixo tirava o
+  // grupo da fila e o pendurava VAZIO: `Box3` de grupo sem malha nasce invertida, `getCenter` devolve
+  // NaN e a posição do grupo virava NaN. Pior: a fila ficava vazia, então quando o arquivo enfim
+  // chegava não havia mais ninguém pra vestir e a mochila nunca mais aparecia na partida inteira.
+  // Enquanto o modelo não está em mãos, o grupo FICA na fila e o carregador chama de volta.
+  if(!mochilasPendentes.length||!troncoOsso||aNormalizar||!mochilaModelo)return;
   const m=medidasTronco();if(!m)return;
   for(const grupo of mochilasPendentes.splice(0)){
     troncoOsso.add(grupo);
     grupo.position.set(0,0,0);grupo.rotation.set(0,0,0);grupo.scale.setScalar(1);
-    if(mochilaModelo){
-      for(const filho of grupo.children.slice()){grupo.remove(filho);filho.geometry?.dispose?.()}
-      grupo.add(mochilaModelo);
-      // Alguns exportadores GLB preservam nós ocultos do arquivo original. O modelo precisa ser visível
-      // quando o grupo for ligado pelo inventário, então normalizamos essa flag em toda a hierarquia.
-      mochilaModelo.traverse(o=>{o.visible=true});
-      // De costas pro observador: o modelo vem virado pra frente, e uma mochila com o bolso pro lado
-      // das costas do jogador fica com a alça pra fora.
-      mochilaModelo.rotation.y=Math.PI;
-    }
+    for(const filho of grupo.children.slice()){grupo.remove(filho);filho.geometry?.dispose?.()}
+    grupo.add(mochilaModelo);
+    // Alguns exportadores GLB preservam nós ocultos do arquivo original. O modelo precisa ser visível
+    // quando o grupo for ligado pelo inventário, então normalizamos essa flag em toda a hierarquia.
+    mochilaModelo.traverse(o=>{o.visible=true});
+    // De costas pro observador: o modelo vem virado pra frente, e uma mochila com o bolso pro lado
+    // das costas do jogador fica com a alça pra fora.
+    mochilaModelo.rotation.y=Math.PI;
     grupo.updateWorldMatrix(true,true);
     const caixa=new THREE.Box3().setFromObject(grupo);
     const larg=caixa.max.x-caixa.min.x;
