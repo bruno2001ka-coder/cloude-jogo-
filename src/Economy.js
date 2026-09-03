@@ -385,8 +385,12 @@ export function renderizarAcoes(){
     botaoLoja(`🛡 Colete (R$${PRECOS.armasColete})`,PRECOS.armasColete,()=>comprar('colete',PRECOS.armasColete));
     acaoPanel.style.display='flex';
   }else if(tipo==='entregaCasa'){
-    const valor=PRECOS.receptadorPacote;
-    const b=document.createElement('button');b.textContent=`📦 Entregar 1 pacote (+R${valor})`;b.disabled=inventario.pacote<=0;b.onclick=()=>{dinheiro+=valor;inventario.pacote-=1;atualizarStatusEconomia();renderizarAcoes();renderizarInventario()};acaoPanel.appendChild(b);
+    // As casas aceitam lotes variados: nunca drenam a mochila inteira e cada visita fica diferente.
+    // Os tamanhos maiores são limitados ao estoque disponível, mantendo R$40 por pacote.
+    const lotes=[1,2,3,5,7,10,12,15,20];
+    const quantidade=Math.min(inventario.pacote,lotes[Math.floor(Math.random()*lotes.length)]);
+    const valor=quantidade*PRECOS.receptadorPacote;
+    const b=document.createElement('button');b.textContent=`📦 Entregar ${quantidade} pacote(s) (+R${valor})`;b.disabled=inventario.pacote<=0;b.onclick=()=>{dinheiro+=valor;inventario.pacote-=quantidade;atualizarStatusEconomia();renderizarAcoes();renderizarInventario()};acaoPanel.appendChild(b);
     const aviso=document.createElement('span');aviso.textContent='Receptador aguardando na entrada da casa';aviso.style.cssText='font-size:11px;opacity:.75;align-self:center';acaoPanel.appendChild(aviso);acaoPanel.style.display='flex';
   }else if(tipo==='receptador'){
     // Só ESCOAMENTO. A venda de semente saiu daqui pra semente ter um ponto único (o Mercado): com
