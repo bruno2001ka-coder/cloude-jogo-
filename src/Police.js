@@ -1383,7 +1383,9 @@ registrarGanchosPolicia({curar:curarJogador,precisaCurar:jogadorPrecisaCurar,den
 // O save guarda o RESTO da ficha quente, em segundos — não um instante absoluto. `performance.now()`
 // zera a cada carregamento da página, então gravar o prazo em tempo de máquina faria toda ficha
 // salva vencer no instante em que o jogo reabre.
-export function estadoPoliciaParaSave(){return{procurado:policia.procurado,fichaQuente:segundosDeFichaQuente()}}
+// A armadura equipada também é persistida: o colete do inventário é consumido ao vestir, então salvar
+// apenas `inventario.colete` fazia o colete desaparecer ao sair e entrar novamente.
+export function estadoPoliciaParaSave(){return{procurado:policia.procurado,fichaQuente:segundosDeFichaQuente(),armadura:armaduraJogador}}
 export function aplicarEstadoPoliciaDoSave(s){
   try{
     const n=Math.floor(Number(s&&s.procurado));
@@ -1396,6 +1398,8 @@ export function aplicarEstadoPoliciaDoSave(s){
     // Save novo traz o prazo restante e ele é respeitado; save velho começa do zero.
     const resto=Number(s&&s.fichaQuente);
     const restante=Number.isFinite(resto)?Math.max(0,Math.min(FICHA_QUENTE,resto)):0;
+    const arm=Number(s&&s.armadura);
+    armaduraJogador=Number.isFinite(arm)?Math.min(JOGADOR_ARMADURA_MAX,Math.max(0,Math.floor(arm))):0;
     vigiadoAte=performance.now()/1000+restante;
   }catch(e){policia.procurado=0;vigiadoAte=0}
 }
