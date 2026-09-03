@@ -182,7 +182,13 @@ export function contextoAtual(){
 const acaoPanel=document.getElementById('acaoPanel'),statusEconomia=document.getElementById('statusEconomia');
 // A munição saiu daqui: ela agora é por arma e já aparece no botão de troca e no contador do HUD —
 // repetir na mesma linha só gastava espaço de tela no celular.
-export function atualizarStatusEconomia(){statusEconomia.textContent=`R$${dinheiro} · 🪴${inventario.vaso} 🌱${inventario.terra} 🌾${inventario.semente} 📦${inventario.pacote} 🛡${inventario.colete}`}
+export function atualizarStatusEconomia(){
+  // Migração defensiva: versões antigas podiam acumular dezenas de coletes. O jogo só suporta uma
+  // unidade; se a armadura já está ativa, o estoque correto é zero, caso contrário fica no máximo um.
+  inventario.colete=Math.min(1,Math.max(0,Math.floor(Number(inventario.colete)||0)));
+  if(ganchosPolicia.coleteEmUso())inventario.colete=0;
+  statusEconomia.textContent=`R$${dinheiro} · 🪴${inventario.vaso} 🌱${inventario.terra} 🌾${inventario.semente} 📦${inventario.pacote} 🛡${inventario.colete}`;
+}
 // Serve os itens SIMPLES (vaso/terra/semente/colete). Não serve munição: com `municao` sendo um objeto
 // por arma, `inventario['municao']+=12` viraria a string "[object Object]12" — silenciosamente, sem erro.
 export function comprar(item,preco,quantidade=1){
