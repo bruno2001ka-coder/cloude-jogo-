@@ -41,6 +41,7 @@ import{player,zonasDeAcertoJogador,PLAYER_HEIGHT,encararDirecao,definirAnimacaoT
 import{ORDEM_ARMAS,armaEquipada,idArmaEquipada,equiparArma,obterBocaDaArma,direcaoComDispersao}from'./Weapons.js';
 import{estaEscondido,refugioEmQueEsta,refugios}from'./WorldGenerator.js';
 import{colidePedestre,waypointsVielas}from'./NPCs.js';
+import{vestirPolicial,despirPolicial,atualizarCorpoPolicial}from'./PersonagemPolicial.js';
 import{ALT_TORSO,ALT_OLHO,ALT_CANO,atualizarCombate,espalhamentoDoTiro,tempoDeReacao,
   distribuirPapeis,destinoDoPapel,procurarCobertura,PAPEL,velJogador,LEAD_FATOR,LEAD_RUIDO}from'./Combate.js';
 import{plantas,confiscarPlanta,aplicarMulta,definirDinheiro,inventario,atualizarStatusEconomia,isInventarioAberto,registrarGanchosPolicia}from'./Economy.js';
@@ -161,9 +162,26 @@ const RUA_SPAWN_LONGE=40,RUA_SPAWN_MINIMO=20,RUA_SPAWN_TENTATIVAS=12;
 const RUA_SPAWN_SETOR_FUGA=.9;
 // Agressividade por estrela: velocidade, cadência e distância em que param de avançar pra trocar tiro.
 const AGRESSAO_VEL_POR_ESTRELA=.16,AGRESSAO_CADENCIA_POR_ESTRELA=.11,AGRESSAO_APROX_POR_ESTRELA=.55;
-// Quanto mais alta a ficha, maior a guarnição. Teto de 6 por causa do celular: cada policial é uma
-// malha de 7 blocos, uma barra de vida com CanvasTexture e um A* próprio replanejando.
-function numPoliciaisPara(p){return Math.min(6,2+Math.max(0,p-1))}
+// ===== A GUARNIÇÃO CHEGA EM ONDAS, NÃO DE UMA VEZ =====
+// Descia a guarnição inteira num rapel só — dois, quatro ou seis homens aparecendo no mesmo segundo.
+// O problema disso não é o número, é o RITMO: um confronto que começa no seu tamanho final não tem
+// para onde escalar, e quem está trocando tiro não sente diferença entre estar ganhando e estar
+// prestes a ser cercado.
+//
+// Agora são três levas de dois. A primeira desce no rapel; as outras chegam quando o confronto DURA —
+// é a espera que anuncia. E a espera encurta com a ficha: com 5 estrelas o reforço vem quase no dobro
+// da pressa que vem com 1.
+//
+// O TETO DE 6 É DE CELULAR, e agora custa mais do que custava: cada policial deixou de ser 7 caixas e
+// virou malha com esqueleto (24 ossos) animada por um mixer próprio. Subir esse número é uma decisão
+// de desempenho, não de dificuldade — e precisa de medição antes.
+const ONDA_TAMANHO=2,ONDAS_MAX=3;
+const POLICIAIS_MAX=ONDA_TAMANHO*ONDAS_MAX;
+// Segundos entre uma leva e a seguinte, com ficha limpa. Cada estrela desconta REFORCO_PRESSA.
+const REFORCO_ESPERA=26,REFORCO_PRESSA=3.2;
+function esperaDoReforco(){return Math.max(10,REFORCO_ESPERA-REFORCO_PRESSA*policia.procurado)}
+// Quantos DEVEM estar em campo agora, dado quantas levas já vieram.
+function numPoliciaisPara(){return ONDA_TAMANHO}
 const JOGADOR_HP_MAX=100,JOGADOR_ARMADURA_MAX=100,JOGADOR_REGEN=3;
 // Cadência/dano/alcance agora vêm da ficha da arma equipada (Weapons.js). Sobrou só o custo da troca:
 // o cooldown é global (proximoTiroJogador), então sem ele dava pra escopeta→pistola→escopeta pra
@@ -273,7 +291,7 @@ function criarPolicial(indice,tipo='rapel'){
   const arma=blocoP(GEO_POL.arma,armaMat,.37,.68,.18,g);
   g.scale.setScalar(ESCALA_POLICIAL);
   scene.add(g);
-  return{
+  const pol={
     grupo:g,pernas,bracos,arma,hp:POLICIAL_HP,vivo:true,caindo:false,quedaT:0,tipo,
     pos:new THREE.Vector3(),proximoTiro:0,caminhando:0,
     // Estado da trocação (ver Combate.js): relógio da mira, papel na equipe e cobertura escolhida.
@@ -295,7 +313,16 @@ function criarPolicial(indice,tipo='rapel'){
     // As caixas de acerto são criadas UMA vez e só têm os valores reescritos por frame.
     caixas:ZONAS_POLICIAL.map(()=>new THREE.Box3()),
     barra:criarBarraMundo(2.05*ESCALA_POLICIAL,ESCALA_POLICIAL),
+    // Corpo 3D: chega depois (o arquivo é pedido no primeiro policial que nasce). Até lá `corpo` é
+    // nulo e quem anima são as caixas — as duas pernas girando, como sempre foi.
+    corpo:null,velocidadeAndando:0,
   };
+  // Todas as caixas viram a reserva: quando o modelo chega, elas somem de uma vez. `g.children` já
+  // cobre tronco, cabeça, rosto e boné — os três primeiros itens são redundantes de propósito, pra a
+  // lista não depender da ordem em que as peças foram criadas acima.
+  vestirPolicial(g,[...pernas,...bracos,arma,...g.children.filter(c=>c.isMesh)],arma,
+    estado=>{pol.corpo=estado});
+  return pol;
 }
 // Reescreve as caixas de acerto do policial na posição atual (sem alocar) e devolve a lista.
 function zonasDoPolicial(pol){
@@ -313,7 +340,9 @@ function zonasDoPolicial(pol){
 // caçada por ficha suja. `alvoPlanta` fica null na caçada — é o que distingue os dois casos, porque
 // só a batida termina em confisco.
 const policia={estado:'patrulha',alvoPlanta:null,pontoAlvo:{x:0,z:0},tempoEstado:0,cooldownAte:0,
-  tempoEscondido:0,tempoNivel:0,retomarCacaEm:0,procurado:0};
+  tempoEscondido:0,tempoNivel:0,retomarCacaEm:0,procurado:0,
+  // Levas de rapel já descidas neste encontro, e quando a próxima pode vir (ver `combate`).
+  levasDescidas:0,proximaLeva:0};
 // ===== O QUE CHAMA ATENÇÃO DA POLÍCIA =====
 // Antes bastava EXISTIR: a abordagem à plantação já elevava a ficha por si só, e a partir daí o
 // jogador era caçado pra sempre sem ter feito nada além de plantar. Agora a polícia só se interessa
@@ -584,6 +613,7 @@ function alvoDeMovimento(pol,agora,destX,destZ){
 // reescrito quando o corpo se move: parado, o policial mantém a direção do olhar, que é justamente o
 // que o cone de visão consulta.
 function passoPolicial(pol,dt,alvoX,alvoZ,velocidade){
+  const antesX=pol.pos.x,antesZ=pol.pos.z;
   const dx=alvoX-pol.pos.x,dz=alvoZ-pol.pos.z,d=Math.hypot(dx,dz)||1;
   const vx=dx/d*velocidade,vz=dz/d*velocidade;
   const nx=pol.pos.x+vx*dt,nz=pol.pos.z+vz*dt;let moveu=false;
@@ -594,12 +624,20 @@ function passoPolicial(pol,dt,alvoX,alvoZ,velocidade){
   if(!moveu){pol.rota=null;pol.destinoRota=null}
   else{
     pol.olharY=Math.atan2(vx,vz);pol.grupo.rotation.y=pol.olharY;
-    pol.caminhando+=dt*7;const balanco=Math.sin(pol.caminhando)*.4;
-    pol.pernas[0].rotation.x=balanco;pol.pernas[1].rotation.x=-balanco;
+    // Com corpo 3D quem anda é o esqueleto (ver PersonagemPolicial); o balanço de perna abaixo é das
+    // CAIXAS, e girar caixa que já está invisível seria trabalho por nada — além de sobrescrever a
+    // pose do clipe caso as duas coisas rodassem juntas.
+    if(!pol.corpo){
+      pol.caminhando+=dt*7;const balanco=Math.sin(pol.caminhando)*.4;
+      pol.pernas[0].rotation.x=balanco;pol.pernas[1].rotation.x=-balanco;
+    }
   }
+  // A velocidade REAL deste quadro, não a pedida: o policial que está raspando numa parede pede
+  // 1,7 m/s e anda 0,1 — animar pela velocidade pedida deixaria ele correndo parado contra o muro.
+  pol.velocidadeAndando=moveu?Math.hypot(pol.pos.x-antesX,pol.pos.z-antesZ)/Math.max(dt,1e-4):0;
   return moveu;
 }
-function encararPonto(pol,x,z){pol.olharY=Math.atan2(x-pol.pos.x,z-pol.pos.z);pol.grupo.rotation.y=pol.olharY}
+function encararPonto(pol,x,z){pol.olharY=Math.atan2(x-pol.pos.x,z-pol.pos.z);pol.grupo.rotation.y=pol.olharY;pol.velocidadeAndando=0}
 
 // ===== NINGUÉM OCUPA O MESMO LUGAR =====
 // `passoPolicial` só testa colisão contra PAREDE. Policial não era obstáculo pra policial nem pro
@@ -971,6 +1009,32 @@ function atualizarPontoAlvo(){
   return true;
 }
 
+// Desce UMA leva de rapel no ponto dado. Serve pra primeira (que vem com o helicóptero pairando) e
+// pros reforços (que vêm com ele voltando por cima do confronto).
+function descerLeva(quantos,base,dx,dz){
+  const jaEmCampo=policiais.length;
+  for(let i=0;i<quantos;i++){
+    const pol=criarPolicial(jaEmCampo+i);
+    const desloc=(i-(quantos-1)/2)*RAPEL_ESPACO;
+    // Vector3.set com DOIS argumentos jogava o z no y e deixava z=0: os policiais desciam sempre na
+    // faixa z≈0, longe da plantação. É o que fazia a batida parecer que não existia.
+    pol.pos.set(base.x-dz*desloc,0,base.z+dx*desloc);
+    pol.grupo.position.set(pol.pos.x,heli.position.y,pol.pos.z);
+    policiais.push(pol);
+    const corda=new THREE.Line(new THREE.BufferGeometry().setFromPoints([heli.position.clone(),pol.grupo.position.clone()]),new THREE.LineBasicMaterial({color:0x333333}));
+    scene.add(corda);cordas.push({linha:corda,pol});
+  }
+}
+// Onde a leva encosta: ao lado do alvo, no rumo de onde o helicóptero veio, empurrado pro espaço
+// livre mais próximo — sem isso a fila cai dentro de um quarteirão e eles nascem dentro da parede.
+function pontoDeDescida(alvo){
+  let dx=heli.position.x-alvo.x,dz=heli.position.z-alvo.z;
+  const dh=Math.hypot(dx,dz)||1;dx/=dh;dz/=dh;
+  const base=buscarPosicaoLivre(alvo.x+dx*RAPEL_DIST,alvo.z+dz*RAPEL_DIST,
+    (x,z)=>colidePedestre(x,z),9)||{x:alvo.x+dx*RAPEL_DIST,z:alvo.z+dz*RAPEL_DIST};
+  return{base,dx,dz};
+}
+
 // ===== MÁQUINA DE ESTADOS =====
 // `aoEntrar` roda uma vez na transição; `aoAtualizar` roda por frame. Toda mudança de estado passa por
 // `transitar()` — é o que garante o invariante de que a limpeza do encontro acontece num lugar só.
@@ -1072,28 +1136,12 @@ const ESTADOS={
   rapel:{
     aoEntrar(){
       const alvo=policia.pontoAlvo;
-      // O tamanho da guarnição sai da ficha: 2 até 1 estrela, +1 por estrela até 6. É o "quanto mais
-      // mata, mais aparecem" — a escalada é consequência das baixas, não um número fixo.
-      const quantos=numPoliciaisPara(policia.procurado);
-      // Direção de onde o helicóptero veio: pousar desse lado deixa a leitura coerente com o que o
-      // jogador acabou de ver no céu, e garante que eles não apareçam do lado oposto sem explicação.
-      let dx=heli.position.x-alvo.x,dz=heli.position.z-alvo.z;
-      const dh=Math.hypot(dx,dz)||1;dx/=dh;dz/=dh;
-      // Fila perpendicular à direção de chegada, e o conjunto todo empurrado pro espaço livre mais
-      // próximo — sem isso a fila podia cair dentro de um quarteirão e eles nasceriam dentro da parede.
-      const base=buscarPosicaoLivre(alvo.x+dx*RAPEL_DIST,alvo.z+dz*RAPEL_DIST,
-        (x,z)=>colidePedestre(x,z),9)||{x:alvo.x+dx*RAPEL_DIST,z:alvo.z+dz*RAPEL_DIST};
-      for(let i=0;i<quantos;i++){
-        const pol=criarPolicial(i);
-        const desloc=(i-(quantos-1)/2)*RAPEL_ESPACO;
-        // Vector3.set com DOIS argumentos jogava o z no y e deixava z=0: os policiais desciam sempre na
-        // faixa z≈0, longe da plantação. É o que fazia a batida parecer que não existia.
-        pol.pos.set(base.x-dz*desloc,0,base.z+dx*desloc);
-        pol.grupo.position.set(pol.pos.x,heli.position.y,pol.pos.z);
-        policiais.push(pol);
-        const corda=new THREE.Line(new THREE.BufferGeometry().setFromPoints([heli.position.clone(),pol.grupo.position.clone()]),new THREE.LineBasicMaterial({color:0x333333}));
-        scene.add(corda);cordas.push({linha:corda,pol});
-      }
+      // A PRIMEIRA leva é sempre do tamanho de uma leva. O resto vem depois, se o confronto durar —
+      // ver `combate`. Antes o tamanho saía da ficha e a guarnição inteira descia de uma vez só.
+      const{base,dx,dz}=pontoDeDescida(alvo);
+      descerLeva(numPoliciaisPara(),base,dx,dz);
+      policia.levasDescidas=1;
+      policia.proximaLeva=performance.now()/1000+esperaDoReforco();
     },
     aoAtualizar(dt){
       policia.tempoEstado+=dt;
@@ -1132,6 +1180,19 @@ const ESTADOS={
       // Perder o rastro deixou de ser regra local do combate: agora existe UM cronômetro de
       // esconderijo, válido em qualquer estado, em atualizarPolicia.
       for(const pol of policiais)atualizarPolicialCombate(pol,dt,agora);
+      // ===== O REFORÇO =====
+      // Vem quando o confronto DURA, e só enquanto houver leva pra descer e vaga no teto. O aviso é
+      // parte da mecânica: reforço que aparece sem anúncio lê como spawn, e reforço anunciado lê como
+      // "corre agora" — que é a jogada que ele deve provocar.
+      if(policia.levasDescidas<ONDAS_MAX&&policiais.length<POLICIAIS_MAX
+         &&agora>=policia.proximaLeva&&!jogadorEscondido()){
+        const{base,dx,dz}=pontoDeDescida({x:player.position.x,z:player.position.z});
+        // Nunca passa do teto, mesmo que a leva seja maior que a vaga que sobrou.
+        descerLeva(Math.min(ONDA_TAMANHO,POLICIAIS_MAX-policiais.length),base,dx,dz);
+        policia.levasDescidas++;
+        policia.proximaLeva=agora+esperaDoReforco();
+        mostrarAviso(`🚁 Reforço descendo — ${policiais.filter(p=>p.vivo).length} em campo`,2800);
+      }
     }
   },
   // Único ponto de limpeza do encontro do jogo inteiro: recolhe corda, policiais e balas.
@@ -1142,8 +1203,11 @@ const ESTADOS={
       heli.position.y+=dt*10;heli.position.x+=dt*4;
       for(const pol of policiais){pol.grupo.visible=policia.tempoEstado<RECUO_DURACAO*.4;pol.barra.mostrar(false)}
       if(policia.tempoEstado<RECUO_DURACAO)return;
-      for(const pol of policiais){scene.remove(pol.grupo);pol.barra.descartar()}
+      for(const pol of policiais){scene.remove(pol.grupo);pol.barra.descartar();despirPolicial(pol.corpo)}
       policiais.length=0;limparBalas();
+      // Zera as levas AQUI, no único ponto de limpeza do encontro. Deixar isso pro `aoEntrar` do rapel
+      // seria zerar tarde: quem conta as levas é o combate, e ele começa antes.
+      policia.levasDescidas=0;policia.proximaLeva=0;
       transitar('patrulha');
     }
   },
@@ -1235,7 +1299,7 @@ export function __policialDeTeste(x,z){
 }
 export function __removerPolicialDeTeste(pol){
   const i=policiais.indexOf(pol);
-  if(i>=0){scene.remove(pol.grupo);pol.barra.descartar();policiais.splice(i,1)}
+  if(i>=0){scene.remove(pol.grupo);pol.barra.descartar();despirPolicial(pol.corpo);policiais.splice(i,1)}
 }
 export function __passoDeCombateParaTeste(pol,dt){
   const agora=performance.now()/1000;
@@ -1256,6 +1320,23 @@ export function __passoDeBalasParaTeste(dt){
 // A separação de corpos roda dentro de `atualizarPolicia`, que o teste não chama — sem este gancho o
 // teste montaria quatro policiais empilhados e "provaria" que eles ficam empilhados.
 export function __separarCorposParaTeste(){separarCorpos()}
+// ===== BANCADA DAS ONDAS DE REFORÇO =====
+// A escalada é um relógio: a primeira leva desce no rapel e as outras vêm com o tempo de confronto.
+// Medir isso de verdade levaria minutos por caso, então o teste força o estado e roda o `combate` com
+// `performance.now()` virtualizado — a mesma técnica da bancada da trocação.
+export function __forcarCombateParaTeste(){
+  for(const pol of policiais){scene.remove(pol.grupo);pol.barra.descartar();despirPolicial(pol.corpo)}
+  policiais.length=0;limparCordas();
+  policia.levasDescidas=0;policia.proximaLeva=0;policia.procurado=3;
+  policia.pontoAlvo.x=player.position.x;policia.pontoAlvo.z=player.position.z;
+  policia.estado='rapel';ESTADOS.rapel.aoEntrar();
+  policia.estado='combate';policia.tempoEstado=0;
+}
+export function __passoDoCombateDoEstado(dt){
+  ESTADOS.combate.aoAtualizar(dt,performance.now()/1000);
+}
+export function __contarPoliciais(){return{emCampo:policiais.length,levas:policia.levasDescidas,
+  teto:POLICIAIS_MAX,porOnda:ONDA_TAMANHO,ondasMax:ONDAS_MAX}}
 export function __vidaJogadorParaTeste(){return saudeJogador}
 export function __curarJogadorParaTeste(){
   // Zera TAMBÉM o rendido: sem isso, o primeiro caso do teste matava o jogador, ele ficava rendido, e
@@ -1279,7 +1360,10 @@ function nascerDupla(agora,base){
     policiaisRua.push(pol);
   }
 }
-function removerRua(i){const pol=policiaisRua[i];scene.remove(pol.grupo);pol.barra.descartar();policiaisRua.splice(i,1)}
+// `despirPolicial` tira o mixer da lista de atualização. Sem isso o mixer de um policial já removido
+// da cena continua sendo avançado a cada quadro, pra sempre — é o mesmo vazamento que as geometrias
+// por policial já causaram uma vez neste arquivo, só que em CPU em vez de VRAM.
+function removerRua(i){const pol=policiaisRua[i];scene.remove(pol.grupo);pol.barra.descartar();despirPolicial(pol.corpo);policiaisRua.splice(i,1)}
 function atualizarPoliciaDeRua(dt,agora){
   // Durante um encontro de rapel a rua não recebe reforço novo: seriam duas equipes disputando o
   // mesmo alvo, e no celular isso é o dobro de A* por frame sem ganho nenhum de jogo.
@@ -1448,6 +1532,10 @@ export function atualizarPolicia(dt){
   ESTADOS[policia.estado].aoAtualizar(dt,agora);
   atualizarPoliciaDeRua(dt,agora);
   separarCorpos();
+  // Um quadro de animação por policial VIVO. Morto não anima: ele está tombando por rotação do grupo,
+  // e deixar o clipe de andar correndo por cima faria o corpo caído continuar dando passos.
+  for(const pol of policiais)if(pol.vivo&&pol.corpo)atualizarCorpoPolicial(pol.corpo,dt,pol.velocidadeAndando||0);
+  for(const pol of policiaisRua)if(pol.vivo&&pol.corpo)atualizarCorpoPolicial(pol.corpo,dt,pol.velocidadeAndando||0);
 
   montarAlvosDoFrame();
   atualizarBalas(dt,alvosDaBala);
