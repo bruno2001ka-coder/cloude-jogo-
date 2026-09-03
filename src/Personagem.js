@@ -266,7 +266,7 @@ export function esconderBonecoAntigo(meshes){for(const m of meshes)if(m)m.visibl
 export function carregarColete(grupo){
   coleteGrupo=grupo;
   new GLTFLoader().load('assets/colete.glb',gltf=>{coleteModelo=gltf.scene;tentarVestirColete()},undefined,err=>{
-    console.warn('Quintal 3D: colete 3D não carregou, seguindo com o colete simples.',err);
+    console.warn('Quintal 3D: colete GLB não carregou.',err);
   });
 }
 export function coleteVestido(){return !!(coleteModelo&&coleteModelo.parent)}
@@ -277,7 +277,8 @@ function tentarVestirColete(){
   if(!coleteModelo||!coleteGrupo||!troncoOsso||aNormalizar)return;
   // Se o rig não dá pra medir o peito, não há encaixe possível: melhor não vestir do que vestir num
   // número inventado (era `medidasTronco`, que o colete não usa mais).
-  if(!medidasPeito())return;
+  const peito=medidasPeito();
+  if(!peito){console.warn('Quintal 3D: não encontrei os dois ombros para vestir o colete GLB.');return}
 
   troncoOsso.add(coleteGrupo);
   coleteGrupo.position.set(0,0,0);coleteGrupo.rotation.set(0,0,0);coleteGrupo.scale.setScalar(1);
@@ -288,7 +289,15 @@ function tentarVestirColete(){
     filho.geometry?.dispose?.();
   }
   coleteGrupo.add(coleteModelo);
-  coleteModelo.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true}});
+  coleteModelo.traverse(o=>{
+    if(!o.isMesh)return;
+    o.visible=true;o.castShadow=true;o.receiveShadow=true;
+    // O GLB foi exportado com doubleSided=false. Como o colete pode ser visto pela frente e pelas
+    // costas, não deixe uma orientação de normal do asset fazê-lo desaparecer em uma das vistas.
+    o.frustumCulled=false;
+    const materiais=Array.isArray(o.material)?o.material:[o.material];
+    for(const material of materiais)if(material)material.side=THREE.DoubleSide;
+  });
 
   // ===== PENDURADO PELOS OMBROS, EM ESCALA UNIFORME =====
   // Este encaixe já foi tentado de três jeitos, e os dois primeiros erraram pela mesma razão: tratavam
@@ -306,12 +315,13 @@ function tentarVestirColete(){
   // entra é a largura (escala uniforme, sem deformar nada) e o único ponto de apoio é a linha dos
   // ombros, que o esqueleto entrega. A cinta cai no lugar da cinta e o painel no lugar do painel,
   // sozinhos, porque a proporção do arquivo foi preservada.
-  const peito=medidasPeito();
   coleteGrupo.updateWorldMatrix(true,true);
   const caixa=new THREE.Box3().setFromObject(coleteModelo);
   const tam=new THREE.Vector3();caixa.getSize(tam);
-  if(peito&&tam.x>0){
+  if(!Number.isFinite(tam.x)||tam.x<=0){console.warn('Quintal 3D: colete GLB sem largura renderizável.',tam);return}
+  if(peito){
     const s=(peito.largura*AJUSTE.colete.larguraDoOmbro)/tam.x;
+    if(!Number.isFinite(s)||s<=0){console.warn('Quintal 3D: escala inválida para o colete GLB.',{tam,peito});return}
     coleteModelo.scale.multiplyScalar(s);
     coleteGrupo.updateWorldMatrix(true,true);
     caixa.setFromObject(coleteModelo);
