@@ -535,6 +535,16 @@ function conferirColete(){
     mostrarAviso('Colete equipado — a armadura absorve parte do dano.',2200);
   }
 }
+// Compra feita na loja: equipa imediatamente um colete, em vez de deixar o jogador com um número no
+// estoque e sem proteção visual. Se já houver armadura ativa, retorna false para a Economy guardar a
+// nova unidade no estoque normalmente.
+function equiparColeteComprado(){
+  if(armaduraJogador>0)return false;
+  armaduraJogador=JOGADOR_ARMADURA_MAX;
+  tocarSomEquiparColete();atualizarStatusEconomia();atualizarHudSaude();
+  mostrarAviso('Colete equipado — a armadura absorve parte do dano.',2200);
+  return true;
+}
 
 // ===== IA de cada policial em combate =====
 // Existe parede entre A e B? Sem isso os policiais atiravam através das casas.
@@ -1548,7 +1558,7 @@ export function denunciarBoca(){somarProcurado(1);mostrarAviso('Venderam na tua 
 // Entrega os ganchos pra Economy no momento em que este módulo é avaliado. É o sentido de
 // dependência que já existia (Police -> Economy); o contrário fecharia ciclo e explodiria no TDZ
 // da const `inventario`.
-registrarGanchosPolicia({curar:curarJogador,precisaCurar:jogadorPrecisaCurar,denunciar:denunciarBoca});
+registrarGanchosPolicia({curar:curarJogador,precisaCurar:jogadorPrecisaCurar,denunciar:denunciarBoca,equiparColete:equiparColeteComprado});
 // O save guarda o RESTO da ficha quente, em segundos — não um instante absoluto. `performance.now()`
 // zera a cada carregamento da página, então gravar o prazo em tempo de máquina faria toda ficha
 // salva vencer no instante em que o jogo reabre.
