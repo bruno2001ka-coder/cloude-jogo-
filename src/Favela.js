@@ -1127,12 +1127,25 @@ export const CHAO_PROFUNDIDADE=4;
 //
 // A física do jogo é AABB pura, então a saída não é OBB — é picar. O retângulo girado é convexo, e um
 // convexo é bem aproximado por FATIAS alinhadas ao eixo: cada fatia cobre uma faixa de X e vai do
-// menor ao maior Z do polígono dentro dela. Com 4 fatias o erro cai de 57 cm pra ~14 cm, ao custo de
-// 4 caixas por casa em vez de 1 (a física custa 0,045 ms/quadro com 300 caixas; 500 continua barato).
+// menor ao maior Z do polígono dentro dela.
+//
+// QUANTAS FATIAS: 12, e o número foi MEDIDO, não estimado. Aqui dizia "com 4 fatias o erro cai pra
+// ~14 cm"; medindo a área que o colisor ocupa fora do retângulo da casa, em todas as 88 casas, 4
+// fatias deixam 22,9% da casa em parede invisível e passam da parede em até 1,34 m. A conta completa:
+//     fatias   caixas   área sobrando   pior excesso
+//        4       352        22,9%          1,34 m
+//        8       704        12,1%          0,75 m
+//       12      1056         8,2%          0,46 m
+//       20      1760         5,1%          0,32 m
+// E o preço disso na consulta de colisão, medido no jogo rodando: 0,28 µs por consulta com 4 fatias
+// contra 0,48 µs com 12 — 0,011 contra 0,019 ms por quadro. Um quadro de 60 fps tem 16,7 ms, então
+// são 0,1% dele. Por isso 12: é onde o pior caso cai abaixo de meio metro sem que o custo apareça.
+// (Também medi escolher o MELHOR EIXO por casa em vez de cortar sempre em X: 22,9% → 21,6%. Não paga
+// a complicação, porque as casas nascem a menos de 22,5° de um eixo e os dois cortes erram igual.)
 //
 // Como o polígono é CONVEXO, o mínimo e o máximo de Z dentro de uma faixa só podem estar nas bordas
 // da faixa ou num vértice dentro dela — não precisa recortar polígono, basta olhar esses pontos.
-const FATIAS_CASA=4;
+const FATIAS_CASA=12;
 function fatiarRetangulo(cx,cz,w,d,giro){
   const c=Math.cos(giro),sn=Math.sin(giro);
   const cantos=[[-w/2,-d/2],[w/2,-d/2],[w/2,d/2],[-w/2,d/2]]
@@ -1168,10 +1181,15 @@ export function calcularColisoresCasa(l){
                    new THREE.Vector3(f.x1,yAlto,f.z1)));
 }
 
+// AS FATIAS DE UMA CASA NÃO FUNDEM, E ISSO É O PONTO DELAS.
+// A escada de fatias É a forma da casa girada. A fusão junta caixas cujas faces batem dentro de 6 cm
+// e ainda tolera 30 cm de vão entre elas — o que, num degrau de 10 a 15 cm, junta os degraus de volta
+// e devolve parte da parede invisível que as fatias existem pra tirar. Medido: com a fusão ligada, o
+// teste de colisão acusa 13 divergências de comportamento contra a lista original.
 let colisoresCasa=0;
 for(const l of lotes){
   for(const box of calcularColisoresCasa(l)){
-    registrarCaixa(box,'casa');
+    marcarSemFusao(registrarCaixa(box,'casa'));
     colisoresCasa++;
   }
 }
