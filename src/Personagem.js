@@ -260,9 +260,9 @@ export function atualizarAnimacaoPersonagem(dt,velocidade,atirando){
 export function esconderBonecoAntigo(meshes){for(const m of meshes)if(m)m.visible=false}
 
 // ===== COLETE 3D =====
-// Recebe o GRUPO do colete que já existe no Player (com as caixas dentro) e, quando o arquivo chega,
-// troca as caixas pelo modelo e veste no osso do peito. Se o arquivo falhar, as caixas continuam lá —
-// o jogador vê o colete simples em vez de nada.
+// Recebe o GRUPO do colete que já existe no Player e, quando o arquivo chega, veste exclusivamente o
+// modelo GLB no osso do peito. Se o arquivo falhar, o erro é registrado e nenhum objeto improvisado é
+// colocado no personagem.
 export function carregarColete(grupo){
   coleteGrupo=grupo;
   new GLTFLoader().load('assets/colete.glb',gltf=>{coleteModelo=gltf.scene;tentarVestirColete()},undefined,err=>{
