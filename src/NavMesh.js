@@ -26,7 +26,15 @@ export const NAV_DIM=Math.ceil(NAV_LIMITE*2/NAV_CELULA);
 const NAV_TOTAL=NAV_DIM*NAV_DIM;
 // Soma de Minkowski: dilato o obstáculo pelo raio do agente e trato o agente como um PONTO.
 // É equivalente a mover um disco de raio r pelo espaço livre, e custa uma soma por eixo.
-const RAIO_AGENTE=.2;
+// ===== TEM QUE CABER O CORPO, NÃO UM PONTO =====
+// Era 0,20 m, e o corpo do pedestre tem 0,231 m de meia-largura (PEDESTRE_MEIA_LARG em NPCs.js,
+// 0,45 x a escala do boneco). A diferença parece nada e não é: o A* aprovava passagens 3 cm mais
+// estreitas que o policial, ele entrava, raspava e não passava — e como o A* parte da posição atual,
+// replanejar devolvia a MESMA rota impossível. Medido: um policial andou 35 m em 3 minutos raspando
+// parede, e outro ficou 122 s no mesmo ponto.
+// 0,25 dá 2 cm de folga sobre o corpo. Num beco de 2 m (BECO_MIN) sobra 1,5 m de passagem, então
+// nenhum corredor do morro fecha por causa disso — o teste de densidade confere.
+const RAIO_AGENTE=.25;
 const ALTURA_AGENTE=1.6,PISO_MARGEM=.06;
 const RAIZ2=Math.SQRT2;
 

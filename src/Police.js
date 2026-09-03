@@ -181,6 +181,19 @@ const COOLDOWN_ENTRE_BUSCAS=22,MULTA_RENDICAO=60;
 const SPAWN_X=0,SPAWN_Z=8;
 // Perseguição: intervalo de recálculo do caminho e distância que o alvo precisa andar pra invalidar a rota.
 const REPLANEJAR_INTERVALO=.7,REPLANEJAR_DESVIO=3,CHEGADA_WAYPOINT=.7;
+// ===== QUANDO ELE ESTÁ BARRADO =====
+// `travado` conta quadros seguidos em que o passo não saiu do lugar. A 30-60 fps, 5 quadros são
+// 0,08-0,16 s — rápido o bastante pra não virar cena de policial socando parede, e longo o bastante
+// pra não disparar num esbarrão de um quadro só.
+// O replanejamento de quem está preso tem portão PRÓPRIO e curto (0,25 s contra 0,7 s): o portão
+// longo era o que prendia o policial encravado, mas tirar o portão traria de volta a torneira de A*
+// por quadro. Curto resolve os dois.
+const TRAVADO_PARA_REPLANEJAR=5,TRAVADO_PARA_CONTORNAR=10,REPLANEJAR_PRESO=.25,CONTORNO_PASSO=2.5;
+// 60 quadros (1-2 s) insistindo sem sair do lugar: troca o destino de ronda. É o teto de qualquer
+// trava — nenhuma pode durar mais que isso.
+const TRAVADO_PARA_DESISTIR=60;
+// Fração do passo pedido abaixo da qual o quadro conta como travado (ver passoPolicial).
+const FRACAO_DE_PASSO_TRAVADO=.35;
 // ORÇAMENTO DE A* POR QUADRO. Um caminho custa 585 µs; dois policiais replanejando no mesmo
 // quadro dão 1,2 ms de uma vez, que num celular é um soluço visível. Com teto de 1 por quadro,
 // quem ficou de fora usa a rota velha (ou a reta, que `alvoDeMovimento` já devolve como reserva)
@@ -302,7 +315,9 @@ function criarPolicial(indice,tipo='rapel'){
     modo:'ronda',destino:null,expiraEm:0,refugioAlvo:null,
     // Perseguição: rota do A*, waypoint atual e o relógio de replanejamento — defasado por policial
     // (i·0,35 s) pra os dois não recalcularem no mesmo frame e dobrarem o custo num pico só.
-    rota:null,indiceRota:0,destinoRota:null,proximoReplan:indice*.35,
+    rota:null,indiceRota:0,destinoRota:null,proximoReplan:indice*.35,proximoReplanPreso:0,
+    // Quadros seguidos barrado pela colisão. Zera assim que ele anda.
+    travado:0,
     // As caixas de acerto são criadas UMA vez e só têm os valores reescritos por frame.
     caixas:ZONAS_POLICIAL.map(()=>new THREE.Box3()),
     barra:criarBarraMundo(2.05*ESCALA_POLICIAL,ESCALA_POLICIAL),
@@ -629,20 +644,49 @@ function alvoDeMovimento(pol,agora,destX,destZ){
     pol.rota=null;pol.destinoRota=null;
     return{x:destX,z:destZ};
   }
-  const rotaInvalida=!pol.rota||pol.indiceRota>=pol.rota.length
+  // TRAVADO conta como rota inválida, e com direito a furar o portão de tempo (ver abaixo): ficar
+  // 0,7 s empurrando parede é a diferença entre "contornou a casa" e "encravou nela".
+  const travadoDemais=pol.travado>=TRAVADO_PARA_REPLANEJAR;
+  const rotaInvalida=travadoDemais||!pol.rota||pol.indiceRota>=pol.rota.length
     ||!pol.destinoRota||Math.hypot(pol.destinoRota.x-destX,pol.destinoRota.z-destZ)>REPLANEJAR_DESVIO;
   // O portão de tempo vale AGORA TAMBÉM pra rota inválida. Antes era `rotaInvalida||agora>=...`, e o
   // corpo só rodava com rotaInvalida — ou seja, o portão nunca barrava nada: rota nula significava A*
   // todo quadro. Um policial encravado numa quina zera a rota, o A* falha, a rota continua nula, e ele
   // gastava 585 µs por quadro pra sempre (35 ms por segundo de CPU, de um policial só).
-  if(rotaInvalida&&agora>=pol.proximoReplan&&caminhosNesteQuadro<ORCAMENTO_A_ESTRELA){
+  // O portão de tempo de quem está TRAVADO é mais curto — mas existe, senão volta a torneira de A*
+  // por quadro que o comentário acima descreve.
+  const portao=travadoDemais?pol.proximoReplanPreso:pol.proximoReplan;
+  if(rotaInvalida&&agora>=portao&&caminhosNesteQuadro<ORCAMENTO_A_ESTRELA){
     caminhosNesteQuadro++;
     pol.proximoReplan=agora+REPLANEJAR_INTERVALO;
+    pol.proximoReplanPreso=agora+REPLANEJAR_PRESO;
+    // `travado` NÃO zera aqui. Zerava, e era o que impedia o contorno de acontecer: o replanejamento
+    // (a cada 0,25 s) resetava o contador antes de ele chegar nos 10 quadros do contorno, então a
+    // única saída que funciona nunca era alcançada. Quem zera é andar de verdade (passoPolicial).
     const caminho=encontrarCaminho(pol.pos.x,pol.pos.z,destX,destZ);
     if(caminho&&caminho.length){pol.rota=caminho;pol.indiceRota=0;pol.destinoRota={x:destX,z:destZ}}
     else{pol.rota=null;pol.destinoRota=null}
   }
-  if(!pol.rota)return{x:destX,z:destZ};// sem rota: tenta a reta, o desencravador cobre
+  // ===== AINDA BARRADO DEPOIS DE REPLANEJAR: CONTORNA =====
+  // Replanejar sozinho NÃO resolve, e a medição mostrou por quê: o A* parte da posição atual e, da
+  // mesma posição, devolve a MESMA rota. O policial ficava oscilando — replaneja, anda 5 mm, barra,
+  // replaneja — 95% dos quadros barrados sem nunca completar uma parada longa. O que falta não é
+  // rota nova, é SAIR DA PAREDE.
+  //
+  // Então, insistindo o bastante, o alvo passa a ser 90° pra um dos lados: ele raspa a parede até
+  // dobrar a quina, que é o que uma pessoa faz. O lado é fixo por policial (`ladoFlanco`, que a
+  // equipe de combate já usa) pra ele não gingar entre os dois. Vale COM ou SEM rota — a rota pode
+  // estar certa e o corpo é que não passa: a NavMesh dilata obstáculo em 0,20 m e o corpo tem 0,23
+  // de meia-largura, então existe caminho que o A* aprova e o corpo raspa.
+  if(pol.travado>=TRAVADO_PARA_CONTORNAR){
+    const dx=destX-pol.pos.x,dz=destZ-pol.pos.z,d=Math.hypot(dx,dz)||1;
+    // ALTERNA O LADO. Num canto interno os DOIS lados estão fechados pra um deles; insistindo sempre
+    // no mesmo, ele fica raspando a quina pra sempre. Trocando de lado a cada tanto ele experimenta
+    // os dois, e um deles abre.
+    const lado=(Math.floor(pol.travado/TRAVADO_PARA_CONTORNAR)%2?-1:1)*(pol.ladoFlanco||1);
+    return{x:pol.pos.x-dz/d*CONTORNO_PASSO*lado,z:pol.pos.z+dx/d*CONTORNO_PASSO*lado};
+  }
+  if(!pol.rota)return{x:destX,z:destZ};
   let wp=pol.rota[pol.indiceRota];
   while(wp&&Math.hypot(wp.x-pol.pos.x,wp.z-pol.pos.z)<CHEGADA_WAYPOINT){wp=pol.rota[++pol.indiceRota]}
   return wp||{x:destX,z:destZ};
@@ -659,10 +703,25 @@ function passoPolicial(pol,dt,alvoX,alvoZ,velocidade){
   if(!colidePedestre(nx,pol.pos.z)){pol.pos.x=nx;moveu=true}
   if(!colidePedestre(pol.pos.x,nz)){pol.pos.z=nz;moveu=true}
   pol.velocity.set(moveu?vx:0,0,moveu?vz:0);
-  // Bater na parede invalida a rota, mas NÃO libera replanejamento imediato: era o `proximoReplan=0`
-  // daqui que abria a torneira de A* por quadro (ver alvoDeMovimento).
-  if(!moveu){pol.rota=null;pol.destinoRota=null}
-  else{
+  // ===== BATER NA PAREDE NÃO JOGA A ROTA FORA =====
+  // Jogava, e era isso o "a polícia fica batendo nas casas e trava". O ciclo, medido: ele raspa numa
+  // quina → a rota é apagada → `alvoDeMovimento` fica 0,7 s sem poder replanejar (o portão de tempo)
+  // → sem rota, a única saída é a LINHA RETA até o destino → a reta aponta exatamente pra parede em
+  // que ele acabou de bater → bate de novo. O desencravador tirava ele 30 cm pra fora e a reta o
+  // devolvia pra dentro no quadro seguinte. Medido: 80% dos quadros barrados e um policial parado
+  // 149 segundos no mesmo lugar.
+  // A rota não tinha nada de errado — ele encostou numa quina no meio do caminho. O que se guarda
+  // agora é HÁ QUANTOS QUADROS ele está barrado, e quem decide o que fazer com isso é `alvoDeMovimento`.
+  // TRAVADO NÃO É "NENHUM EIXO ANDOU", É "QUASE NÃO SAIU DO LUGAR". A primeira versão contava só
+  // quando os DOIS eixos falhavam — e o caso real medido era outro: querendo ir pra -Z com a parede
+  // no Z, ele deslizava no X uns 5 MILÍMETROS POR SEGUNDO. `moveu` era true, o contador nunca subia,
+  // e ele passou 122 s raspando o mesmo muro. O que separa "contornando" de "encravado" é a fração
+  // do passo pedido que ele conseguiu andar: raspar uma parede a 45° rende ~70%; empurrar uma parede
+  // de frente rende ~0.
+  const andou=Math.hypot(pol.pos.x-antesX,pol.pos.z-antesZ);
+  if(andou<velocidade*dt*FRACAO_DE_PASSO_TRAVADO)pol.travado++;
+  else pol.travado=0;
+  if(moveu){
     pol.olharY=Math.atan2(vx,vz);pol.grupo.rotation.y=pol.olharY;
     // Com corpo 3D quem anda é o esqueleto (ver PersonagemPolicial); o balanço de perna abaixo é das
     // CAIXAS, e girar caixa que já está invisível seria trabalho por nada — além de sobrescrever a
@@ -1155,7 +1214,15 @@ function pontoDeRonda(evitarJogador=false){
 // em vez de a partida começar com 50 s de rua vazia enquanto eles sobem o morro. Reforço e reposição
 // sempre saem da porta, andando — é isso que o jogador vê chegar.
 function sairDaBase(agora,onde){
-  const p=onde||PORTA_BASE;
+  let p=onde||PORTA_BASE;
+  // NUNCA NASCER DENTRO DE PAREDE. Os pontos de ronda saem das curvas dos becos, e uma curva passa
+  // raspando na quina de casa — nascer ali é começar a vida encravado, e o desencravador só empurra
+  // 30 cm por quadro contra uma reta que insiste em voltar. Medido: os quatro do turno inicial
+  // apareceram travados dentro de colisor de casa em menos de 2 minutos.
+  if(colidePedestre(p.x,p.z)){
+    const livre=buscarPosicaoLivre(p.x,p.z,colidePedestre,9);
+    p=livre||PORTA_BASE;
+  }
   const pol=criarPolicial(policiais.length,'rua');
   pol.pos.set(p.x,0,p.z);
   pol.alturaAtual=obterElevacao(p.x,p.z);
@@ -1247,6 +1314,11 @@ export function __forcarCombateParaTeste(){
 // Um passo do laço inteiro da patrulha (efetivo + abordagem + cada policial), que é onde mora tudo o
 // que os testes de ritmo mediam no antigo estado 'combate'.
 export function __passoDoCombateDoEstado(dt){
+  // ZERA O ORÇAMENTO DE A*, porque este gancho representa um QUADRO INTEIRO e quem zera de verdade é
+  // `atualizarPolicia`, que o teste não chama. Sem isto, `caminhosNesteQuadro` ficava travado em 1
+  // depois do primeiro passo e NENHUM replanejamento acontecia no resto da medição — o teste media um
+  // jogo sem A*, e me deu "81% dos quadros barrados" num mundo em que o número é outro.
+  caminhosNesteQuadro=0;
   atualizarPatrulha(dt,performance.now()/1000);
 }
 export function __contarPoliciais(){return{emCampo:policiais.filter(p=>p.vivo).length,
@@ -1404,9 +1476,17 @@ function atualizarPatrulha(dt,agora){
       if(pol.esperandoPatrulhaAte>agora)encarar=pol.destinoRonda;
       else{
         destino=pol.destinoRonda;
-        // `true`: sem briga, sem abordagem, sem rastro — a polícia não tem razão nenhuma pra escolher
-        // justo o beco onde ele está.
-        if(distXZ(pol.pos,destino)<RUA_CHEGADA){
+        // ===== DESISTIR DO DESTINO É PARTE DA RONDA =====
+        // Último recurso, e o que garante que nenhuma trava dura pra sempre: insistindo TRAVADO_PARA_
+        // DESISTIR quadros sem sair do lugar, o ponto de ronda é trocado. É o que uma pessoa faz —
+        // "não dá pra ir por aqui, vou pra outro lugar". Sem isto, um destino que o corpo não alcança
+        // (a NavMesh aprova passagens 3 cm mais estreitas que o policial) prende ele indefinidamente:
+        // medido, 79 s no mesmo ponto mesmo já contornando.
+        if(pol.travado>=TRAVADO_PARA_DESISTIR){
+          pol.destinoRonda=pontoDeRonda(true);
+          pol.rota=null;pol.destinoRota=null;pol.travado=0;
+          destino=pol.destinoRonda;
+        }else if(distXZ(pol.pos,destino)<RUA_CHEGADA){
           pol.esperandoPatrulhaAte=agora+3+Math.random()*2;
           pol.destinoRonda=pontoDeRonda(true);
         }
