@@ -9,6 +9,7 @@ import{criarEsconderijo,refugioEmQueEsta,alternarPortaRefugio,porteiraFazenda,al
 import{player}from'./Player.js';
 import{POLOS,PRECOS}from'./Poles.js';
 import{ARMAS,ORDEM_ARMAS,equiparArma}from'./Weapons.js';
+import{pontoDeEntregaAtual}from'./DeliveryPoints.js';
 // ===== GANCHOS DA POLÍCIA (saúde e procurado) =====
 // NÃO dá pra importar Police aqui. Police já importa `inventario` deste módulo, e importar de volta
 // fecha o ciclo com a Economy avaliando DEPOIS: `inventario` é uma const, e const acessada antes da
@@ -140,6 +141,8 @@ export function contextoAtual(){
   // A chave carrega se precisa curar: o painel só se redesenha quando ela muda, e sem isso o botão
   // continuaria escrito "Você está inteiro" depois de levar tiro parado no balcão.
   if(distXZ(p,lojaPos)<POLOS.sementes.raio)return{tipo:'loja',chave:'loja'+(jogadorPrecisaCurar()?'F':'C')};
+  const entrega=pontoDeEntregaAtual(p);
+  if(entrega&&inventario.pacote>0)return{tipo:'entregaCasa',entrega,chave:`entregaCasa${entrega.id}x${inventario.pacote}`};
   if(distXZ(p,receptadorPos)<POLOS.receptador.raio)return{tipo:'receptador'};
   // A chave inclui a espera da diária: o painel só se redesenha quando a chave muda, e sem isso o
   // "volte em 45s" ficava congelado no número do momento do clique. Redesenha uma vez por segundo,
@@ -381,6 +384,10 @@ export function renderizarAcoes(){
     }
     botaoLoja(`🛡 Colete (R$${PRECOS.armasColete})`,PRECOS.armasColete,()=>comprar('colete',PRECOS.armasColete));
     acaoPanel.style.display='flex';
+  }else if(tipo==='entregaCasa'){
+    const quantos=inventario.pacote;
+    const b=document.createElement('button');b.textContent=`📦 Entregar ${quantos} pacote(s) (+R${quantos*PRECOS.receptadorPacote})`;b.disabled=quantos<=0;b.onclick=()=>{dinheiro+=quantos*PRECOS.receptadorPacote;inventario.pacote=0;atualizarStatusEconomia();renderizarAcoes();renderizarInventario()};acaoPanel.appendChild(b);
+    const aviso=document.createElement('span');aviso.textContent='Receptador aguardando na entrada da casa';aviso.style.cssText='font-size:11px;opacity:.75;align-self:center';acaoPanel.appendChild(aviso);acaoPanel.style.display='flex';
   }else if(tipo==='receptador'){
     // Só ESCOAMENTO. A venda de semente saiu daqui pra semente ter um ponto único (o Mercado): com
     // dois pontos vendendo, o receptador virava atalho e o trajeto até o centro deixava de existir.

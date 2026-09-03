@@ -38,7 +38,7 @@ import{obterElevacao}from'./Terrain.js';
 import{primeiroImpactoNoSegmento,intersectarSegmentoCaixa,buscarPosicaoLivre}from'./Physics.js';
 import{encontrarCaminho,visaoHorizontalLivre,pontoNavegavel}from'./NavMesh.js';
 import{player,zonasDeAcertoJogador,PLAYER_HEIGHT,encararDirecao,definirAnimacaoTiro}from'./Player.js';
-import{ORDEM_ARMAS,armaEquipada,idArmaEquipada,equiparArma,obterBocaDaArma,direcaoComDispersao}from'./Weapons.js';
+import{ORDEM_ARMAS,armaEquipada,idArmaEquipada,equiparArma,obterBocaDaArma,direcaoComDispersao,definirArmaEmpunhada}from'./Weapons.js';
 import{estaEscondido,refugioEmQueEsta,refugios}from'./WorldGenerator.js';
 import{colidePedestre,waypointsVielas}from'./NPCs.js';
 import{vestirPolicial,despirPolicial,atualizarCorpoPolicial}from'./PersonagemPolicial.js';
@@ -48,6 +48,10 @@ import{plantas,confiscarPlanta,aplicarMulta,definirDinheiro,inventario,atualizar
 import{dispararBala,atualizarBalas,limparBalas,VELOCIDADE_BALA}from'./Bullets.js';
 import{aplicarDano,renderizarVidaJogador,criarBarraMundo}from'./HealthBar.js';
 import{droneState,miraState}from'./Camera.js';
+import{crimeAtivo,alertarDisparoProximo,alertarColisaoPolicial,alertarEntregaIlegal,definirArmaVisivel}from'./CrimeTriggers.js';
+import{pontoDeEntregaAtual}from'./DeliveryPoints.js';
+import{hasWeaponEquipped}from'./Weapons.js';
+
 
 const HELI_ALTURA=38,HELI_VELOCIDADE=12,MAPA_LIMITE=95;
 const SALDO_RESPAWN=300;
@@ -77,6 +81,7 @@ const RAPEL_DIST=13,RAPEL_ESPACO=1.6;
 const RAPEL_DURACAO=1.5;
 const COMBATE_RAIO_ATIVACAO=16;
 const POLICIAL_HP=100,POLICIAL_VELOCIDADE=2,POLICIAL_ALCANCE_TIRO=13,POLICIAL_APROX_MIN=7;
+export const stoppingDistance=3.0;
 const POLICIAL_DANO_MIN=10,POLICIAL_DANO_MAX=18,POLICIAL_COOLDOWN_MIN=1.1,POLICIAL_COOLDOWN_MAX=2.1;
 // ===== PROCURADO =====
 // A barra SÓ desce dentro do esconderijo (casa da favela com a porta fechada). Fora dele não existe
@@ -298,6 +303,7 @@ function criarPolicial(indice,tipo='rapel'){
   scene.add(g);
   const pol={
     grupo:g,pernas,bracos,arma,hp:POLICIAL_HP,vivo:true,caindo:false,quedaT:0,tipo,
+    velocity:new THREE.Vector3(),
     pos:new THREE.Vector3(),proximoTiro:0,caminhando:0,
     // Estado da trocação (ver Combate.js): relógio da mira, papel na equipe e cobertura escolhida.
     viuDesde:0,viuPor:0,prontoEm:0,tiros:0,hpAnterior:POLICIAL_HP,papel:null,papelAte:0,ladoFlanco:1,
@@ -385,6 +391,12 @@ export function chamaAtencao(){return levandoPacote()||performance.now()/1000<vi
 //   · motivoDePerseguir() → "eles vêm atrás de mim", e isso exige FLAGRANTE (mochila com pacote) ou
 //                           FICHA SUJA (estrela). A marca da prisão, sozinha, não é motivo de caçada.
 function motivoDePerseguir(){return levandoPacote()||policia.procurado>0}
+function policialTemGatilho(pol,agora){
+  const entrega=pontoDeEntregaAtual(player.position);
+  const entregaIlegal=!!(entrega&&levandoPacote()&&veAlvo(pol.pos.x,pol.grupo.position.y+ALT_OLHO,pol.pos.z,pol.olharY,player.position.x,player.position.y+ALT_TORSO,player.position.z,meiaAberturaCone(policia.procurado),alcanceVisao(policia.procurado),temLinhaDeVisao));
+  if(entregaIlegal)alertarEntregaIlegal();
+  return crimeAtivo(agora,pol.pos)||entregaIlegal;
+}
 // Quanto ainda falta da ficha quente, em segundos. A HUD mostra isso: marca sem prazo visível é
 // indistinguível de bug — foi assim que a versão permanente passou tanto tempo sem ser notada.
 export function segundosDeFichaQuente(){return Math.max(0,vigiadoAte-performance.now()/1000)}
@@ -660,6 +672,7 @@ function passoPolicial(pol,dt,alvoX,alvoZ,velocidade){
   const nx=pol.pos.x+vx*dt,nz=pol.pos.z+vz*dt;let moveu=false;
   if(!colidePedestre(nx,pol.pos.z)){pol.pos.x=nx;moveu=true}
   if(!colidePedestre(pol.pos.x,nz)){pol.pos.z=nz;moveu=true}
+  pol.velocity.set(moveu?vx:0,0,moveu?vz:0);
   // Bater na parede invalida a rota, mas NÃO libera replanejamento imediato: era o `proximoReplan=0`
   // daqui que abria a torneira de A* por quadro (ver alvoDeMovimento).
   if(!moveu){pol.rota=null;pol.destinoRota=null}
@@ -825,6 +838,7 @@ function atualizarPolicialCombate(pol,dt,agora){
   // trabalha com o rastro do rádio — a última posição avistada por alguém da equipe.
   const vendo=perceber(pol,agora);
   const dist=distXZ(pol.pos,player.position);
+  const gatilho=policialTemGatilho(pol,agora);
 
   // ===== ONDE ELE ACHA QUE O ALVO ESTÁ =====
   // Vendo, é o jogador. Sem ver, é a ÚLTIMA POSIÇÃO CONHECIDA — nunca a atual. É o que impede o
@@ -842,6 +856,7 @@ function atualizarPolicialCombate(pol,dt,agora){
 
   // ===== PARA ONDE ELE VAI =====
   let destino=null,querParar=false;
+  if(gatilho&&alvoX===null){alvoX=player.position.x;alvoZ=player.position.z}
   if(alvoX!==null){
     const buscandoCobertura=pressionado||pol.papel===PAPEL.COBERTURA;
     if(buscandoCobertura){
@@ -869,7 +884,7 @@ function atualizarPolicialCombate(pol,dt,agora){
       destino=p;
       // Chegou na distância que o papel quer: para de andar e trabalha a mira. Atirar parado é mais
       // preciso (ver Combate.js), então parar é uma decisão tática, não uma pausa de animação.
-      querParar=Math.abs(dist-(pol.papel===PAPEL.AVANCO?aproxMinima():9))<1.4;
+      querParar=dist<=stoppingDistance;
     }
   }else if(emBusca(agora)){
     destino=pontoDeBusca(pol,agora);
@@ -948,6 +963,7 @@ export function atirar(){
   }
   avisouSemMunicao=false;
   proximoTiroJogador=agora+arma.cooldown;
+  alertarDisparoProximo(player.position.x,player.position.z);
   inventario.municao[arma.id]-=arma.gasto;atualizarHudMunicao();
   // Resolve o alvo primeiro: além do ponto visado, isso deixa _dirCamera preenchido com a direção da
   // câmera, que é justo pra onde o boneco tem que virar.
@@ -971,7 +987,7 @@ export function atirar(){
 let gatilhoPressionado=false;
 // Avisa o boneco 3D pra ele trocar pra animação de andar atirando. Fica aqui, e não no Input, porque
 // o gatilho também é acionado pelo botão 🔫 do celular — este é o ponto por onde os dois passam.
-export function definirGatilho(v){gatilhoPressionado=v;if(!v)avisouSemMunicao=false;definirAnimacaoTiro(v)}
+export function definirGatilho(v){gatilhoPressionado=v;definirArmaEmpunhada(v);if(!v)avisouSemMunicao=false;definirAnimacaoTiro(v)}
 export function atualizarTiroContinuo(){if(gatilhoPressionado)atirar()}
 // Cicla só entre as armas que o jogador POSSUI. Mora aqui porque é o único módulo que enxerga os três
 // pedaços: inventario.armas (Economy), equiparArma (Weapons) e proximoTiroJogador (local).
@@ -1269,6 +1285,8 @@ const ESTADOS={
 // bairro ficava vazio de polícia entre um encontro e outro. Mas 24 h de patrulha também não — por
 // isso as duplas têm VIDA ÚTIL: nascem, rondam, e vão embora sozinhas.
 const policiaisRua=[];
+export const waypoints=[];
+for(const ponto of waypointsVielas)waypoints.push({x:ponto.x,z:ponto.z});
 let proximaDupla=RUA_INTERVALO_MIN;
 // ===== RONDA SEM MOTIVO NÃO ANDA NA DIREÇÃO DO JOGADOR =====
 // Os pontos de ronda são os becos DE VERDADE — e o jogador também anda nos becos. Sorteando entre os
@@ -1290,7 +1308,7 @@ function pontoDeRonda(evitarJogador=false){
   }
   let wp=null;
   for(let t=0;t<10;t++){
-    wp=waypointsVielas[Math.floor(Math.random()*waypointsVielas.length)];
+    wp=waypoints[Math.floor(Math.random()*waypoints.length)];
     if(!evitarJogador)break;
     if(Math.hypot(wp.x-player.position.x,wp.z-player.position.z)>=RONDA_LONGE_DO_JOGADOR)break;
   }
@@ -1423,7 +1441,7 @@ function nascerDupla(agora,base){
     pol.grupo.position.set(pol.pos.x,pol.alturaAtual,pol.pos.z);
     // Longe do jogador também no primeiro destino: nascer a 20 m e mirar exatamente onde ele está
     // é a mesma perseguição-sem-motivo, só que começando antes.
-    pol.expiraEm=agora+RUA_DUPLA_VIDA;pol.destinoRonda=pontoDeRonda(!motivoDePerseguir());
+    pol.expiraEm=agora+RUA_DUPLA_VIDA;pol.destinoRonda=pontoDeRonda(!crimeAtivo(agora));pol.esperandoPatrulhaAte=0;
     policiaisRua.push(pol);
   }
 }
@@ -1463,7 +1481,7 @@ function atualizarPoliciaDeRua(dt,agora){
     // acontecia, mas no instante em que a primeira dupla completava os 75 s de vida o acesso à const
     // ainda não inicializada lançava ReferenceError — dentro do laço do quadro, que matava o
     // requestAnimationFrame e congelava o jogo. Era o "trava depois de alguns minutos".
-    const deOlho=vendo&&motivoDePerseguir();
+    const deOlho=(vendo||crimeAtivo(agora,pol.pos))&&policialTemGatilho(pol,agora);
     // Expira e vai embora — mas nunca no meio de uma perseguição, que seria a polícia evaporando na
     // cara do jogador. Com rastro ativo eles ficam até o rastro esfriar.
     if(agora>pol.expiraEm&&!deOlho&&!rastroValido(agora)&&!emBusca(agora)){removerRua(i);continue}
@@ -1472,14 +1490,15 @@ function atualizarPoliciaDeRua(dt,agora){
     else if(rastroValido(agora))destino={x:rastro.x,z:rastro.z};
     else if(emBusca(agora))destino=pontoDeBusca(pol,agora);
     else{
+      if(pol.esperandoPatrulhaAte>agora){encararPonto(pol,pol.destinoRonda.x,pol.destinoRonda.z);pol.velocity.set(0,0,0);assentarPolicial(pol,dt,false);pol.barra.posicionar(pol.pos.x,pol.grupo.position.y,pol.pos.z);pol.barra.mostrar(pol.hp<POLICIAL_HP);continue}
       destino=pol.destinoRonda;
       // `true`: aqui, por construção, não há deOlho, nem rastro, nem busca — ou seja, a polícia não
       // tem razão nenhuma pra ir na direção do jogador.
-      if(distXZ(pol.pos,destino)<RUA_CHEGADA)pol.destinoRonda=pontoDeRonda(true);
+      if(distXZ(pol.pos,destino)<RUA_CHEGADA){pol.esperandoPatrulhaAte=agora+3+Math.random()*2;pol.destinoRonda=pontoDeRonda(true);}
     }
-    const perto=deOlho&&distXZ(pol.pos,player.position)<=aproxMinima();
+    const perto=deOlho&&distXZ(pol.pos,player.position)<=stoppingDistance;
     let andandoRua=false;
-    if(perto)encararPonto(pol,player.position.x,player.position.z);
+    if(perto){pol.velocity.set(0,0,0);encararPonto(pol,player.position.x,player.position.z);}
     else{
       const alvo=alvoDeMovimento(pol,agora,destino.x,destino.z);
       passoPolicial(pol,dt,alvo.x,alvo.z,velocidadePolicial(RUA_VELOCIDADE));
@@ -1557,6 +1576,8 @@ export function aplicarEstadoPoliciaDoSave(s){
 
 export function atualizarPolicia(dt){
   const agora=performance.now()/1000;
+  definirArmaVisivel(hasWeaponEquipped());
+  for(const pol of policiaisAtingiveis())if(pol.vivo&&distXZ(pol.pos,player.position)<=.76){alertarColisaoPolicial();break}
   caminhosNesteQuadro=0;// zera o orçamento de A* deste quadro
   // Velocidade do jogador, usada pela pontaria: alvo correndo é mais difícil de acertar.
   atualizarCombate(dt);

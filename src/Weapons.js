@@ -82,6 +82,11 @@ export const ARMAS={
 let idEquipado='pistola';
 export function idArmaEquipada(){return idEquipado}
 export function armaEquipada(){return ARMAS[idEquipado]}
+// A arma pode permanecer presa à mão como parte do visual sem estar empunhada para uma abordagem.
+// O estado é controlado pelo gatilho/mira do jogador e lido pela IA como crime visível.
+let empunhadaParaAbordagem=false;
+export function hasWeaponEquipped(){return empunhadaParaAbordagem}
+export function definirArmaEmpunhada(v){empunhadaParaAbordagem=!!v}
 // Troca só alterna `.visible`: as 4 malhas já existem desde o início. Three pula objeto invisível
 // inclusive na passada de sombra, então as 3 guardadas custam zero — e nada de alocar geometria em
 // pleno combate, que é o que gera microtravamento.
