@@ -18,7 +18,7 @@ import{pontoDeEntregaAtual}from'./DeliveryPoints.js';
 // Então a dependência anda no sentido que já existe: Police REGISTRA os ganchos ao ser avaliado.
 // Os no-op de partida deixam o bar e a biqueira funcionarem (sem curar/denunciar) mesmo se a polícia
 // não tiver carregado — degradação silenciosa é melhor que botão que lança.
-let ganchosPolicia={curar:()=>false,precisaCurar:()=>false,denunciar:()=>{},equiparColete:()=>false};
+let ganchosPolicia={curar:()=>false,precisaCurar:()=>false,denunciar:()=>{},equiparColete:()=>false,coleteEmUso:()=>false};
 export function registrarGanchosPolicia(g){ganchosPolicia={...ganchosPolicia,...g}}
 const jogadorPrecisaCurar=()=>ganchosPolicia.precisaCurar();
 
@@ -187,6 +187,7 @@ export function atualizarStatusEconomia(){statusEconomia.textContent=`R$${dinhei
 // por arma, `inventario['municao']+=12` viraria a string "[object Object]12" — silenciosamente, sem erro.
 export function comprar(item,preco,quantidade=1){
   if(dinheiro<preco)return;
+  if(item==='colete'&&(inventario.colete>0||ganchosPolicia.coleteEmUso()))return;
   if(item==='colete'&&ganchosPolicia.equiparColete()){
     dinheiro-=preco;atualizarStatusEconomia();renderizarAcoes();renderizarInventario();return;
   }

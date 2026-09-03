@@ -62,7 +62,7 @@ function montarEstado(){
     v:VERSAO,
     d:inteiro(Economia.obterDinheiro(),0),
     inv:{vaso:inteiro(inv.vaso),terra:inteiro(inv.terra),semente:inteiro(inv.semente),
-      pacote:inteiro(inv.pacote),colete:inteiro(inv.colete)},
+      pacote:inteiro(inv.pacote),colete:Math.min(1,inteiro(inv.colete))},
     armas,municao,
     arma:Armas.idArmaEquipada?.()||'pistola',
     pol:Policia.estadoPoliciaParaSave?.()??null,
@@ -116,7 +116,7 @@ export function carregar(){
     Economia.definirDinheiro(s.d);
     const inv=Economia.inventario;
     inv.vaso=inteiro(s.inv?.vaso);inv.terra=inteiro(s.inv?.terra);
-    inv.semente=inteiro(s.inv?.semente);inv.pacote=inteiro(s.inv?.pacote);inv.colete=inteiro(s.inv?.colete);
+    inv.semente=inteiro(s.inv?.semente);inv.pacote=inteiro(s.inv?.pacote);inv.colete=Math.min(1,inteiro(s.inv?.colete));
     for(const id of Armas.ORDEM_ARMAS){
       inv.armas[id]=booleano(s.armas?.[id]);
       inv.municao[id]=inteiro(s.municao?.[id],0);

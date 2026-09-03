@@ -347,17 +347,20 @@ function tentarVestirColete(){
 function medidasPeito(){
   if(!malhaPele?.skeleton||!troncoOsso)return null;
   let esq=null,dir=null;
+  // Os ombros precisam ser separados em relação ao tronco. Comparar com X=0 do mundo fazia os dois
+  // parecerem do mesmo lado assim que o jogador andava para leste ou oeste, impedindo o colete de vestir.
+  troncoOsso.getWorldPosition(_t);
   for(const o of malhaPele.skeleton.bones){
     const n=o.name||'';
     if(!/arm/i.test(n)||/fore|hand|finger/i.test(n))continue;
     o.getWorldPosition(_v);
-    if(_v.x>0){if(!esq||_v.x>esq.x)esq=_v.clone()}
-    else{if(!dir||_v.x<dir.x)dir=_v.clone()}
+    const xRel=_v.x-_t.x;
+    if(xRel>0){if(!esq||xRel>esq.x-_t.x)esq=_v.clone()}
+    else{if(!dir||xRel<dir.x-_t.x)dir=_v.clone()}
   }
   if(!esq||!dir)return null;
   const largura=Math.abs(esq.x-dir.x);
   if(!(largura>0))return null;
-  troncoOsso.getWorldPosition(_t);
   return{largura,ombroY:(esq.y+dir.y)/2,centroX:_t.x,centroZ:_t.z};
 }
 

@@ -545,7 +545,7 @@ function equiparColeteComprado(){
   mostrarAviso('Colete equipado — a armadura absorve parte do dano.',2200);
   return true;
 }
-
+function coleteEmUso(){return armaduraJogador>0}
 // ===== IA de cada policial em combate =====
 // Existe parede entre A e B? Sem isso os policiais atiravam através das casas.
 function temLinhaDeVisao(ax,ay,az,bx,by,bz){
@@ -1558,7 +1558,7 @@ export function denunciarBoca(){somarProcurado(1);mostrarAviso('Venderam na tua 
 // Entrega os ganchos pra Economy no momento em que este módulo é avaliado. É o sentido de
 // dependência que já existia (Police -> Economy); o contrário fecharia ciclo e explodiria no TDZ
 // da const `inventario`.
-registrarGanchosPolicia({curar:curarJogador,precisaCurar:jogadorPrecisaCurar,denunciar:denunciarBoca,equiparColete:equiparColeteComprado});
+registrarGanchosPolicia({curar:curarJogador,precisaCurar:jogadorPrecisaCurar,denunciar:denunciarBoca,equiparColete:equiparColeteComprado,coleteEmUso});
 // O save guarda o RESTO da ficha quente, em segundos — não um instante absoluto. `performance.now()`
 // zera a cada carregamento da página, então gravar o prazo em tempo de máquina faria toda ficha
 // salva vencer no instante em que o jogo reabre.
@@ -1583,6 +1583,9 @@ export function aplicarEstadoPoliciaDoSave(s){
     const restante=Number.isFinite(resto)?Math.max(0,Math.min(FICHA_QUENTE,resto)):0;
     const arm=Number(s&&s.armadura);
     armaduraJogador=Number.isFinite(arm)?Math.min(JOGADOR_ARMADURA_MAX,Math.max(0,Math.floor(arm))):0;
+    // Migra saves antigos que acumulavam coletes: se já há armadura equipada, não existe uma segunda
+    // unidade escondida no inventário. O jogo trabalha com no máximo um colete total.
+    if(armaduraJogador>0)inventario.colete=0;
     vigiadoAte=performance.now()/1000+restante;
   }catch(e){policia.procurado=0;vigiadoAte=0}
 }
