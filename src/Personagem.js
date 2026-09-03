@@ -26,10 +26,9 @@ export const AJUSTE={
   //  · larguraDoOmbro: largura do colete em relação à distância entre as juntas dos ombros. Passa de
   //    1,00 porque a cinta dá a volta pelos lados do tronco, então o colete é mais largo que os ombros.
   //  · x/y/z: retoque em metros. `y` sobe (+) ou desce (-) o conjunto na altura do ombro.
-  // `y` = 2,2 cm: a linha dos ombros do rig é a JUNTA, que fica DENTRO do ombro; a superfície em que a
-  // cava realmente apoia está uns dois centímetros acima dela. Sem esta subida a cinta desce pra baixo
-  // do osso do quadril (medido: fundo do colete em 8,393 contra quadril em 8,409).
-  colete:{larguraDoOmbro:1.02,x:0,y:.022,z:0},
+  // `y` = 7 cm: a linha dos ombros do rig é a JUNTA, que fica DENTRO do ombro; a superfície em que a
+  // cava realmente apoia está acima dela. O ajuste foi elevado após a conferência visual no personagem.
+  colete:{larguraDoOmbro:1.02,x:0,y:.07,z:0},
 };
 
 // Nomes das animações dentro do GLB. Ficam aqui em cima porque são o contrato com o arquivo: trocar o
