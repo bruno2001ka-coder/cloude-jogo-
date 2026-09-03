@@ -458,6 +458,44 @@ function criarLojaArmas(x,z){
   return g;
 }
 criarLojaArmas(POLOS.armas.predio.x,POLOS.armas.predio.z);
+
+// ===== DELEGACIA: a base da polícia, no pé do morro =====
+// Existe por uma razão de jogo, não de cenário: policial nenhum aparece mais do nada perto do
+// jogador — todos entram no mundo por esta porta e sobem a rua andando. Isso é o que faz a polícia
+// PARECER que mora no mapa, e é literalmente o que o Bruno pediu ("do nada aparece dois policial
+// atrás de mim").
+//
+// Segue a receita do barracão da loja de armas: grupo assentado na elevação, UMA parede registrada
+// como obstáculo (o resto é enfeite, pra não criar bolsão onde o jogador encrava), e sombra de
+// contato. A porta fica virada pra via principal — é de onde eles saem.
+function criarDelegacia(x,z){
+  const g=new THREE.Group();const y=obterElevacao(x,z);g.position.set(x,y,z);scene.add(g);
+  // Vira a frente pra porta declarada em Poles, MAS EM ÂNGULO RETO. O arredondamento não é preguiça:
+  // `registrarObstaculo` mede a AABB da malha, e a AABB de uma caixa girada num ângulo qualquer é bem
+  // maior que a caixa — girado 116° este prédio de 8,4 x 6,8 registrava um colisor de 9,8 x 10,5, que
+  // engolia a própria porta (medido: o ponto de saída dava colisão). Em múltiplo de 90° a AABB é
+  // exatamente a caixa, e o colisor é o prédio. É a mesma dor das casas do morro, que por isso são
+  // fatiadas; aqui o prédio é um só e dá pra resolver alinhando.
+  const paraAPorta=Math.atan2(POLOS.delegacia.porta.x-x,POLOS.delegacia.porta.z-z);
+  g.rotation.y=Math.round(paraAPorta/(Math.PI/2))*(Math.PI/2);
+  const claro=bmat(0xdcd8cc),azul=bmat(0x2f5fa8),escuro=bmat(0x3a3f45);
+  const parede=bloco(new THREE.BoxGeometry(8.4,3.6,6.8),claro,0,1.8,-1.4,g);
+  registrarObstaculo(parede,'delegacia');
+  // Faixa azul na altura do peito: é o que faz ler "polícia" de longe, na cor do ponto do radar.
+  bloco(new THREE.BoxGeometry(8.5,.5,6.9),azul,0,2.5,-1.4,g);
+  bloco(new THREE.BoxGeometry(8.9,.18,7.3),escuro,0,3.7,-1.4,g);
+  // Vão da porta na fachada, virado pra rua. Não vira obstáculo: é por onde eles saem.
+  bloco(new THREE.BoxGeometry(1.6,2.3,.12),escuro,0,1.15,1.95,g);
+  bloco(new THREE.BoxGeometry(2,.16,.5),azul,0,2.45,2.1,g);
+  for(const lx of[-1.4,1.4])bloco(new THREE.CylinderGeometry(.08,.08,2.6,6),posteMat,lx,1.3,2.05,g);
+  // Giroflex no telhado, aceso: o ponto de referência noturno.
+  const luz=new THREE.PointLight(0x4d8dff,1.1,12);luz.position.set(0,4.1,0);g.add(luz);
+  bloco(new THREE.SphereGeometry(.16,8,8),
+    new THREE.MeshStandardMaterial({color:0x9ec8ff,emissive:0x2f6fd0,emissiveIntensity:2}),0,4.05,0,g);
+  criarSombraContato(5,g,0,-1);
+  return g;
+}
+criarDelegacia(POLOS.delegacia.predio.x,POLOS.delegacia.predio.z);
 export const animais=[];
 function criarAnimal(tipo,x,z){
   const g=new THREE.Group();const y=obterElevacao(x,z);g.position.set(x,y,z);bairro.add(g);

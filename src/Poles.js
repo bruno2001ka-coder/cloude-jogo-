@@ -23,6 +23,21 @@ export const POLOS={
   armas:{x:60,z:-46,predio:{x:60,z:-50},raio:5,rotulo:'Loja de Armas',cor:'#ff9d3b'},
   // Sudeste — semente rara e escoamento dos pacotes.
   receptador:{x:50,z:30,raio:4.5,rotulo:'Receptador',cor:'#ff5e5e'},
+  // ===== DELEGACIA — a base de onde a polícia sai e pra onde volta =====
+  // NÃO é polo econômico: não tem loja, não entra no painel de ações. Está aqui porque é a quinta
+  // coordenada que estrutura o mapa, e porque o radar precisa dela.
+  //
+  // O lugar foi MEDIDO, não escolhido no olho: varri o pé da via principal procurando onde cabe um
+  // prédio de 8,4 x 6,8 m com desnível abaixo de 1,1 m, sem colisor a 1 m de folga, e com caminho
+  // ANDÁVEL até a favela (base atrás de um barranco não serviria de nada). (-54, 13) tem 21 cm de
+  // desnível e fica a 6 m do pé da via — a polícia sai da porta e já está na rua que sobe o morro.
+  //
+  // `porta` é por onde eles entram no mundo, do lado da rua; `predio` é onde o barracão fica. Separar
+  // os dois é a mesma regra da loja de armas: nascer dentro da parede é nascer encravado. A primeira
+  // versão pôs a porta a 4,5 m do centro e ela AINDA caiu dentro do colisor — `registrarObstaculo`
+  // mede a AABB da malha, e o prédio girado 116° virava uma caixa 25% maior que ele. O prédio agora
+  // encara o leste em ângulo reto (ver criarDelegacia) e a porta fica na frente dessa face.
+  delegacia:{x:-49.5,z:13,predio:{x:-54,z:13},porta:{x:-49.5,z:13},raio:4,rotulo:'Delegacia',cor:'#4d8dff'},
 };
 
 // Tabela de preços num lugar só, pra Economy e para o painel de ações não divergirem.

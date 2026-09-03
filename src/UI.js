@@ -48,6 +48,10 @@ export function atualizarRadar(){
   desenharPontoRadar(receptadorPos.x,receptadorPos.z,POLOS.receptador.cor,5,true);
   desenharPontoRadar(fazendaPos.x,fazendaPos.z,POLOS.fazenda.cor,5,true);
   desenharPontoRadar(armasPos.x,armasPos.z,POLOS.armas.cor,5,true);
+  // A DELEGACIA gruda na borda como os polos, e por um motivo de jogo: é a única marca que deixa o
+  // jogador DESVIAR da polícia em vez de só reagir a ela. Saber onde eles moram é a informação que
+  // torna a patrulha permanente justa.
+  desenharPontoRadar(POLOS.delegacia.x,POLOS.delegacia.z,POLOS.delegacia.cor,5,true);
   for(const r of refugios)desenharPontoRadar(r.x,r.z,'#c23a3a',4,false);
   // A boca e o bar: são pontos do morro, dentro do alcance do radar quase sempre, então não grudam
   // na borda — encher a borda de marcador tira a leitura dos quatro polos, que são os que ficam fora.
