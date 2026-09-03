@@ -22,10 +22,14 @@ export const AJUSTE={
   mochila:{escala:1,x:0,y:.02,z:-.12},
   // Posição e giro da ARMA na mão. Ela já nasce alinhada aos eixos do corpo; isto é o ajuste fino.
   arma:{x:0,y:0,z:0,giroX:0,giroY:0,giroZ:0},
-  // COLETE: agora é FOLGA por eixo em cima do tronco medido pelo rig, e nada mais. 1,00 seria colado
-  // na pele; 1,12 na largura e 1,20 no fundo é o que dá o volume de placa por cima da roupa, e 1,04
-  // na altura deixa ele indo do ombro ao umbigo sem virar cinta. `y` sobe o conjunto no peito.
-  colete:{folgaX:1.02,folgaY:1.04,folgaZ:1.14,x:0,y:.015,z:0},
+  // COLETE: ele é PENDURADO PELOS OMBROS, como um colete de verdade, e a escala é uniforme.
+  //  · larguraDoOmbro: largura do colete em relação à distância entre as juntas dos ombros. Passa de
+  //    1,00 porque a cinta dá a volta pelos lados do tronco, então o colete é mais largo que os ombros.
+  //  · x/y/z: retoque em metros. `y` sobe (+) ou desce (-) o conjunto na altura do ombro.
+  // `y` = 2,2 cm: a linha dos ombros do rig é a JUNTA, que fica DENTRO do ombro; a superfície em que a
+  // cava realmente apoia está uns dois centímetros acima dela. Sem esta subida a cinta desce pra baixo
+  // do osso do quadril (medido: fundo do colete em 8,393 contra quadril em 8,409).
+  colete:{larguraDoOmbro:1.02,x:0,y:.022,z:0},
 };
 
 // Nomes das animações dentro do GLB. Ficam aqui em cima porque são o contrato com o arquivo: trocar o
@@ -120,7 +124,7 @@ export function medidasTronco(){
 // Passa vértice a vértice com getVertexPosition, que é quem aplica as matrizes dos ossos — é a mesma
 // conta que o three faz pra desenhar, e por isso a única que não mente (ver normalizar). Roda uma vez
 // só; varrer 3 mil triângulos uma vez é barato, e amostrar salteado erraria a altura.
-const _v=new THREE.Vector3();
+const _v=new THREE.Vector3(),_t=new THREE.Vector3();
 export function alturaDaMalha(malha){
   malha.updateWorldMatrix(true,false);
   malha.skeleton?.update?.();
@@ -271,8 +275,9 @@ function tentarVestirColete(){
   // Precisa das duas pontas: o arquivo baixado E o boneco já normalizado (é dele que sai a medida do
   // tronco). Quem chegar por último dispara o encaixe.
   if(!coleteModelo||!coleteGrupo||!troncoOsso||aNormalizar)return;
-  const m=medidasTronco();
-  if(!m)return;
+  // Se o rig não dá pra medir o peito, não há encaixe possível: melhor não vestir do que vestir num
+  // número inventado (era `medidasTronco`, que o colete não usa mais).
+  if(!medidasPeito())return;
 
   troncoOsso.add(coleteGrupo);
   coleteGrupo.position.set(0,0,0);coleteGrupo.rotation.set(0,0,0);coleteGrupo.scale.setScalar(1);
@@ -285,38 +290,67 @@ function tentarVestirColete(){
   coleteGrupo.add(coleteModelo);
   coleteModelo.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true}});
 
-  // ===== VESTE EIXO A EIXO, NÃO POR UMA ESCALA SÓ =====
-  // Era uma escala uniforme derivada da largura, e depois dois multiplicadores em cima (`largura` e
-  // `altura` do AJUSTE) pra corrigir o que a uniforme errava. Três números disputando o mesmo colete.
+  // ===== PENDURADO PELOS OMBROS, EM ESCALA UNIFORME =====
+  // Este encaixe já foi tentado de três jeitos, e os dois primeiros erraram pela mesma razão: tratavam
+  // o colete como uma caixa a ser esticada. Ele não é. É uma peça só — cava de ombro em cima, painel
+  // no meio, cinta larga embaixo — e essas três partes têm que continuar na proporção do arquivo.
   //
-  // O defeito que sobrava dessa conta era a PROFUNDIDADE: escalando tudo pela largura, o Z do colete
-  // fica na proporção do MODELO, não na do corpo. Medido no jogo: colete com 0,184 m de fundo num
-  // tronco de 0,131 — dois centímetros e meio sobrando na frente e outros dois atrás, num boneco de
-  // 90 cm. Não é colete, é barril.
+  // Medido por diferença de pixel (duas fotos do mesmo quadro, uma com colete e uma sem, e o que muda
+  // é o colete), com o encaixe por CAIXA: a massa visível ficava de y 8,439 a 8,521 e o topo do modelo
+  // em 8,626 — três centímetros ACIMA da linha dos ombros (8,595). Ou seja, o colete estava pendurado
+  // no ar: a cinta subia pro peito e o painel era empurrado pra cima do pescoço.
+  // Depois tentei esticar só a placa até a altura do peito, e o diff mostrou o colete indo a y 8,717,
+  // acima da cabeça — porque esticar uma faixa estica as alças junto.
   //
-  // Colete é uma casca, então esticar cada eixo pro que ele veste é legítimo e é o que resolve de
-  // uma vez: X pra largura do tronco, Z pra profundidade, Y pra faixa do peito. As folgas são o
-  // "vestir por cima da roupa" e são a ÚNICA coisa que sobrou pra ajustar — cada uma num eixo só,
-  // sem uma mexer na outra.
+  // O que um colete faz no corpo é simples e é isto: ele PENDURA NOS OMBROS. Então a única medida que
+  // entra é a largura (escala uniforme, sem deformar nada) e o único ponto de apoio é a linha dos
+  // ombros, que o esqueleto entrega. A cinta cai no lugar da cinta e o painel no lugar do painel,
+  // sozinhos, porque a proporção do arquivo foi preservada.
+  const peito=medidasPeito();
   coleteGrupo.updateWorldMatrix(true,true);
   const caixa=new THREE.Box3().setFromObject(coleteModelo);
   const tam=new THREE.Vector3();caixa.getSize(tam);
-  if(tam.x>0&&tam.y>0&&tam.z>0){
-    coleteModelo.scale.set(
-      coleteModelo.scale.x*(m.largura     *AJUSTE.colete.folgaX)/tam.x,
-      coleteModelo.scale.y*(m.altura      *AJUSTE.colete.folgaY)/tam.y,
-      coleteModelo.scale.z*(m.profundidade*AJUSTE.colete.folgaZ)/tam.z);
+  if(peito&&tam.x>0){
+    const s=(peito.largura*AJUSTE.colete.larguraDoOmbro)/tam.x;
+    coleteModelo.scale.multiplyScalar(s);
+    coleteGrupo.updateWorldMatrix(true,true);
+    caixa.setFromObject(coleteModelo);
   }
-
-  // Centra no tronco. O deslocamento é medido em MUNDO e `position` vive no espaço do PAI, então quem
-  // converte é a escala do pai — dividir pela escala do próprio modelo (o erro anterior) deixava o
-  // colete 5 cm acima do peito.
-  coleteGrupo.updateWorldMatrix(true,true);
-  caixa.setFromObject(coleteModelo);
-  const centro=new THREE.Vector3();caixa.getCenter(centro);
-  const destino=m.centro.clone().add(new THREE.Vector3(AJUSTE.colete.x,AJUSTE.colete.y,AJUSTE.colete.z));
-  coleteModelo.position.add(destino.sub(centro).divideScalar(escalaDe(coleteGrupo)));
+  if(peito){
+    // Alinha o TOPO do colete com a linha dos ombros (é ali que a cava apoia), e centra em X na coluna
+    // e em Z no tronco. O deslocamento é medido em MUNDO e `position` vive no espaço do PAI, então
+    // quem converte é a escala do PAI — dividir pela escala do próprio modelo (erro antigo) subia o
+    // colete 5 cm.
+    const atual=new THREE.Vector3((caixa.min.x+caixa.max.x)/2,caixa.max.y,(caixa.min.z+caixa.max.z)/2);
+    const destino=new THREE.Vector3(
+      peito.centroX+AJUSTE.colete.x,
+      peito.ombroY+AJUSTE.colete.y,
+      peito.centroZ+AJUSTE.colete.z);
+    coleteModelo.position.add(destino.sub(atual).divideScalar(escalaDe(coleteGrupo)));
+  }
 }
+
+// ===== A LINHA DOS OMBROS, MEDIDA NO ESQUELETO =====
+// Um colete apoia nos ombros e tem a largura dos ombros. São essas duas medidas que o encaixe precisa,
+// e as duas estão no rig: os ossos dos braços (a JUNTA do ombro, não o antebraço) dão a altura e a
+// distância. Nada disso depende do arquivo do colete, então vale pra qualquer um que ele troque.
+function medidasPeito(){
+  if(!malhaPele?.skeleton||!troncoOsso)return null;
+  let esq=null,dir=null;
+  for(const o of malhaPele.skeleton.bones){
+    const n=o.name||'';
+    if(!/arm/i.test(n)||/fore|hand|finger/i.test(n))continue;
+    o.getWorldPosition(_v);
+    if(_v.x>0){if(!esq||_v.x>esq.x)esq=_v.clone()}
+    else{if(!dir||_v.x<dir.x)dir=_v.clone()}
+  }
+  if(!esq||!dir)return null;
+  const largura=Math.abs(esq.x-dir.x);
+  if(!(largura>0))return null;
+  troncoOsso.getWorldPosition(_t);
+  return{largura,ombroY:(esq.y+dir.y)/2,centroX:_t.x,centroZ:_t.z};
+}
+
 // ===== MOCHILA =====
 // A mochila é um GLB pendurado no osso do tronco e redimensionado pela medida REAL do tronco do
 // modelo — sem isso ela sai no tamanho do arquivo e engole o boneco, que foi o que aconteceu com o
