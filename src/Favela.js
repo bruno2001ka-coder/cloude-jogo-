@@ -71,10 +71,20 @@ function criarBeco(mae,u,lado,comprimento,semente,recuoDaMae){
   const p0=mae.getPointAt(u),t=mae.getTangentAt(u);
   const n=new THREE.Vector3(-t.z*lado,0,t.x*lado).normalize();
   const pe=p0.clone().addScaledVector(n,recuoDaMae);
-  const desvio=(sorteio(semente,7)-.5)*.95;
-  const meio=pe.clone().addScaledVector(n,comprimento*.55).addScaledVector(t,comprimento*desvio);
-  const ponta=pe.clone().addScaledVector(n,comprimento).addScaledVector(t,comprimento*desvio*1.8);
-  return new THREE.CatmullRomCurve3([pe,meio,ponta],false,'catmullrom',.5);
+  // ===== O BECO TEM QUE TORCER, E ISSO DEPENDE DE DOIS DESVIOS INDEPENDENTES =====
+  // A versão anterior tinha UM sorteio só, aplicado ao meio (x1) e à ponta (x1,8), com o meio a 55% do
+  // comprimento. Faça a conta: pra três pontos serem colineares, o desvio do meio teria que ser
+  // 0,55 x 1,8 = 0,99 do desvio da ponta. Era 1,00. Ou seja, TODO beco do morro saía numa reta —
+  // e visto de cima o bairro era uma estrela de espetos, não um labirinto. O código dizia "serpenteia"
+  // e a aritmética dizia o contrário; ninguém olhou de cima até agora.
+  //
+  // Com dois desvios sorteados SEPARADAMENTE não existe combinação que caia numa reta por acidente, e
+  // a ponta puxando pra soma dos dois fecha a curva em S em vez de deixá-la abrindo pra sempre.
+  const a=(sorteio(semente,7)-.5)*comprimento*.42;
+  const b=(sorteio(semente,23)-.5)*comprimento*.50;
+  const emQ=(fn,ft)=>pe.clone().addScaledVector(n,comprimento*fn).addScaledVector(t,ft);
+  return new THREE.CatmullRomCurve3(
+    [pe,emQ(.34,a),emQ(.67,b),emQ(1,(a+b)*.55)],false,'catmullrom',.5);
 }
 
 // ===== O LOTE =====
@@ -205,10 +215,14 @@ export const corredores=[];
 // número de becos que ainda cabem COM casa dos dois lados.
 const ESPACO_ENTRE_BECOS=8.0;
 const AMOSTRAS_BECO=9;
-function becoCabe(candidato,jaAceitos){
-  for(let i=Math.ceil(AMOSTRAS_BECO*.35);i<=AMOSTRAS_BECO;i++){
+// `mae` fica de fora da conta: é NELA que o beco nasce, e agora ele nasce ENCOSTADO nela. Medir
+// distância até a mãe rejeitava justamente os becos bem plantados — a densidade caiu de 21 corredores
+// pra 14 e de 119 casas pra 86 no primeiro teste depois que a boca passou a encostar na rua.
+function becoCabe(candidato,jaAceitos,mae){
+  for(let i=Math.ceil(AMOSTRAS_BECO*.25);i<=AMOSTRAS_BECO;i++){
     const p=candidato.getPointAt(i/AMOSTRAS_BECO);
     for(const{curva,meia}of jaAceitos){
+      if(curva===mae)continue;
       const n=Math.max(2,Math.round(curva.getLength()/2));
       for(let k=0;k<=n;k++){
         const q=curva.getPointAt(k/n);
@@ -221,18 +235,25 @@ function becoCabe(candidato,jaAceitos){
   return true;
 }
 {
-  // Becos ramificando das duas vias, alternando de lado. O recuo do pé é a largura da via mais a
-  // profundidade de uma casa: menos que isso e o beco nasce por dentro da fileira da via mãe.
+  // Becos ramificando das duas vias, alternando de lado.
+  //
+  // O PÉ DO BECO ENCOSTA NA RUA. Ele começava 9 m adiante — a largura da via mais uma casa inteira —
+  // "pra não nascer por dentro da fileira da via mãe". O efeito, visto de cima, é que nenhum beco do
+  // morro tocava a rua: cada um começava atrás de uma casa, com uma faixa de terra batida no meio.
+  // Beco que não desemboca na rua não é beco.
+  // O medo que gerou aquele recuo já não existe: a poda protege TODO corredor contra TODO lote (ver
+  // `corredorInvadido`), então a casa da via que estivesse na boca do beco simplesmente não nasce — e
+  // o que sobra é o vão entre duas casas, que é exatamente como uma boca de beco se parece.
   //
   // Gera MUITO candidato e aceita poucos: sortear posição boa de primeira num traçado em curva é
   // difícil, e testar é barato. Os aceitos ficam espalhados ao longo da via em vez de amontoados.
-  const recuo=VIA_LARGURA/2+PROF+1.4;
+  const recuo=VIA_LARGURA/2+.6;
   const aceitos=[{curva:viaPrincipal,meia:VIA_LARGURA/2},{curva:viaBaixa,meia:VIA_LARGURA/2}];
-  for(const[mae,quantos,marca]of[[viaPrincipal,26,0],[viaBaixa,22,500]]){
+  for(const[mae,quantos,marca]of[[viaPrincipal,32,0],[viaBaixa,26,500]]){
     for(let i=0;i<quantos;i++){
       const u=.08+(i/(quantos-1))*.84+(sorteio(i+marca,31)-.5)*.04;
       const b=criarBeco(mae,u,(i%2)?1:-1,13+sorteio(i+marca,53)*15,i+marca,recuo);
-      if(!becoCabe(b,aceitos))continue;
+      if(!becoCabe(b,aceitos,mae))continue;
       becos.push(b);aceitos.push({curva:b,meia:BECO_MIN/2});
     }
   }
@@ -247,8 +268,8 @@ const BECO_LARGURA=BECO_MIN+.4;
   for(let i=0;i<becos.length;i++){
     const b=becos[i];
     if(b.getLength()<11)continue;
-    const filho=criarBeco(b,.5,(i%2)?1:-1,7+sorteio(i,71)*7,i+900,BECO_MIN/2+PROF+1.1);
-    if(!becoCabe(filho,aceitos))continue;
+    const filho=criarBeco(b,.5,(i%2)?1:-1,7+sorteio(i,71)*7,i+900,BECO_MIN/2+.5);
+    if(!becoCabe(filho,aceitos,b))continue;
     becos.push(filho);aceitos.push({curva:filho,meia:BECO_MIN/2});
   }
 }
