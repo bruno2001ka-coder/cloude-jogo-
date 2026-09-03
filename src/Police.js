@@ -52,6 +52,7 @@ import{droneState,miraState}from'./Camera.js';
 import{crimeAtivo,alertarDisparoProximo,alertarColisaoPolicial,alertarEntregaIlegal,definirArmaVisivel}from'./CrimeTriggers.js';
 import{pontoDeEntregaAtual}from'./DeliveryPoints.js';
 import{hasWeaponEquipped}from'./Weapons.js';
+import{tocarSomEquiparColete}from'./Audio.js';
 
 
 const HELI_ALTURA=38,HELI_VELOCIDADE=12,MAPA_LIMITE=95;
@@ -529,6 +530,7 @@ function renderJogador(){
 function conferirColete(){
   if(armaduraJogador<=0&&inventario.colete>0){
     inventario.colete--;armaduraJogador=JOGADOR_ARMADURA_MAX;
+    tocarSomEquiparColete();
     atualizarStatusEconomia();atualizarHudSaude();
     mostrarAviso('Colete equipado — a armadura absorve parte do dano.',2200);
   }
