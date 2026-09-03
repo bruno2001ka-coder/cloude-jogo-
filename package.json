@@ -1,0 +1,14 @@
+{
+  "name": "quintal-3d",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Jogo 3D web em Three.js",
+  "type": "module",
+  "scripts": {
+    "check": "node scripts/check-syntax.mjs && node scripts/validate-assets.mjs",
+    "test": "node scripts/test-colisores.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

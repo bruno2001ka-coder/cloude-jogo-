@@ -2,6 +2,13 @@
 
 Jogo 3D em Three.js — bairro brasileiro estilizado, com cultivo/economia, bots nas vielas, fazenda, modo drone e radar.
 
+## Verificação local
+
+O projeto possui uma validação mínima que não altera o jogo: `npm run check` verifica a sintaxe dos módulos
+JavaScript e as referências locais do `index.html`; `npm test` executa o teste de regressão dos colisores.
+O workflow do GitHub Actions roda esses dois comandos antes de publicar no GitHub Pages. Não é necessário
+instalar dependências para executar esses comandos; use Node.js 20 ou superior.
+
 ## Sistemas principais
 
 - **O laço de quadros não morre** (`src/main.js`) — `requestAnimationFrame` é agendado no **começo** do
