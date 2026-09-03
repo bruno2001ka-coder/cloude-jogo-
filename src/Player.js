@@ -18,16 +18,22 @@ const body=new THREE.Mesh(new THREE.BoxGeometry(1.05,1.55,.62),shirt);body.posit
 const bonecoCaixas=player.children.filter(o=>o.isMesh);
 criarSombraContato(.85,player);player.scale.setScalar(PLAYER_SCALE);player.position.set(0,obterElevacao(0,8),8);scene.add(player);
 
-// ===== COLETE 3D (sem fallback de caixas) =====
-// O grupo nasce vazio e invisível. Assim o colete antigo não aparece durante os primeiros segundos:
-// quando a armadura é ligada antes do GLB chegar, só existe um grupo vazio; o modelo 3D entra nele
-// assim que termina o carregamento. A armadura continua sendo lógica do combate, não uma hitbox.
+// ===== COLETE 3D =====
+// O grupo nasce com um fallback simples e invisível. Assim o colete aparece imediatamente quando a
+// armadura é ligada, mesmo que o GLB ainda esteja baixando ou falhe; quando o modelo chega, ele substitui
+// esta peça no mesmo grupo. A armadura continua sendo lógica do combate, não uma hitbox.
 // O nome não é enfeite: colete e mochila terminam pendurados no MESMO osso (Spine02), quase no mesmo
 // ponto — o colete envolve o tronco, então o centro dele coincide com o centro do tronco em 2 mm.
 // Sem nome, só sobra "quem está mais pra frente" pra distinguir os dois, e 2 mm de folga é o que
 // separa um diagnóstico certo de um errado (foi exatamente o que fez um teste jurar que o colete
 // tinha sumido). Com nome, qualquer ferramenta acha a peça certa de primeira.
 const colete=new THREE.Group();colete.name='ancoraColete';colete.visible=false;player.add(colete);
+const coleteFallback=new THREE.Mesh(
+  new THREE.BoxGeometry(.92,1.18,.7),
+  new THREE.MeshStandardMaterial({color:0x17232b,roughness:.72,metalness:.12})
+);
+coleteFallback.name='coleteFallback';coleteFallback.position.set(0,1.65,0);
+coleteFallback.castShadow=true;coleteFallback.receiveShadow=true;colete.add(coleteFallback);
 // ===== O MODELO 3D SÓ BAIXA QUANDO FOR APARECER =====
 // `carregarColete` e `pendurarMochila` eram chamados AQUI, no topo do módulo, incondicionalmente.
 // Medido pela auditoria: 1,79 MB de download e 35 MB de VRAM (a mochila sozinha traz uma textura
