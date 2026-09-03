@@ -22,8 +22,10 @@ export const AJUSTE={
   mochila:{escala:1,x:0,y:.02,z:-.12},
   // Posição e giro da ARMA na mão. Ela já nasce alinhada aos eixos do corpo; isto é o ajuste fino.
   arma:{x:0,y:0,z:0,giroX:0,giroY:0,giroZ:0},
-  // COLETE: escala relativa ao tronco medido; `largura` afina as laterais e `altura` soma ~1 cm.
-  colete:{escala:.75,largura:.80,altura:1.011,x:0,y:.03,z:0},
+  // COLETE: agora é FOLGA por eixo em cima do tronco medido pelo rig, e nada mais. 1,00 seria colado
+  // na pele; 1,12 na largura e 1,20 no fundo é o que dá o volume de placa por cima da roupa, e 1,04
+  // na altura deixa ele indo do ombro ao umbigo sem virar cinta. `y` sobe o conjunto no peito.
+  colete:{folgaX:1.02,folgaY:1.04,folgaZ:1.14,x:0,y:.015,z:0},
 };
 
 // Nomes das animações dentro do GLB. Ficam aqui em cima porque são o contrato com o arquivo: trocar o
@@ -52,22 +54,66 @@ export function ossoDoTronco(){return troncoOsso}
 // Mede o TRONCO do modelo em metros de mundo, varrendo os vértices numa faixa de altura do peito.
 // Serve pro colete: ele foi desenhado pro boneco de caixas (1,05 de largura) e, sobre um corpo humano
 // bem mais estreito, virava um caixote preto engolindo o tronco e os braços.
+// ===== O TRONCO MEDIDO PELO RIG, NÃO CHUTADO =====
+// A versão anterior varria TODO vértice na faixa do peito e devolvia a caixa dele. O problema é que
+// nessa faixa os BRAÇOS estão pendurados ao lado do corpo, então a "largura do tronco" que saía era a
+// largura de ombro a ombro COM os braços: 0,306 m, quando o tronco tem 0,142 m. Mais do dobro.
+//
+// Quem consumia isso sabia que estava errado e contornava adivinhando: a largura do colete vinha de
+// `profundidade * 1,5`, um palpite que dá 0,204 m — 44% mais largo que o tronco de verdade. Daí em
+// diante só sobrava calibrar no escuro, e foi o que aconteceu: doze commits seguidos de escala 0,65,
+// 0,68, 0,70, "mais quatro centímetros", "mais um centímetro". Nenhum deles podia acertar, porque o
+// número que todos corrigiam já entrava errado.
+//
+// A malha é SKINNED: cada vértice carrega os ossos que o movem e o peso de cada um. O rig sabe o que
+// é braço e o que não é — basta perguntar.
+//
+// A regra é por EXCLUSÃO, e as três medições que fiz explicam por quê. Nesta faixa do peito o rig usa
+// nove ossos (Hips, Spine01, Spine02, Shoulder, Arm e ForeArm dos dois lados), e a largura muda muito
+// conforme quais entram:
+//   · TODOS               → 0,306 m — é ombro a ombro COM os braços pendurados. É o que havia antes.
+//   · só Spine/Chest      → 0,142 m — perde o peito de fora, que é dominado pelo OMBRO, não pela
+//                           coluna. Tentei isto primeiro e o colete saiu estreito: dava pra ver a
+//                           camisa dos dois lados dele.
+//   · tudo menos os braços → 0,189 m — a superfície do tronco vestido, que é o que um colete cobre.
+//                           Num humano de 1,75 m isso dá 37 cm de peito, que é a medida de gente.
+const OSSO_BRACO=/arm|hand|finger|thumb/i;
 export function medidasTronco(){
-  if(!malhaPele)return null;
+  if(!malhaPele||!malhaPele.skeleton)return null;
   const f=alturaDaMalha(malhaPele);
   const yBaixo=f.pes+f.altura*.58,yAlto=f.pes+f.altura*.78;
-  const n=malhaPele.geometry.getAttribute('position').count;
-  let x0=Infinity,x1=-Infinity,z0=Infinity,z1=-Infinity,y0=Infinity,y1=-Infinity;
-  for(let i=0;i<n;i++){
+  const nomes=malhaPele.skeleton.bones.map(b=>b.name||'');
+  const idx=malhaPele.geometry.getAttribute('skinIndex');
+  const pes=malhaPele.geometry.getAttribute('skinWeight');
+  if(!idx||!pes)return null;
+  let x0=Infinity,x1=-Infinity,z0=Infinity,z1=-Infinity,y0=Infinity,y1=-Infinity,achou=0;
+  for(let i=0;i<idx.count;i++){
     malhaPele.getVertexPosition(i,_v);malhaPele.localToWorld(_v);
     if(_v.y<yBaixo||_v.y>yAlto)continue;
+    // Osso DOMINANTE: o de maior peso entre os quatro. Um vértice do ombro tem um pouco de coluna
+    // misturado, e somar pesos incluiria o braço de volta pela porta dos fundos.
+    let melhor=-1,maiorPeso=-1;
+    for(let k=0;k<4;k++){
+      const w=pes.getComponent(i,k);
+      if(w>maiorPeso){maiorPeso=w;melhor=idx.getComponent(i,k)}
+    }
+    if(OSSO_BRACO.test(nomes[melhor]||''))continue;
+    achou++;
     if(_v.x<x0)x0=_v.x;if(_v.x>x1)x1=_v.x;
     if(_v.z<z0)z0=_v.z;if(_v.z>z1)z1=_v.z;
     if(_v.y<y0)y0=_v.y;if(_v.y>y1)y1=_v.y;
   }
-  if(!isFinite(x0))return null;
-  return{largura:x1-x0,altura:y1-y0,profundidade:z1-z0,
-    centro:new THREE.Vector3((x0+x1)/2,(y0+y1)/2,(z0+z1)/2)};
+  // Menos de 12 vértices significa que este rig chama tudo de "arm" ou não tem pesos. Aí é melhor
+  // devolver null (o colete fica nas caixas simples) do que devolver uma medida inventada.
+  if(achou<12||!isFinite(x0))return null;
+  // LARGURA E FUNDO saem dos vértices; ALTURA sai da FAIXA. Não é inconsistência, são perguntas
+  // diferentes: "que grossura tem este corpo" se responde medindo o corpo, e "até onde vai um colete"
+  // é uma decisão de vestuário — do ombro ao umbigo, que é a faixa de 58% a 78% que este código já
+  // usa pra escolher os vértices.
+  // Medir a altura pelos vértices dava 8,7 cm (só a coluna cabe entre ombro e cintura na malha) e o
+  // colete saía com 9,6 cm num boneco de 90 cm: uma cinta, não um colete.
+  return{largura:x1-x0,altura:yAlto-yBaixo,profundidade:z1-z0,
+    centro:new THREE.Vector3((x0+x1)/2,(yBaixo+yAlto)/2,(z0+z1)/2)};
 }
 
 // Altura REAL desenhada de uma malha com esqueleto, em metros de mundo, e o Y dos pés.
@@ -239,16 +285,28 @@ function tentarVestirColete(){
   coleteGrupo.add(coleteModelo);
   coleteModelo.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true}});
 
-  // Sem esqueleto aqui, então Box3 é confiável — desde que as matrizes estejam atualizadas.
+  // ===== VESTE EIXO A EIXO, NÃO POR UMA ESCALA SÓ =====
+  // Era uma escala uniforme derivada da largura, e depois dois multiplicadores em cima (`largura` e
+  // `altura` do AJUSTE) pra corrigir o que a uniforme errava. Três números disputando o mesmo colete.
+  //
+  // O defeito que sobrava dessa conta era a PROFUNDIDADE: escalando tudo pela largura, o Z do colete
+  // fica na proporção do MODELO, não na do corpo. Medido no jogo: colete com 0,184 m de fundo num
+  // tronco de 0,131 — dois centímetros e meio sobrando na frente e outros dois atrás, num boneco de
+  // 90 cm. Não é colete, é barril.
+  //
+  // Colete é uma casca, então esticar cada eixo pro que ele veste é legítimo e é o que resolve de
+  // uma vez: X pra largura do tronco, Z pra profundidade, Y pra faixa do peito. As folgas são o
+  // "vestir por cima da roupa" e são a ÚNICA coisa que sobrou pra ajustar — cada uma num eixo só,
+  // sem uma mexer na outra.
   coleteGrupo.updateWorldMatrix(true,true);
   const caixa=new THREE.Box3().setFromObject(coleteModelo);
-  const larg=caixa.max.x-caixa.min.x;
-  // Veste pela LARGURA, não pelo maior lado horizontal: o colete envolve o tronco, então ele é mais
-  // FUNDO que largo, e escalar pelo maior encolhia a largura (saiu 0,179 quando o alvo era 0,206).
-  // A largura do tronco vem da profundidade medida, e não da medida em X, porque na altura do peito
-  // os braços entram na conta. O 1,08 é a folga de vestir por cima da roupa.
-  const alvo=m.profundidade*1.5*1.08*AJUSTE.colete.escala;
-  if(larg>0){coleteModelo.scale.multiplyScalar(alvo/larg);coleteModelo.scale.x*=AJUSTE.colete.largura;coleteModelo.scale.y*=AJUSTE.colete.altura}
+  const tam=new THREE.Vector3();caixa.getSize(tam);
+  if(tam.x>0&&tam.y>0&&tam.z>0){
+    coleteModelo.scale.set(
+      coleteModelo.scale.x*(m.largura     *AJUSTE.colete.folgaX)/tam.x,
+      coleteModelo.scale.y*(m.altura      *AJUSTE.colete.folgaY)/tam.y,
+      coleteModelo.scale.z*(m.profundidade*AJUSTE.colete.folgaZ)/tam.z);
+  }
 
   // Centra no tronco. O deslocamento é medido em MUNDO e `position` vive no espaço do PAI, então quem
   // converte é a escala do pai — dividir pela escala do próprio modelo (o erro anterior) deixava o
