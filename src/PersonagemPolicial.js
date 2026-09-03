@@ -46,8 +46,8 @@ const vestidos=[];// {mixer, acoes, atual, raiz}
 // `SkinnedMesh.getVertexPosition` aplica o skinning e devolve o vértice onde ele realmente está. É
 // o que o `alturaDaMalha` do personagem do jogador já fazia, pelo mesmo motivo.
 const _v=new THREE.Vector3();
-function extremosY(raiz){
-  let min=Infinity,max=-Infinity;
+function extremos(raiz){
+  let min=Infinity,max=-Infinity,zmin=Infinity,zmax=-Infinity;
   raiz.traverse(o=>{
     if(!o.isSkinnedMesh)return;
     o.updateWorldMatrix(true,false);o.skeleton?.update?.();
@@ -56,9 +56,39 @@ function extremosY(raiz){
       o.getVertexPosition(i,_v);o.localToWorld(_v);
       if(_v.y<min)min=_v.y;
       if(_v.y>max)max=_v.y;
+      if(_v.z<zmin)zmin=_v.z;
+      if(_v.z>zmax)zmax=_v.z;
     }
   });
-  return{min,max,altura:max-min};
+  return{min,max,altura:max-min,profundidade:zmax-zmin};
+}
+
+// ===== SE O MODELO VIER DEITADO, LEVANTA =====
+// O `policial.glb` chega DE COSTAS. Medido lado a lado com o personagem do jogador, no mesmo
+// carregamento e do mesmo jeito:
+//     jogador  → largura 0,68 · ALTURA 1,70 · profundidade 0,35   (em pé)
+//     policial → largura 0,68 · ALTURA 0,34 · profundidade 1,70   (deitado — os mesmos números,
+//                                                                  com Y e Z trocados)
+// É exportador Z-up: no glTF a vertical é Y, e quem exporta de um programa Z-up sem converter entrega
+// o personagem tombado. Girar 90° em X resolve, e passa a medir 1,68 de altura — o mesmo do jogador.
+//
+// Isso ficou AUTOMÁTICO em vez de ser um número no código porque o próximo modelo que o Bruno exportar
+// pode vir certo ou torto, e ele não tem como saber qual dos dois é. O sinal do giro é escolhido pela
+// CABEÇA: a caixa de contorno é a mesma nos dois sentidos (±90° dão bounding box idêntica), então o
+// que separa "de pé" de "de cabeça pra baixo" é onde o osso da cabeça foi parar.
+function levantarSeDeitado(raiz){
+  let e=extremos(raiz);
+  if(!(e.profundidade>e.altura*1.5))return;// já está em pé
+  let cabeca=null;
+  raiz.traverse(o=>{if(o.isBone&&!cabeca&&/^head$/i.test(o.name||''))cabeca=o});
+  const meio=v=>(v.min+v.max)/2;
+  for(const rx of[-Math.PI/2,Math.PI/2]){
+    raiz.rotation.x=rx;raiz.updateMatrixWorld(true);
+    e=extremos(raiz);
+    if(!cabeca)break;// sem osso de cabeça, aceita o primeiro sentido: em pé torto é melhor que deitado
+    cabeca.getWorldPosition(_v);
+    if(_v.y>meio(e))break;// a cabeça ficou na metade de cima: é este o sentido
+  }
 }
 
 function pedirModelo(){
@@ -103,10 +133,24 @@ function vestir(pedido){
   grupo.updateWorldMatrix(true,true);
   mixer.update(0);raiz.updateMatrixWorld(true);
 
-  const antes=extremosY(raiz);
-  // Escalar o clone por k multiplica o tamanho em mundo por k, qualquer que seja a escala do pai —
-  // então não é preciso desfazer ESCALA_POLICIAL na mão, e não há como errar o fator duas vezes.
-  if(antes.altura>0)raiz.scale.multiplyScalar(PLAYER_HEIGHT/antes.altura);
+  levantarSeDeitado(raiz);
+
+  // ===== A ALTURA CONVERGE POR MEDIÇÃO, NÃO POR DIVISÃO =====
+  // Malha com esqueleto NÃO escala linearmente pela escala de um ancestral. A conta do skinning é
+  //     mundo = mesh.matrixWorld · bindMatrixInverse · boneMatrix · bindMatrix · p
+  // e `boneMatrix` já embute a escala NOVA (ela vem de bone.matrixWorld) enquanto `bindMatrixInverse`
+  // guarda a ANTIGA, de quando o esqueleto foi amarrado. O fator entra por dois caminhos e um
+  // `scale = alvo/medido` calculado uma vez só erra — foi assim que o policial saiu com 1,096 m onde
+  // o alvo era 0,900.
+  // Medir, corrigir, remedir converge em duas ou três voltas e não depende de eu acertar a álgebra.
+  for(let volta=0;volta<6;volta++){
+    raiz.updateMatrixWorld(true);
+    const e=extremos(raiz);
+    if(!(e.altura>0))break;
+    const razao=PLAYER_HEIGHT/e.altura;
+    if(Math.abs(razao-1)<.003)break;// 3 mm num boneco de 90 cm
+    raiz.scale.multiplyScalar(razao);
+  }
   raiz.updateMatrixWorld(true);
 
   // PÉS NA ORIGEM DO GRUPO, que é onde as caixas apoiavam — e o resto do Police.js conta com isso
@@ -114,7 +158,7 @@ function vestir(pedido){
   // número de MUNDO entrando numa `position` LOCAL, então divide pela escala do pai.
   const escalaMundo=new THREE.Vector3();grupo.getWorldScale(escalaMundo);
   const posMundo=new THREE.Vector3();grupo.getWorldPosition(posMundo);
-  const depois=extremosY(raiz);
+  const depois=extremos(raiz);
   if(escalaMundo.y>0)raiz.position.y-=(depois.min-posMundo.y)/escalaMundo.y;
   for(const m of caixas)if(m)m.visible=false;
 
