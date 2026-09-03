@@ -45,7 +45,7 @@ import{vestirPolicial,despirPolicial,atualizarCorpoPolicial}from'./PersonagemPol
 import{ALT_TORSO,ALT_OLHO,ALT_CANO,atualizarCombate,espalhamentoDoTiro,tempoDeReacao,
   distribuirPapeis,destinoDoPapel,procurarCobertura,PAPEL,velJogador,LEAD_FATOR,LEAD_RUIDO}from'./Combate.js';
 import{POLOS}from'./Poles.js';
-import{plantas,confiscarPlanta,aplicarMulta,definirDinheiro,inventario,atualizarStatusEconomia,isInventarioAberto,registrarGanchosPolicia}from'./Economy.js';
+import{plantas,confiscarPlanta,aplicarMulta,obterDinheiro,inventario,atualizarStatusEconomia,isInventarioAberto,registrarGanchosPolicia}from'./Economy.js';
 import{dispararBala,atualizarBalas,limparBalas,VELOCIDADE_BALA}from'./Bullets.js';
 import{aplicarDano,renderizarVidaJogador,criarBarraMundo}from'./HealthBar.js';
 import{droneState,miraState}from'./Camera.js';
@@ -178,7 +178,7 @@ const TEMPO_TROCA=.35;
 // momento em que o helicóptero pousava a guarnição do lado; agora eles ainda precisam ATRAVESSAR a
 // favela a pé, e essa caminhada é a chance real de chegar antes e colher.
 const CONFISCO_DURACAO=9;
-const COOLDOWN_ENTRE_BUSCAS=22,MULTA_RENDICAO=60;
+const COOLDOWN_ENTRE_BUSCAS=22,PENALIDADE_MORTE=.25;
 const SPAWN_X=0,SPAWN_Z=8;
 // Perseguição: intervalo de recálculo do caminho e distância que o alvo precisa andar pra invalidar a rota.
 const REPLANEJAR_INTERVALO=.7,REPLANEJAR_DESVIO=3,CHEGADA_WAYPOINT=.7;
@@ -515,13 +515,10 @@ function renderJogador(){
   armaduraJogador=0;inventario.colete=0;inventario.pacote=0;atualizarStatusEconomia();
   mostrarAviso('Você foi rendido pela polícia — plantação perdida e multa aplicada.',3400);
   if(policia.alvoPlanta&&!policia.alvoPlanta.colhida)confiscarPlanta(policia.alvoPlanta);
-  aplicarMulta(MULTA_RENDICAO);
-  // Define o saldo no início da rendição para o HUD e o autosave já refletirem a reserva de respawn.
-  definirDinheiro(SALDO_RESPAWN);
+  // A penalidade é proporcional ao saldo atual: morrer custa 25%, mas não apaga quase todo o dinheiro.
+  aplicarMulta(Math.round(obterDinheiro()*PENALIDADE_MORTE));
   setTimeout(()=>{
     player.position.set(SPAWN_X,obterElevacao(SPAWN_X,SPAWN_Z),SPAWN_Z);
-    // Reaplica a reserva no instante exato em que o personagem nasce no spawn.
-    definirDinheiro(SALDO_RESPAWN);
     saudeJogador=JOGADOR_HP_MAX;jogadorRendido=false;atualizarHudSaude();
   },1400);
 }
