@@ -1576,7 +1576,8 @@ export function aplicarEstadoPoliciaDoSave(s){
 
 export function atualizarPolicia(dt){
   const agora=performance.now()/1000;
-  definirArmaVisivel(hasWeaponEquipped());
+  player.hasWeaponEquipped=hasWeaponEquipped();
+  definirArmaVisivel(player.hasWeaponEquipped===true);
   for(const pol of policiaisAtingiveis())if(pol.vivo&&distXZ(pol.pos,player.position)<=.76){alertarColisaoPolicial();break}
   caminhosNesteQuadro=0;// zera o orçamento de A* deste quadro
   // Velocidade do jogador, usada pela pontaria: alvo correndo é mais difícil de acertar.
