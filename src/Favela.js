@@ -462,7 +462,7 @@ amostrar(viaPrincipal);amostrar(viaBaixa);becos.forEach(amostrar);
 //     uma malha e uma matriz por cópia.
 // Sem isso a favela anterior chegou a 2.116 malhas na cena com 2.110 geometrias distintas.
 import{mergeGeometries}from'three/addons/utils/BufferGeometryUtils.js';
-import{matReboco,matTelha,tijolo,concreto,janela,janelaAcesa,molduraJanela,porta,agua,posteMat,
+import{matReboco,matTelha,matConcreto,tijolo,concreto,janela,janelaAcesa,molduraJanela,porta,agua,posteMat,
   matMadeira,graffiteMat,bmat,uvPorMetro}from'./Materials.js';
 
 export const favela=new THREE.Group();
