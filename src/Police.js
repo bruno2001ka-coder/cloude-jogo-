@@ -420,7 +420,7 @@ const alertaEl=document.getElementById('alertaPolicia'),
   fireBtn=document.getElementById('fireBtn'),danoFlash=document.getElementById('danoFlash'),
   avisoPolicia=document.getElementById('avisoPolicia'),municaoEl=document.getElementById('municaoHud'),
   armaBtn=document.getElementById('armaBtn'),armaIconeEl=document.getElementById('armaIcone'),
-  armaMunicaoEl=document.getElementById('armaMunicao'),miraBtn=document.getElementById('miraBtn');
+  armaMunicaoEl=document.getElementById('armaMunicao'),miraBtn=document.getElementById('miraBtn'),aimBase=document.getElementById('aimBase');
 function atualizarHudSaude(){renderizarVidaJogador(saudeJogador,JOGADOR_HP_MAX,armaduraJogador,JOGADOR_ARMADURA_MAX)}
 // A munição também muda por COMPRA (na Economy, que não conhece este módulo). Em vez de acoplar os dois,
 // o HUD observa o valor e só redesenha quando ele muda de fato — nada de escrever no DOM por frame.
@@ -1733,6 +1733,9 @@ export function atualizarPolicia(dt){
   // existe arma no jogo. Fora do combate ele fica esmaecido, indicando que não há em quem atirar.
   fireBtn.style.display=(emAlerta||temArma)?'flex':'none';
   fireBtn.style.opacity=emCombate&&temArma?'1':'.45';
+  // No touch, o joystick direito substitui o botão de tiro e o alternador de mira: o próprio gesto
+  // aponta e mantém o gatilho pressionado, como nos jogos twin-stick.
+  if(aimBase)aimBase.style.display=(podeMirar&&(emAlerta||temArma))?'block':'none';
   // O botão de mira acompanha o de tiro: mirar sem ter em que atirar não faz sentido. Fica DEPOIS de
   // fireBtn.style.display ser escrito, senão copiaria o valor do frame anterior.
   if(miraBtn){

@@ -13,12 +13,13 @@ export const SENSIBILIDADE_MOUSE=.0035;      // giro horizontal (yaw) com pointe
 export const SENSIBILIDADE_MOUSE_VERTICAL=.0025;// giro vertical (pitch) com pointer lock
 export const SENSIBILIDADE_TOQUE=.009,SENSIBILIDADE_TOQUE_VERTICAL=.006;// arraste de dedo/mouse sem lock
 
-export const inputState={yaw:0,targetYaw:0,pitch:.28,targetPitch:.28,joyX:0,joyY:0,joyActive:false,joyId:null,joyForca:0,correndo:false};
+export const inputState={yaw:0,targetYaw:0,pitch:.28,targetPitch:.28,joyX:0,joyY:0,joyActive:false,joyId:null,joyForca:0,
+  aimX:0,aimY:0,aimActive:false,aimId:null,correndo:false};
 export const keys=Object.create(null);
 const keyMap={w:'KeyW',a:'KeyA',s:'KeyS',d:'KeyD',ArrowUp:'KeyW',ArrowLeft:'KeyA',ArrowDown:'KeyS',ArrowRight:'KeyD'};
 // Solta o gatilho junto com as teclas: trocar de aba com F pressionado deixaria o tiro preso ligado.
 // Solta também a corrida: se o Shift ficar "preso" ao trocar de aba, o jogador voltaria correndo sozinho.
-const clearKeys=()=>{for(const k in keys)keys[k]=false;inputState.correndo=false;inputState.joyForca=0;definirGatilho(false);if(document.pointerLockElement)definirMira(false)};
+const clearKeys=()=>{for(const k in keys)keys[k]=false;inputState.correndo=false;inputState.joyForca=0;inputState.aimX=0;inputState.aimY=0;inputState.aimActive=false;inputState.aimId=null;definirGatilho(false);if(document.pointerLockElement)definirMira(false)};
 
 function pularOuSubir(){if(droneState.ativo){subirDrone()}else{pularJogador()}}
 
@@ -77,6 +78,18 @@ stickBase.addEventListener('pointerdown',e=>{e.preventDefault();inputState.joyAc
 stickBase.addEventListener('pointermove',e=>{if(inputState.joyActive&&e.pointerId===inputState.joyId)updateJoy(e)});
 stickBase.addEventListener('pointerup',releaseJoy);
 stickBase.addEventListener('pointercancel',releaseJoy);
+
+// ===== JOYSTICK DIREITO: APONTAR E ATIRAR =====
+// No celular, o polegar direito controla a direção do tiro como nos jogos twin-stick. Enquanto o dedo
+// estiver no eixo, a câmera gira continuamente e o gatilho fica pressionado; não é preciso alinhar uma
+// cruz minúscula nem alternar entre mira e botão de tiro.
+const aimBase=document.getElementById('aimBase'),aimStick=document.getElementById('aimStick');
+const AIM_SENS_X=2.8,AIM_SENS_Y=1.9;
+function updateAim(e){const r=aimBase.getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2,max=r.width*.34;let dx=e.clientX-cx,dy=e.clientY-cy;const len=Math.hypot(dx,dy);if(len>max){dx=dx/len*max;dy=dy/len*max}inputState.aimX=dx/max;inputState.aimY=dy/max;aimStick.style.transform=`translate(${dx}px,${dy}px)`}
+function releaseAim(e){if(inputState.aimId!==null&&e.pointerId!==inputState.aimId)return;inputState.aimX=0;inputState.aimY=0;inputState.aimActive=false;inputState.aimId=null;aimStick.style.transform='translate(0,0)';definirGatilho(false)}
+aimBase?.addEventListener('pointerdown',e=>{e.preventDefault();inputState.aimActive=true;inputState.aimId=e.pointerId;aimBase.setPointerCapture?.(e.pointerId);definirGatilho(true);updateAim(e)});
+aimBase?.addEventListener('pointermove',e=>{if(inputState.aimActive&&e.pointerId===inputState.aimId)updateAim(e)});
+aimBase?.addEventListener('pointerup',releaseAim);aimBase?.addEventListener('pointercancel',releaseAim);
 
 // Mouse (desktop): Pointer Lock dá o giro livre estilo GTA SA, sem precisar segurar o botão depois do 1º clique (exigência do navegador).
 // Touch (celular): mantém o arrastar-pra-olhar de sempre, sem mudança nenhuma.
@@ -157,6 +170,10 @@ export function initDragLook(rendererDomElement){
 // próprio frame, ou seja, na mira cheia o giro é 1:1 com o mouse, sem tremida.
 const SUAVIZACAO_NORMAL=12,SUAVIZACAO_MIRA=60;
 export function atualizarSuavizacaoInput(dt){
+  if(inputState.aimActive){
+    inputState.targetYaw-=inputState.aimX*AIM_SENS_X*dt;
+    inputState.targetPitch=limitarPitch(inputState.targetPitch+inputState.aimY*AIM_SENS_Y*dt);
+  }
   const k=SUAVIZACAO_NORMAL+(SUAVIZACAO_MIRA-SUAVIZACAO_NORMAL)*miraState.fator;
   const a=1-Math.exp(-k*dt);
   inputState.yaw=THREE.MathUtils.lerp(inputState.yaw,inputState.targetYaw,a);
