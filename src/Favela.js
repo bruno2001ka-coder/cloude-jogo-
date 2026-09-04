@@ -924,9 +924,9 @@ function construirCasaOca(l){
   const laje=pecaSolta(new THREE.BoxGeometry(larg+.14,.12,prof+.14),telha,c.x,y0+alt+.06,c.z,l.giro,g);
   superficiesAndaveis.push(laje);
   // Piso interno nivelado: sem ele o jogador caminhava sobre o relevo irregular dentro da casa e a
-  // altura mudava de um canto para outro. A cota fica 25 cm abaixo da soleira para não deixar o piso
+  // altura mudava de um canto para outro. A cota fica 35 cm abaixo da soleira para não deixar o piso
   // alto em relação à rua, mantendo um pequeno degrau natural na entrada.
-  const PISO_REBAIXO=.25;
+  const PISO_REBAIXO=.35;
   const piso=pecaSolta(new THREE.BoxGeometry(larg-ESP_PAREDE*2,.12,prof-ESP_PAREDE*2),matConcreto(),
     c.x,y0-PISO_REBAIXO-.06,c.z,l.giro,g);
   superficiesAndaveis.push(piso);
