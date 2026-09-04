@@ -79,17 +79,21 @@ stickBase.addEventListener('pointermove',e=>{if(inputState.joyActive&&e.pointerI
 stickBase.addEventListener('pointerup',releaseJoy);
 stickBase.addEventListener('pointercancel',releaseJoy);
 
-// ===== JOYSTICK DIREITO: APONTAR E ATIRAR =====
-// No celular, o polegar direito controla a direção do tiro como nos jogos twin-stick. Enquanto o dedo
-// estiver no eixo, a câmera gira continuamente e o gatilho fica pressionado; não é preciso alinhar uma
-// cruz minúscula nem alternar entre mira e botão de tiro.
+// ===== ÁREA DIREITA: ARRASTAR PARA MIRAR, ESTILO FREE FIRE =====
+// Não é um segundo analógico: o lado direito é uma área livre de arraste. O dedo move a câmera pela
+// diferença entre quadros, enquanto o botão de tiro continua separado, como nos jogos de tiro mobile.
 const aimBase=document.getElementById('aimBase'),aimStick=document.getElementById('aimStick');
-const AIM_DEADZONE=.12,AIM_TURN_X=1.45,AIM_TURN_Y=.9;
-function updateAim(e){const r=aimBase.getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2,max=r.width*.34;let dx=e.clientX-cx,dy=e.clientY-cy;const len=Math.hypot(dx,dy);if(len>max){dx=dx/len*max;dy=dy/len*max}
-  inputState.aimX=dx/max;inputState.aimY=dy/max;aimStick.style.transform=`translate(${dx}px,${dy}px)`;
+const AIM_SENS_X=.0065,AIM_SENS_Y=.0042;
+let aimLastX=0,aimLastY=0;
+function updateAim(e){
+  if(!inputState.aimActive)return;
+  const dx=e.clientX-aimLastX,dy=e.clientY-aimLastY;
+  inputState.targetYaw-=dx*AIM_SENS_X;
+  inputState.targetPitch=limitarPitch(inputState.targetPitch+dy*AIM_SENS_Y);
+  aimLastX=e.clientX;aimLastY=e.clientY;
 }
-function releaseAim(e){if(inputState.aimId!==null&&e.pointerId!==inputState.aimId)return;inputState.aimX=0;inputState.aimY=0;inputState.aimActive=false;inputState.aimId=null;aimStick.style.transform='translate(0,0)';definirGatilho(false)}
-aimBase?.addEventListener('pointerdown',e=>{e.preventDefault();inputState.aimActive=true;inputState.aimId=e.pointerId;aimBase.setPointerCapture?.(e.pointerId);definirGatilho(true);updateAim(e)});
+function releaseAim(e){if(inputState.aimId!==null&&e.pointerId!==inputState.aimId)return;inputState.aimX=0;inputState.aimY=0;inputState.aimActive=false;inputState.aimId=null;aimStick.style.transform='translate(0,0)'}
+aimBase?.addEventListener('pointerdown',e=>{e.preventDefault();inputState.aimActive=true;inputState.aimId=e.pointerId;aimLastX=e.clientX;aimLastY=e.clientY;aimBase.setPointerCapture?.(e.pointerId);updateAim(e)});
 aimBase?.addEventListener('pointermove',e=>{if(inputState.aimActive&&e.pointerId===inputState.aimId)updateAim(e)});
 aimBase?.addEventListener('pointerup',releaseAim);aimBase?.addEventListener('pointercancel',releaseAim);
 
@@ -172,11 +176,6 @@ export function initDragLook(rendererDomElement){
 // próprio frame, ou seja, na mira cheia o giro é 1:1 com o mouse, sem tremida.
 const SUAVIZACAO_NORMAL=12,SUAVIZACAO_MIRA=60;
 export function atualizarSuavizacaoInput(dt){
-  if(inputState.aimActive){
-    const curva=v=>{const sinal=Math.sign(v),forca=Math.abs(v);return forca<AIM_DEADZONE?0:sinal*((forca-AIM_DEADZONE)/(1-AIM_DEADZONE))**1.7};
-    inputState.targetYaw-=curva(inputState.aimX)*AIM_TURN_X*dt;
-    inputState.targetPitch=limitarPitch(inputState.targetPitch+curva(inputState.aimY)*AIM_TURN_Y*dt);
-  }
   const k=SUAVIZACAO_NORMAL+(SUAVIZACAO_MIRA-SUAVIZACAO_NORMAL)*miraState.fator;
   const a=1-Math.exp(-k*dt);
   inputState.yaw=THREE.MathUtils.lerp(inputState.yaw,inputState.targetYaw,a);

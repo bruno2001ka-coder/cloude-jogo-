@@ -1735,7 +1735,7 @@ export function atualizarPolicia(dt){
   fireBtn.style.opacity=emCombate&&temArma?'1':'.45';
   // No touch, o joystick direito substitui o botão de tiro e o alternador de mira: o próprio gesto
   // aponta e mantém o gatilho pressionado, como nos jogos twin-stick.
-  if(aimBase)aimBase.style.display=(podeMirar&&(emAlerta||temArma))?'block':'none';
+  if(aimBase)aimBase.style.display=(podeMirar&&(emAlerta||temArma)&&matchMedia('(pointer: coarse)').matches)?'block':'none';
   // O botão de mira acompanha o de tiro: mirar sem ter em que atirar não faz sentido. Fica DEPOIS de
   // fireBtn.style.display ser escrito, senão copiaria o valor do frame anterior.
   if(miraBtn){
