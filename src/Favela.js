@@ -924,10 +924,11 @@ function construirCasaOca(l){
   const laje=pecaSolta(new THREE.BoxGeometry(larg+.14,.12,prof+.14),telha,c.x,y0+alt+.06,c.z,l.giro,g);
   superficiesAndaveis.push(laje);
   // Piso interno nivelado: sem ele o jogador caminhava sobre o relevo irregular dentro da casa e a
-  // altura mudava de um canto para outro. O topo fica exatamente na cota da soleira, então a entrada
-  // continua sem degrau e todos os esconderijos têm o mesmo chão plano por dentro.
+  // altura mudava de um canto para outro. A cota fica 25 cm abaixo da soleira para não deixar o piso
+  // alto em relação à rua, mantendo um pequeno degrau natural na entrada.
+  const PISO_REBAIXO=.25;
   const piso=pecaSolta(new THREE.BoxGeometry(larg-ESP_PAREDE*2,.12,prof-ESP_PAREDE*2),matConcreto(),
-    c.x,y0-.06,c.z,l.giro,g);
+    c.x,y0-PISO_REBAIXO-.06,c.z,l.giro,g);
   superficiesAndaveis.push(piso);
   for(const[dx,dz,mw,md]of[[0,prof/2,larg+.14,ESP_MURETA],[0,-prof/2,larg+.14,ESP_MURETA],
                             [larg/2,0,ESP_MURETA,prof+.14],[-larg/2,0,ESP_MURETA,prof+.14]]){
@@ -972,9 +973,9 @@ function construirCasaOca(l){
     papel:ehCliente?'cliente':'esconderijo',
     fechadaRad:l.giro,abertaRad:l.giro+PORTA_ABERTA_RAD,
     meiaLarg:larg/2-recuo,meiaProf:prof/2-recuo,larg,prof,alt,
-    // O piso interno é plano e tem o topo na soleira. A fundação continua descendo por fora para cobrir
-    // o barranco, mas isso não altera a cota de caminhada dentro do esconderijo.
-    piso:y0};
+    // O piso interno é plano e fica um pouco abaixo da soleira. A fundação continua descendo por fora
+    // para cobrir o barranco, mas isso não altera a cota de caminhada dentro do esconderijo.
+    piso:y0-PISO_REBAIXO};
   refugios.push(r);
   l.lajeY=y0+alt+.12;
   return r;
