@@ -141,3 +141,43 @@ const sombraTex=criarTexturaSombra();
 // transparente entra na fila ordenada sem early-z, então cada duplicata é um grupo de draw call a mais.
 const sombraContatoMat=new THREE.MeshBasicMaterial({map:sombraTex,transparent:true,depthWrite:false});
 export function criarSombraContato(raio,parent,x=0,z=0){const mat=sombraContatoMat;const m=new THREE.Mesh(new THREE.PlaneGeometry(raio*2,raio*2),mat);m.rotation.x=-Math.PI/2;m.position.set(x,.02,z);m.renderOrder=1;parent.add(m);return m}
+
+// ===== PEÇAS DO MORRO QUE NÃO SÃO CAIXA =====
+// Tudo aqui embaixo existe pra tirar o bairro do "empilhado de cubos": ferro dobrado, caixa d'água
+// torneada, antena curva, roupa pendurada. Material dedicado por peça porque cada uma reage à luz de
+// um jeito — ferro enferrujado não brilha como plástico de antena, e plástico de caixa d'água não é
+// fosco como pano. São 5 materiais, ou seja 5 draw calls no pior caso, com o morro inteiro dentro.
+
+// VERGALHÃO DE ESPERA. O ferro que sai da laje esperando o andar que talvez nunca venha — a coisa
+// mais reconhecível de uma favela e a que o bairro não tinha. Ferrugem: metalness baixa de propósito,
+// porque óxido não reflete; ferro polido aqui viraria antena de carro.
+export const ferroMat=new THREE.MeshStandardMaterial({color:0x8f5a37,roughness:.88,metalness:.28});
+// PVC da queda-d'água descendo a fachada. Branco encardido, nunca branco puro: com tone mapping ACES
+// o branco puro estoura e a listra vira um risco de luz na parede.
+export const pvcMat=new THREE.MeshStandardMaterial({color:0xd2cfc6,roughness:.62,metalness:.03});
+// ANTENA PARABÓLICA. DoubleSide porque metade delas é vista por trás, e uma antena só de um lado
+// some quando o jogador passa do outro lado da casa.
+// Cinza SUJO, não branco. Na primeira foto ela saiu branco-geladeira e puxava o olho pra si no meio
+// de um telhado encardido — antena de morro tem anos de sol e poeira em cima.
+export const antenaMat=new THREE.MeshStandardMaterial({color:0x9d9c93,roughness:.72,metalness:.04,side:THREE.DoubleSide});
+// ROUPA NO VARAL. `vertexColors` em vez de um material por cor: as cores entram na GEOMETRIA, então
+// dez cores de roupa no bairro inteiro continuam sendo UM material e UM draw call depois da fusão.
+// DoubleSide pelo mesmo motivo da antena — pano tem dois lados.
+export const roupaMat=new THREE.MeshStandardMaterial({vertexColors:true,roughness:.95,metalness:0,side:THREE.DoubleSide});
+// Caixa d'água preta: a outra que se vê no morro, ao lado da azul (`agua`). Duas cores bastam pro
+// telhado parar de ser uma fileira de cilindros idênticos.
+export const aguaPreta=new THREE.MeshStandardMaterial({color:0x23262b,roughness:.55,metalness:.12});
+
+// GRADE DE JANELA. O ferro chato pintado que toda janela de morro tem — e, no jogo, a peça que tira
+// a janela de "retângulo preto chapado", que era o pedaço mais quadrado que sobrou na fachada.
+// Preto-fosco esverdeado: grade de verdade é pintada e a tinta desbota, nunca é preto puro.
+export const gradeMat=new THREE.MeshStandardMaterial({color:0x2e332e,roughness:.72,metalness:.25});
+
+// ===== CONCRETO DE LAJE =====
+// A laje e a mureta usavam o material de TELHA, que é chapa ondulada — o telhado inteiro do morro
+// tinha nervura de zinco onde deveria haver concreto liso, e é a superfície que o jogador mais vê
+// (é nela que ele anda). Com o `concreto` das ruas ficou certo de forma e CLARO DEMAIS: laje nova de
+// calçada, branca contra o céu. Este é o mesmo concreto puxado pra baixo e pra terroso — laje de
+// morro leva anos de sol, chuva e poeira antes de alguém pisar nela.
+export const matLaje=()=>pbrLaje;
+const pbrLaje=pbr('reboco',0x8e8a7e,{aoMapIntensity:1});

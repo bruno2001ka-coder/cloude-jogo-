@@ -462,7 +462,8 @@ amostrar(viaPrincipal);amostrar(viaBaixa);becos.forEach(amostrar);
 //     uma malha e uma matriz por cópia.
 // Sem isso a favela anterior chegou a 2.116 malhas na cena com 2.110 geometrias distintas.
 import{mergeGeometries}from'three/addons/utils/BufferGeometryUtils.js';
-import{matReboco,matTelha,matConcreto,tijolo,concreto,janela,janelaAcesa,molduraJanela,porta,agua,posteMat,
+import{matReboco,matTelha,matConcreto,tijolo,concreto,janela,janelaAcesa,molduraJanela,porta,agua,aguaPreta,posteMat,
+  ferroMat,pvcMat,antenaMat,roupaMat,gradeMat,matLaje,
   matMadeira,graffiteMat,bmat,uvPorMetro}from'./Materials.js';
 
 export const favela=new THREE.Group();
@@ -509,9 +510,20 @@ function caixaNoLote(l,material,lw,lh,ld,dx,dz,y,andavel=false,mpm=2){
 // cimento cru. Os tons escuros e terrosos que estavam aqui (0x7d6b57, 0x8a6f5a) multiplicavam o mapa
 // de reboco e a parede saía CAMUFLAGEM marrom — o defeito que o Bruno apontou duas vezes.
 // Tinta de morro é barata e clara; o que escurece a parede é a sujeira, e essa já vem da textura.
-const CORES_PAREDE=[0xd9a08c,0xa9c4c6,0xb9c7a4,0xdcd0b4,0xd8c47e,0xc0bcb2,0xcf9f9a,0x9fb4c4];
+// A paleta subiu de SATURAÇÃO sem subir de escuridão, e a diferença entre as duas coisas é o
+// conserto que já foi feito aqui uma vez: tom escuro multiplica o mapa de reboco e a parede sai
+// CAMUFLAGEM marrom. Então a regra desta lista é fixa — croma alto, luminância alta. Nenhuma destas
+// oito cores tem luminância abaixo de 127 (medida em Rec.709), que é o piso a partir do qual o mapa
+// de reboco escurece a tinta sem sujá-la. Roxo e coral entraram porque a referência cita
+// explicitamente "blues, greens, purples and yellows"; o cimento cru fica porque metade de um morro
+// de verdade nunca foi pintada, e uma fileira 100% colorida vira parque de diversão.
+const CORES_PAREDE=[0xe98d63,0x5fb6c9,0x8fc46a,0xf0d98a,0xe7635f,0xb98fd0,0xc9c4b8,0x4f97c4];
 const CORES_TELHA=[0xb8b2a8,0xa8a49c,0xc0b09c,0x9e9a92,0xb0a08c];
 const ESP_MURETA=.14,ALT_MURETA=.5;
+// Laje e mureta são CONCRETO, não telha. Estavam no material `telha` (chapa ondulada) desde sempre —
+// o morro inteiro tinha nervura de zinco na superfície em que o jogador ANDA, que é justo a que ele
+// mais olha de perto. Ver `matLaje` em Materials.js pro tom.
+const LAJE=matLaje();
 
 // Instâncias: acumuladas como matrizes e viradas em InstancedMesh no fim.
 const instancias=new Map();
@@ -527,14 +539,77 @@ function matrizEm(x,y,z,giro,escala=1){
 
 const GEO_JANELA=new THREE.BoxGeometry(.92,.78,.06);
 const GEO_MOLDURA=new THREE.BoxGeometry(1.06,.92,.05);
-const GEO_CAIXA_DAGUA=new THREE.CylinderGeometry(.36,.36,.6,10);
+// ===== GRADE DE JANELA =====
+// Cinco barras em pé e duas deitadas, do tamanho do vão. É a peça que tira a janela de "retângulo
+// preto": o vidro do jogo é quase preto (`janela`, 0x0c2430) e sem nada na frente ele lê como um
+// buraco recortado na parede, que era o resto mais quadrado da fachada.
+// INSTANCIADA e com material LISO. As duas coisas importam: instanciar 200 janelas custa um draw
+// call, e material liso é o que torna isso seguro — a porta provou que InstancedMesh com material
+// PBR texturizado completo sai PRETA neste jogo (ver o comentário na porta, em `construirCasa`).
+// ORÇAMENTO: barra é CILINDRO DE 4 LADOS SEM TAMPA (8 triângulos), não caixa (12). Numa peça de
+// 2 cm de espessura a diferença não se vê, e são ~500 janelas no mapa — medido, o enfeite todo
+// estava comendo 38% dos triângulos da cena, e a grade era a maior fatia dele.
+const GEO_GRADE=(()=>{
+  const partes=[],barra=(w,h,x,y)=>{
+    const g=new THREE.CylinderGeometry(.012,.012,h||w,4,1,true);
+    if(!h)g.rotateZ(Math.PI/2);
+    g.translate(x,y,0);partes.push(g);
+  };
+  for(let i=0;i<4;i++)barra(0,.80,(i-1.5)*.23,0);
+  barra(.94,0,0,0);
+  const g=mergeGeometries(partes,false);
+  partes.forEach(x=>x.dispose());
+  return g;
+})();
 [GEO_JANELA,GEO_MOLDURA].forEach(uvPorMetro);
 
+// ===== TELHEIRO DE ZINCO ONDULADO =====
+// Era uma caixa de 9 cm: chapa perfeitamente lisa, e o telheiro da porta é a peça de telhado que o
+// jogador vê DE PERTO em toda casa do mapa — a que mais denunciava o "tudo quadrado".
+//
+// A onda é feita de tubos: 9 cilindros achatados (escala .45 em Y) deitados no sentido da INCLINAÇÃO,
+// que é o sentido em que a onda de uma telha de verdade corre — ela existe pra água descer por dentro
+// do vinco. Tubo FECHADO e não meia-cana: o jogador passa por baixo do telheiro toda vez que entra
+// numa casa, e meia-cana aberta é invisível por baixo (o material é FrontSide), então o telheiro
+// sumiria justo no ângulo em que ele mais aparece.
+//
+// O `uv1` no fim NÃO É ENFEITE: a pilha de fusão do material `telha` está cheia de caixas que
+// passaram por `uvPorMetro`, e elas têm `uv1` pro aoMap. `mergeGeometries` devolve null se as
+// geometrias de uma pilha não tiverem o MESMO conjunto de atributos — sem esta linha, a fusão do
+// telhado inteiro do bairro falharia em silêncio e todas as lajes sumiriam do mapa.
+const TELHEIRO_LARG=1.6,TELHEIRO_PROF=.95,TELHEIRO_ONDAS=9;
+function telheiroOndulado(){
+  const partes=[],raio=TELHEIRO_LARG/TELHEIRO_ONDAS/2;
+  for(let i=0;i<TELHEIRO_ONDAS;i++){
+    const g=new THREE.CylinderGeometry(raio,raio,TELHEIRO_PROF,5,1,true);
+    g.rotateX(Math.PI/2);                     // eixo do tubo no sentido da profundidade (a descida)
+    g.scale(1,.45,1);                         // achata: onda de telha é rasa, não é cano
+    g.translate((i+.5-TELHEIRO_ONDAS/2)*raio*2,0,0);
+    const uv=g.attributes.uv;
+    for(let v=0;v<uv.count;v++)uv.setXY(v,uv.getX(v)*(2*Math.PI*raio/2),uv.getY(v)*(TELHEIRO_PROF/2));
+    g.setAttribute('uv1',uv);
+    partes.push(g);
+  }
+  const g=mergeGeometries(partes,false);
+  partes.forEach(x=>x.dispose());
+  return g;
+}
 function construirCasa(l){
   const cor=CORES_PAREDE[l.sem%CORES_PAREDE.length];
-  const corTelha=CORES_TELHA[(l.sem>>3)%CORES_TELHA.length];
+  // ===== DESLOCAMENTO SEM SINAL, E ISTO É UM CONSERTO, NÃO ESTILO =====
+  // `hashInt` termina em `>>>0`: a semente é um inteiro SEM SINAL, e vai até 4.294.967.295. Metade
+  // das casas do morro tem o bit 31 aceso — e `>>` (com sinal) devolve NEGATIVO pra elas.
+  // O estrago era silencioso e estava espalhado:
+  //   · cor de telha: índice negativo → `undefined` → material sem tinta → METADE DOS TELHADOS
+  //     DO MAPA SAÍA BRANCO em vez da cor de telha;
+  //   · `cru` (tijolo x reboco): `negativo % 100 < 30` é sempre verdadeiro → essas casas ficavam
+  //     SEMPRE em tijolo à vista, o sorteio nunca rodava;
+  //   · remendos: `negativo % 3` → contagem negativa → o laço não roda → parede sem remendo nenhum.
+  // Nada disso dava erro: dava um morro com menos variação do que o código pensava estar sorteando.
+  // Por isso TODO deslocamento de hash neste arquivo agora é `>>>`.
+  const corTelha=CORES_TELHA[(l.sem>>>3)%CORES_TELHA.length];
   const reboco=matReboco(cor),telha=matTelha(corTelha);
-  MAT_SOMBRA.add(reboco);MAT_SOMBRA.add(telha);
+  MAT_SOMBRA.add(reboco);MAT_SOMBRA.add(telha);MAT_SOMBRA.add(LAJE);
   let larg=l.larg,prof=l.prof,y=l.baseY,recuoAcumulado=0;
 
   for(let andar=0;andar<l.andares;andar++){
@@ -548,7 +623,7 @@ function construirCasa(l){
     // multiplica o mapa inteiro, então tijolo pintado com a cor da casa sairia azul numa casa azul.
     // Como todo tijolo do morro divide o mesmo material sem tinta, tudo isso é UM draw call.
     // O andar de cima tem chance MAIOR de estar cru que o térreo, que é a ordem em que se constrói.
-    const cru=((l.sem>>(andar*5))%100)<(andar===0?30:58);
+    const cru=((l.sem>>>(andar*5))%100)<(andar===0?30:58);
     const pele=cru?tijolo:reboco;
     const MPM_PAREDE=1.4;// ladrilho de 1,4 m: a 2 m a placa de reboco caída virava mancha de camuflagem
     // O andar de cima recua PRO FUNDO: a frente segue alinhada na rua e sobra laje atrás.
@@ -606,12 +681,12 @@ function construirCasa(l){
     const remendo=cru?reboco:tijolo;
     for(let fi=0;fi<faces.length;fi++){
       const f=faces[fi];
-      const nRemendos=(l.sem>>(andar*3+fi))%3;// 0 a 2 por face: nem toda parede tem remendo
+      const nRemendos=(l.sem>>>(andar*3+fi))%3;// 0 a 2 por face: nem toda parede tem remendo
       for(let r=0;r<nRemendos;r++){
         const h=hashInt(l.sem+andar*31+fi*97,r*7);
-        const lw=.6+((h%100)/100)*Math.min(1.3,f.vao*.5),lh=.5+(((h>>5)%100)/100)*1.1;
-        const pu=(((h>>11)%100)/100-.5)*Math.max(.2,f.vao-lw-.3);
-        const py=y+.2+(((h>>17)%100)/100)*Math.max(.2,alt-lh-.4);
+        const lw=.6+((h%100)/100)*Math.min(1.3,f.vao*.5),lh=.5+(((h>>>5)%100)/100)*1.1;
+        const pu=(((h>>>11)%100)/100-.5)*Math.max(.2,f.vao-lw-.3);
+        const py=y+.2+(((h>>>17)%100)/100)*Math.max(.2,alt-lh-.4);
         const p=pontoDaFace(f,pu,.025);
         caixa(remendo,lw,lh,.05,p.x,py+lh/2,p.z,f.giro,false,MPM_PAREDE);
       }
@@ -646,8 +721,8 @@ function construirCasa(l){
       // visto de lado no barranco, é uma tábua flutuando. Chapa mais grossa e DUAS MÃOS-FRANCESAS
       // embaixo resolvem — é o que sustenta um telheiro de verdade, e é o que o olho procura.
       const t=noLote(l,0,prof/2+.47);
-      const gt=new THREE.BoxGeometry(1.6,.09,.95);
-      uvPorMetro(gt);gt.rotateX(.2);
+      const gt=telheiroOndulado();
+      gt.rotateX(.2);
       gt.rotateY(l.giro);gt.translate(t.x,y+2.34,t.z);
       acumularPronta(telha,gt);
       const madeira=matMadeira(0x6b4a30);
@@ -671,6 +746,10 @@ function construirCasa(l){
         const v=pontoDaFace(f,frac*f.vao,.035);
         instanciar(acesa?'janelaAcesa':'janela',GEO_JANELA,acesa?janelaAcesa:janela,
           matrizEm(v.x,y+alt*.62,v.z,f.giro));
+        // A grade fica 4 cm À FRENTE do vidro: encostada, ela brigaria por profundidade com ele e
+        // apareceria piscando conforme a câmera anda.
+        const gr=pontoDaFace(f,frac*f.vao,.075);
+        instanciar('grade',GEO_GRADE,gradeMat,matrizEm(gr.x,y+alt*.62,gr.z,f.giro));
       }
     }
 
@@ -678,7 +757,7 @@ function construirCasa(l){
     // Laje do andar: é ela que o jogador pisa. Some do último andar? Não — todo andar tem laje, e é
     // a do topo que serve de telhado.
     const laje=noLote(l,0,-recuoAcumulado/2);
-    caixa(telha,larg+.14,.12,prof+.14,laje.x,y+.06,laje.z,l.giro,true);
+    caixa(LAJE,larg+.14,.12,prof+.14,laje.x,y+.06,laje.z,l.giro,true);
 
     // Encolhe pro próximo andar.
     if(andar<l.andares-1){larg=Math.max(2.6,larg-.5);prof=Math.max(2.8,prof-RECUO_ANDAR);recuoAcumulado+=RECUO_ANDAR}
@@ -690,11 +769,16 @@ function construirCasa(l){
   for(const[dx,dz,mw,md]of[[0,prof/2,larg+.14,ESP_MURETA],[0,-prof/2,larg+.14,ESP_MURETA],
                             [larg/2,0,ESP_MURETA,prof+.14],[-larg/2,0,ESP_MURETA,prof+.14]]){
     const p=noLote(l,dx,dz-recuoAcumulado/2);
-    caixa(telha,mw,ALT_MURETA,md,p.x,yTopo+ALT_MURETA/2,p.z,l.giro);
+    caixa(LAJE,mw,ALT_MURETA,md,p.x,yTopo+ALT_MURETA/2,p.z,l.giro);
   }
-  const cd=noLote(l,larg*.24,-prof*.2-recuoAcumulado/2);
-  instanciar('caixaDagua',GEO_CAIXA_DAGUA,agua,matrizEm(cd.x,yTopo+.3,cd.z,l.giro));
   l.lajeY=yTopo;
+  // O ANDAR DE CIMA É MENOR QUE O LOTE. `larg`/`prof` encolheram a cada andar e `recuoAcumulado`
+  // empurrou tudo pro fundo; sem gravar isso, a passada de enfeite penduraria antena e varal no
+  // tamanho do TÉRREO e as peças ficariam boiando fora da laje numa casa de três andares.
+  // A caixa d'água saiu daqui: quem põe todas as peças de telhado agora é `enfeitarLaje`, num lugar
+  // só, e por isso ela vale também pro esconderijo, pro bar e pra biqueira — que antes não tinham
+  // nada em cima.
+  l.topoLarg=larg;l.topoProf=prof;l.topoRecuo=recuoAcumulado;
 }
 
 // ===== LOTES COM PAPEL: refúgio, bar, biqueira =====
@@ -845,6 +929,9 @@ function fioEntre(a,b,cor){
     px=qx;py=qy;pz=qz;
   }
 }
+// Os topos ficam guardados porque o GATO precisa deles, e o gato só pode ser puxado depois que TODOS
+// os postes existirem (ver `puxarGatos`).
+const topesDePoste=[];
 function postesDaVia(curva,passo){
   const total=curva.getLength(),n=Math.max(2,Math.round(total/passo));
   let anterior=null;
@@ -861,7 +948,36 @@ function postesDaVia(curva,passo){
       fioEntre({x:anterior.x+.12,y:anterior.y-.25,z:anterior.z+.12},{x:topo.x+.12,y:topo.y-.25,z:topo.z+.12},posteMat);
       fioEntre({x:anterior.x-.1,y:anterior.y-.45,z:anterior.z-.1},{x:topo.x-.1,y:topo.y-.45,z:topo.z-.1},posteMat);
     }
+    topesDePoste.push(topo);
     anterior=topo;
+  }
+}
+
+// ===== O GATO =====
+// O emaranhado entre postes já existia; o que faltava era o fio SAINDO dele e entrando na casa, que
+// é a metade da gambiarra que se vê de dentro do beco. Sem ele, os postes do morro alimentam o nada.
+//
+// Um fio por casa, do poste mais próximo até a quina alta da fachada. `fioEntre` já desenha catenária
+// de três tramos, então o fio chega barrigudo, como chega de verdade — e reusar essa função (em vez
+// de cilindros) não é preguiça: ela produz CAIXAS, e a pilha do `posteMat` só tem caixas. Um cilindro
+// ali dentro faria `mergeGeometries` devolver null e apagaria em silêncio TODOS os fios e corrimãos
+// do mapa.
+const GATO_ALCANCE=26;
+function puxarGatos(){
+  for(const l of lotes){
+    const lajeY=l.lajeY;
+    if(!Number.isFinite(lajeY))continue;
+    const larg=l.topoLarg??l.larg,prof=l.topoProf??l.prof,recuo=l.topoRecuo??0;
+    // Ponto de entrada: a quina alta da fachada, um palmo abaixo da laje — que é onde o quadro de luz
+    // fica na casa de verdade.
+    const e=noLote(l,larg*.38,prof/2+.06-recuo/2);
+    let melhor=null,melhorD=GATO_ALCANCE*GATO_ALCANCE;
+    for(const t of topesDePoste){
+      const d=(t.x-e.x)*(t.x-e.x)+(t.z-e.z)*(t.z-e.z);
+      if(d<melhorD){melhorD=d;melhor=t}
+    }
+    if(!melhor)continue;
+    fioEntre(melhor,{x:e.x,y:lajeY-.22,z:e.z},posteMat);
   }
 }
 
@@ -891,7 +1007,7 @@ function pecaSolta(geo,material,x,y,z,giro,pai,sombra=true){
 function construirCasaOca(l){
   const g=new THREE.Group();favela.add(g);
   const cor=CORES_PAREDE[l.sem%CORES_PAREDE.length];
-  const reboco=matReboco(cor),telha=matTelha(CORES_TELHA[(l.sem>>3)%CORES_TELHA.length]);
+  const reboco=matReboco(cor),telha=matTelha(CORES_TELHA[(l.sem>>>3)%CORES_TELHA.length]);
   const larg=l.larg,prof=l.prof,y0=l.baseY,alt=ANDAR_ALT+.25;
   const P=(dx,dz)=>noLote(l,dx,dz);
   // O piso usa a cota da soleira, mas o morro pode descer vários centímetros (ou metros) atrás
@@ -1116,8 +1232,8 @@ function construirBiqueira(l){
   // Engradados.
   for(let k=0;k<4;k++){
     const h=hashInt(l.sem,k*13);
-    const p=P(larg*.28+((h%40)/100-.2),prof/2+.5+((h>>7)%50)/100);
-    caixa(matMadeira(0x8a5a2f),.42,.3,.42,p.x,y0+.15+(k%2)*.3,p.z,l.giro+((h>>13)%100)/100);
+    const p=P(larg*.28+((h%40)/100-.2),prof/2+.5+((h>>>7)%50)/100);
+    caixa(matMadeira(0x8a5a2f),.42,.3,.42,p.x,y0+.15+(k%2)*.3,p.z,l.giro+((h>>>13)%100)/100);
   }
   // Lâmpada nua na quina, o brilho que marca a boca no escuro.
   {const p=P(larg*.42,prof/2+.1);
@@ -1128,12 +1244,262 @@ function construirBiqueira(l){
   l.lajeY=y0+alt+.14;
 }
 
+
+// ===== O QUE TIRA O MORRO DO "EMPILHADO DE CUBOS" =====
+//
+// Até aqui a casa inteira é BoxGeometry: parede, laje, mureta, remendo, telheiro. Isso resolve a
+// silhueta e o custo, e é exatamente o que faz o bairro parecer LEGO de longe — a queixa é essa, e
+// ela é justa. Este bloco é a resposta, e a regra dele é uma só: NENHUMA PEÇA NOVA É CAIXA.
+// Cilindro, torneado (lathe), calota de esfera e pano ondulado. São as quatro coisas que o olho
+// procura quando decide se está olhando uma foto ou um jogo.
+//
+// As cinco peças, e por que cada uma está aqui (todas saem da referência de morro de verdade):
+//   1. VERGALHÃO DE ESPERA — o ferro saindo da laje pro andar que talvez nunca venha. É a assinatura
+//      do lugar: diz "esta casa não está pronta e nunca vai estar", que é a ideia central da
+//      construção informal. Era a ausência mais gritante.
+//   2. CAIXA D'ÁGUA TORNEADA — já existia como cilindro reto de 10 lados. Virou um perfil de verdade,
+//      com ombro arredondado e tampa, em duas cores (azul e preta) e às vezes duas por casa.
+//   3. ANTENA PARABÓLICA — citada em toda referência de telhado de favela, e o jogo não tinha nenhuma.
+//      Superfície curva de verdade (calota de esfera), não um disco chato.
+//   4. VARAL COM ROUPA — a laje é área de serviço antes de ser laje. Pano ONDULADO, com vértices
+//      deslocados: pano chapado lê como placa, e placa é o que estamos fugindo.
+//   5. QUEDA-D'ÁGUA DE PVC — o cano branco descendo a fachada, com o joelho embaixo. Quebra a parede
+//      lisa na vertical, que é a direção em que ela é mais chapada.
+//
+// CUSTO: cada peça vai pro material dedicado dela (Materials.js), então tudo isto soma 5 draw calls
+// no bairro inteiro. Antena e caixa d'água são INSTANCIADAS (geometria única, uma matriz por cópia);
+// vergalhão, varal e cano são FUNDIDOS, porque variam de tamanho casa a casa.
+//
+// ===== POR QUE MATERIAL NOVO, E NÃO REAPROVEITAR OS QUE JÁ EXISTEM =====
+// Isto não é preciosismo: as pilhas de fusão são indexadas POR MATERIAL, e `mergeGeometries` devolve
+// null se as geometrias de uma pilha não tiverem exatamente os mesmos atributos. As caixas do jogo
+// passam por `uvPorMetro`, que cria um `uv1` pro aoMap; meus cilindros e panos não têm `uv1`. Jogar
+// um cilindro na pilha do `posteMat` (que está cheia de caixas) faria a fusão inteira falhar e
+// APAGARIA todos os fios e corrimãos do mapa, em silêncio — o `if(!geo)continue` da fusão engole o
+// erro. Daí a regra: peça redonda só entra em material redondo.
+
+// Cilindro entre dois pontos do mundo. É a peça-mãe daqui: vergalhão, mastro de varal, braço de
+// antena e cano de PVC são todos isto com raio e material diferentes.
+// `openEnded` de propósito: tampa de cilindro de 2 cm de raio é invisível e custa 2 triângulos por
+// ponta, e são milhares de pontas no morro.
+const _eixoY=new THREE.Vector3(0,1,0),_dir=new THREE.Vector3(),_qh=new THREE.Quaternion();
+function haste(material,ax,ay,az,bx,by,bz,raio,lados=4){
+  _dir.set(bx-ax,by-ay,bz-az);
+  const comp=_dir.length();
+  if(comp<1e-4)return;
+  const g=new THREE.CylinderGeometry(raio,raio,comp,lados,1,true);
+  g.applyQuaternion(_qh.setFromUnitVectors(_eixoY,_dir.normalize()));
+  g.translate((ax+bx)/2,(ay+by)/2,(az+bz)/2);
+  acumularPronta(material,g);
+}
+
+// ===== 1. VERGALHÃO DE ESPERA =====
+// Cada barra são DOIS segmentos: o trecho reto que sai da laje e a ponta DOBRADA. A dobra é o detalhe
+// inteiro — ferro reto lê como antena ou como grade; ferro dobrado lê como obra parada, que é o que
+// ele é. Na obra a ponta é dobrada de propósito, pra não empalar quem trabalha em cima.
+const VERG_RAIO=.013;
+function vergalhoesNaQuina(qx,qy,qz,semente,giro){
+  // Quatro barras num quadrado de 18 cm: é a bitola de um pilarete de casa de morro.
+  for(let i=0;i<4;i++){
+    const h=hashInt(semente,i*37);
+    const lx=(i&1?1:-1)*.09,lz=(i&2?1:-1)*.09;
+    const c=Math.cos(giro),sn=Math.sin(giro);
+    const px=qx+lx*c+lz*sn,pz=qz-lx*sn+lz*c;
+    // ===== A BARRA TEM QUE PASSAR DA MURETA, E ISSO FOI MEDIDO NA FOTO =====
+    // A primeira versão tinha 34 a 80 cm. A mureta da laje (`ALT_MURETA`) tem 50 cm e fica na MESMA
+    // quina — na foto do telhado não se via UM ferro no morro inteiro: estava tudo escondido atrás
+    // do peitoril. A barra agora começa acima da mureta e vai até quase um metro por cima dela, que
+    // é a proporção real (o ferro é sempre a coisa mais alta de uma laje inacabada).
+    const alt=ALT_MURETA+.28+((h%100)/100)*.72;// passa a mureta em 28 cm a 1,00 m
+    const abre=.05+(((h>>>7)%100)/100)*.10;      // as barras abrem pra fora conforme sobem
+    const mx=px+lx*abre*2,mz=pz+lz*abre*2;      // topo do trecho reto
+    const my=qy+alt;
+    haste(ferroMat,px,qy-.06,pz,mx,my,mz,VERG_RAIO);
+    // A DOBRA: 12 a 22 cm de ponta jogada pro lado, em direção sorteada. Sem isto o telhado vira uma
+    // caminha de pregos alinhados, que é pior que não ter ferro nenhum.
+    const ang=(((h>>>13)%100)/100)*Math.PI*2,comp=.12+(((h>>>19)%100)/100)*.10;
+    haste(ferroMat,mx,my,mz,mx+Math.cos(ang)*comp,my+.05,mz+Math.sin(ang)*comp,VERG_RAIO);
+  }
+}
+
+// ===== 2. CAIXA D'ÁGUA TORNEADA =====
+// `LatheGeometry` gira um PERFIL em volta do eixo: é assim que se faz um corpo de revolução de
+// verdade, com ombro arredondado e rebaixo da tampa. O cilindro reto que estava aqui não tinha nem
+// tampa nem ombro — de perto era uma lata de conserva.
+// O perfil está em metros e desenha uma 1000 litros: 92 cm de diâmetro, 82 de altura.
+const GEO_CAIXA_DAGUA=(()=>{
+  // 10 gomos e 8 pontos de perfil: a 92 cm de diâmetro isso ainda lê como cilindro torneado, e são
+  // 125 caixas no mapa — com os 14 gomos e 11 pontos que tinha, só elas eram 35 mil triângulos.
+  const p=[[0,0],[.42,0],[.46,.06],[.46,.58],[.40,.71],[.32,.76],[.28,.82],[0,.82]];
+  return new THREE.LatheGeometry(p.map(([x,y])=>new THREE.Vector2(x,y)),10);
+})();
+
+// ===== 3. ANTENA PARABÓLICA =====
+// Uma calota de esfera (não um disco): `SphereGeometry` com `thetaLength` curto devolve a concha, e é
+// a curvatura dela que faz a peça ler como antena de qualquer ângulo. Mastro, braço e o LNB no foco
+// entram na MESMA geometria, fundidos aqui uma vez só — daí em diante é uma instância por casa.
+// A inclinação fica ASSADA na geometria porque `matrizEm` só sabe girar em Y; e isso até é fiel, já
+// que antena de verdade aponta toda pro mesmo satélite. O que varia por casa é só a direção (o yaw).
+const GEO_PARABOLICA=(()=>{
+  const concha=new THREE.SphereGeometry(.34,10,4,0,Math.PI*2,0,.72);
+  concha.rotateX(Math.PI*.5+.55);// vira a boca pra cima e pro horizonte, como antena apontada
+  concha.translate(0,.74,0);
+  // Mastro de 78 cm pelo mesmo motivo do vergalhão: com os 34 cm que tinha, a concha ficava ABAIXO
+  // da mureta de 50 cm e nenhuma das 45 antenas aparecia na foto. Antena de verdade é montada alta
+  // justamente pra enxergar o satélite por cima do peitoril.
+  const mastro=new THREE.CylinderGeometry(.028,.032,.78,5,1,true);
+  mastro.translate(0,.39,0);
+  // Braço do LNB saindo do centro da concha até o foco, e a cápsula no fim dele.
+  const braco=new THREE.CylinderGeometry(.017,.017,.30,4,1,true);
+  braco.rotateX(-.9);braco.translate(0,.80,.15);
+  const lnb=new THREE.CylinderGeometry(.045,.032,.11,5,1,true);
+  lnb.rotateX(-.9);lnb.translate(0,.90,.27);
+  const g=mergeGeometries([concha,mastro,braco,lnb],false);
+  [concha,mastro,braco,lnb].forEach(x=>x.dispose());
+  return g;
+})();
+
+// ===== 4. VARAL COM ROUPA =====
+// PANO ONDULADO. Um `PlaneGeometry` chapado é literalmente um retângulo — o defeito que estamos
+// consertando. Aqui cada vértice é empurrado pra fora do plano por duas senóides cruzadas, então o
+// pano tem barriga e dobra, e `computeVertexNormals` faz a luz correr por cima disso.
+// A cor entra no ATRIBUTO `color` da geometria e não no material: é o que permite dez cores de roupa
+// dividirem um material só, e portanto um draw call só no bairro inteiro (ver `roupaMat`).
+const CORES_ROUPA=[0xe4574f,0x3f7fc4,0xf0d24a,0xf2f0e8,0x4fae72,0xe07fb0,0x2f3a52,0xe9a13c];
+const _corRoupa=new THREE.Color();
+function pano(x,y,z,larg,alt,rumo,semente){
+  const g=new THREE.PlaneGeometry(larg,alt,3,3);
+  const pos=g.attributes.position;
+  const fase=((semente%100)/100)*Math.PI*2;
+  for(let i=0;i<pos.count;i++){
+    const vx=pos.getX(i),vy=pos.getY(i);
+    // A barriga cresce pra BAIXO: a roupa está presa em cima e solta embaixo, então a ondulação tem
+    // que ser quase zero na barra de cima, senão o pano parece estar flutuando em vez de pendurado.
+    const solta=(alt/2-vy)/alt;
+    // A amplitude subiu de 5,5 pra 13 cm depois da foto: com 5 cm o pano ainda lia como PLACA, que
+    // é justamente o que este bloco existe pra evitar.
+    pos.setZ(i,(Math.sin(vx*4.2+fase)*.13+Math.sin(vy*3.1+fase*1.7)*.075)*solta);
+  }
+  pos.needsUpdate=true;
+  g.computeVertexNormals();
+  // A cor sai dos bits ALTOS do hash e a onda dos baixos. Usando os mesmos bits pros dois, as três
+  // roupas do mesmo varal saíam quase todas azuis na foto — os bits baixos de hashes vizinhos andam
+  // juntos, e era neles que a cor estava pendurada.
+  _corRoupa.setHex(CORES_ROUPA[(semente>>>24)%CORES_ROUPA.length]);
+  const cores=new Float32Array(pos.count*3);
+  for(let i=0;i<pos.count;i++)cores.set([_corRoupa.r,_corRoupa.g,_corRoupa.b],i*3);
+  g.setAttribute('color',new THREE.BufferAttribute(cores,3));
+  g.rotateY(rumo);
+  g.translate(x,y,z);
+  acumularPronta(roupaMat,g);
+}
+// O arame do varal com BARRIGA, pela mesma razão que o fio da rua tem: arame reto entre dois mastros
+// lê como cabo de aço tensionado, e varal de laje nunca está esticado.
+function varalNaLaje(l,lajeY,larg,prof,recuo,semente){
+  const eixo=(semente&1)?'x':'z';
+  const vao=(eixo==='x'?larg:prof)*.78;
+  const desl=(((semente>>>3)%100)/100-.5)*(eixo==='x'?prof:larg)*.4;
+  const ponta=t=>eixo==='x'
+    ? noLote(l,t*vao/2,desl-recuo/2)
+    : noLote(l,desl,t*vao/2-recuo/2);
+  const a=ponta(-1),b=ponta(1);
+  const yMastro=lajeY+1.02;
+  haste(ferroMat,a.x,lajeY,a.z,a.x,yMastro,a.z,.022,5);
+  haste(ferroMat,b.x,lajeY,b.z,b.x,yMastro,b.z,.022,5);
+  // Arame em 4 tramos seguindo uma catenária, e as roupas penduradas NELE (na altura da barriga),
+  // não numa linha reta imaginária — é isso que faz a fileira de roupa curvar junto.
+  const barriga=.10+((semente>>>9)%100)/100*.10;
+  const alturaEm=f=>yMastro-Math.sin(f*Math.PI)*barriga;
+  const pontoEm=f=>({x:a.x+(b.x-a.x)*f,z:a.z+(b.z-a.z)*f,y:alturaEm(f)});
+  let ant=pontoEm(0);
+  for(let i=1;i<=4;i++){
+    const q=pontoEm(i/4);
+    haste(ferroMat,ant.x,ant.y,ant.z,q.x,q.y,q.z,.008,3);
+    ant=q;
+  }
+  const rumo=eixo==='x'?l.giro:l.giro+Math.PI/2;
+  const nRoupas=2+(semente>>>5)%4;
+  for(let i=0;i<nRoupas;i++){
+    const f=(i+.7)/(nRoupas+.4);
+    const p=pontoEm(f);
+    const h=hashInt(semente,i*53);
+    const lw=.32+((h%100)/100)*.20,lh=.40+(((h>>>7)%100)/100)*.34;
+    // Um tico de giro por peça: roupa no varal nunca está toda no mesmo plano.
+    pano(p.x,p.y-lh/2-.03,p.z,lw,lh,rumo+((((h>>>11)%100)/100)-.5)*.5,h);
+  }
+}
+
+// ===== 5. QUEDA-D'ÁGUA DE PVC =====
+// Desce numa quina da fachada, do beiral até 25 cm do chão, e termina em JOELHO virado pra rua. O
+// joelho é o que impede a peça de parecer um poste encostado na parede.
+function canoDePVC(l,lajeY,larg,prof,recuo,semente){
+  const lado=(semente&2)?1:-1;
+  const q=noLote(l,lado*(larg/2-.16),prof/2+.10-recuo/2);
+  const base=obterElevacao(q.x,q.z)+.25;
+  if(lajeY-base<1.2)return;// casa baixa demais: um cano de 1 m não lê como cano, lê como sujeira
+  haste(pvcMat,q.x,lajeY+.04,q.z,q.x,base,q.z,.048,6);
+  const j=noLote(l,lado*(larg/2-.16),prof/2+.34-recuo/2);
+  haste(pvcMat,q.x,base,q.z,j.x,base-.05,j.z,.048,6);
+}
+
+// ===== A PASSADA DE ENFEITE =====
+// Roda DEPOIS de construída cada casa, e serve pros quatro construtores (casa comum, casca oca do
+// esconderijo e da casa de cliente, bar e biqueira) — todos gravam `l.lajeY`. Os que encolhem por
+// andar gravam também `topoLarg`/`topoProf`/`topoRecuo`; quem não encolhe cai no tamanho do lote.
+//
+// NADA AQUI VIRA COLISOR. Antena, roupa, ferro e cano são decoração pura: registrar qualquer um deles
+// na física emparedaria a laje que o jogador precisa pisar pra entregar. Por isso tudo entra pelas
+// pilhas de fusão comuns (não-andáveis) e nenhum deles chama `registrarCaixa`.
+function enfeitarLaje(l){
+  const lajeY=l.lajeY;
+  if(!Number.isFinite(lajeY))return;
+  const larg=l.topoLarg??l.larg,prof=l.topoProf??l.prof,recuo=l.topoRecuo??0;
+  const s=l.sem;
+
+  // CAIXA D'ÁGUA: uma sempre, uma segunda em 30% das casas. Azul é a comum; preta entra em 1 de 4,
+  // que é mais ou menos a proporção que se vê no morro.
+  const nCaixas=((s>>>2)%100)<30?2:1;
+  for(let i=0;i<nCaixas;i++){
+    const h=hashInt(s+i*17,91);
+    const cx=noLote(l,(i?-1:1)*larg*(.22+((h%100)/100)*.06),
+                      -prof*(.16+(((h>>>7)%100)/100)*.12)-recuo/2);
+    instanciar(((h>>>3)%4)===0?'caixaDaguaPreta':'caixaDagua',GEO_CAIXA_DAGUA,
+      ((h>>>3)%4)===0?aguaPreta:agua,matrizEm(cx.x,lajeY,cx.z,(((h>>>11)%100)/100)*Math.PI*2));
+  }
+
+  // VERGALHÃO: 62% das casas têm obra parada em cima, e das que têm, 1 a 3 quinas. Cem por cento das
+  // casas com ferro deixaria o morro parecer um canteiro de obras; menos de metade e o detalhe some.
+  if(((s>>>6)%100)<62){
+    const quinas=[[1,1],[-1,1],[1,-1],[-1,-1]];
+    const nQuinas=1+((s>>>10)%3);
+    for(let i=0;i<nQuinas;i++){
+      const[sx,sz]=quinas[((s>>>(12+i*2))+i)%4];
+      const q=noLote(l,sx*(larg/2-.16),sz*(prof/2-.16)-recuo/2);
+      vergalhoesNaQuina(q.x,lajeY+.02,q.z,hashInt(s,i*211),l.giro);
+    }
+  }
+
+  // ANTENA: 45% das casas. Fica na beira, virada pro céu aberto, e não no meio da laje.
+  if(((s>>>16)%100)<45){
+    const p=noLote(l,-larg*.30,prof*.24-recuo/2);
+    instanciar('parabolica',GEO_PARABOLICA,antenaMat,
+      matrizEm(p.x,lajeY,p.z,l.giro+((((s>>>20)%100)/100)-.5)*1.6));
+  }
+
+  // VARAL: 40% das casas. A laje é área de serviço antes de ser laje.
+  if(((s>>>18)%100)<40&&larg>3&&prof>3)varalNaLaje(l,lajeY,larg,prof,recuo,hashInt(s,7));
+
+  // CANO: 55% das casas.
+  if(((s>>>22)%100)<55)canoDePVC(l,lajeY,larg,prof,recuo,hashInt(s,13));
+}
+
 // ===== CONSTRÓI O MORRO =====
 for(const l of lotes){
   if(l.papel==='refugio'||l.papel==='cliente')construirCasaOca(l);
   else if(l.papel==='bar')construirBar(l);
   else if(l.papel==='biqueira')construirBiqueira(l);
   else construirCasa(l);
+  enfeitarLaje(l);
 }
 // A lista de casas de cliente só pode ser montada AQUI: `refugios` recebe os dois papéis durante a
 // construção, e antes deste laço ela está vazia.
@@ -1144,6 +1510,7 @@ for(const b of becos)acumularPronta(concreto,fitaDaVia(b,BECO_MIN+.4));
 for(const e of escadoes)construirEscadao(e);
 postesDaVia(viaPrincipal,15);
 postesDaVia(viaBaixa,17);
+puxarGatos();
 
 // ===== FUSÃO E INSTANCIAÇÃO =====
 // É aqui que 2.000 malhas viram algumas dezenas. Duas técnicas, cada uma onde é a certa:
@@ -1175,7 +1542,7 @@ for(const[chave,{geo,material,ms}]of instancias){
   im.receiveShadow=true;
   // Só o que tem corpo projeta sombra: poste e caixa d'água passam; vidro, moldura, cadeira e perna
   // de mesa não — sombra de peça de 5 cm ninguém enxerga, e o passe de sombra redesenha tudo.
-  im.castShadow=chave==='poste'||chave==='caixaDagua';
+  im.castShadow=chave==='poste'||chave==='caixaDagua'||chave==='caixaDaguaPreta';
   // A esfera de contorno do InstancedMesh sai da GEOMETRIA (que está na origem), não das instâncias:
   // com culling ligado, o bairro inteiro sumiria quando a origem saísse da tela.
   im.frustumCulled=false;
