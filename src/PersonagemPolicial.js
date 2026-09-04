@@ -27,7 +27,7 @@ import{GLTFLoader}from'three/addons/loaders/GLTFLoader.js';
 import{clone as clonarComEsqueleto}from'three/addons/utils/SkeletonUtils.js';
 import{PLAYER_HEIGHT}from'./Player.js';
 
-const ANIM_POL={andar:'Walking',correr:'Running'};
+const ANIM_POL={andar:'Walking',andarAlternativo:'walking_2_inplace',correr:'Running'};
 const TRANSICAO=.18;
 // Acima disto o policial corre. Ele anda a RUA_VELOCIDADE (1,7) e persegue mais rápido; o corte fica
 // no meio da faixa de perseguição pra a corrida aparecer quando ele está de fato indo atrás de alguém.
@@ -119,7 +119,7 @@ function vestir(pedido){
   const mixer=new THREE.AnimationMixer(raiz);
   const acoes={};
   for(const clipe of modelo.animations){
-    if(clipe.name!==ANIM_POL.andar&&clipe.name!==ANIM_POL.correr)continue;
+    if(clipe.name!==ANIM_POL.andar&&clipe.name!==ANIM_POL.andarAlternativo&&clipe.name!==ANIM_POL.correr)continue;
     const a=mixer.clipAction(clipe);
     a.enabled=true;a.setEffectiveWeight(0);a.play();
     acoes[clipe.name]=a;
@@ -184,7 +184,7 @@ function vestir(pedido){
       pedido.arma.rotation.set(0,0,0);
     }
   }
-  const estado={mixer,acoes,atual:null,raiz};
+  const estado={mixer,acoes,atual:null,ultimaCaminhada:ANIM_POL.andar,raiz};
   vestidos.push(estado);
   pedido.aoVestir?.(estado);
   return estado;
@@ -219,7 +219,22 @@ function trocar(estado,nome){
 export function atualizarCorpoPolicial(estado,dt,velocidade){
   if(!estado)return;
   const parado=velocidade<.25;
-  trocar(estado,velocidade>=VEL_CORRIDA_POL?ANIM_POL.correr:ANIM_POL.andar);
+  if(velocidade>=VEL_CORRIDA_POL){
+    trocar(estado,ANIM_POL.correr);
+  }else if(!parado){
+    const atual=estado.atual?.getClip?.().name;
+    // Alterna somente quando o ciclo terminou; não troca a pose a cada quadro nem durante a corrida.
+    if(atual!==ANIM_POL.andar&&atual!==ANIM_POL.andarAlternativo){
+      estado.ultimaCaminhada=ANIM_POL.andar;
+      trocar(estado,estado.ultimaCaminhada);
+    }else if(estado.atual.time>=estado.atual.getClip().duration-dt*1.5){
+      estado.ultimaCaminhada=atual===ANIM_POL.andar?ANIM_POL.andarAlternativo:ANIM_POL.andar;
+      trocar(estado,estado.ultimaCaminhada);
+    }
+  }
+  // Se começou a andar depois de parado, escolhe o último clipe usado e retoma de forma consistente.
+  if(!parado&&velocidade<VEL_CORRIDA_POL&&estado.atual?.getClip?.().name===ANIM_POL.correr)
+    trocar(estado,estado.ultimaCaminhada);
   if(estado.atual){
     // Parado congela no primeiro quadro em vez de marchar no lugar — o mesmo tratamento do jogador.
     estado.atual.paused=parado;
