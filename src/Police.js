@@ -71,7 +71,7 @@ const PLANTA_DETECTAVEL_ESTAGIO=2;
 const PATRULHA_VIES=.55,PATRULHA_RAIO_VIES=30;
 const POLICIAL_HP=100,POLICIAL_VELOCIDADE=2,POLICIAL_ALCANCE_TIRO=13;
 export const stoppingDistance=3.0;
-const POLICIAL_DANO_MIN=10,POLICIAL_DANO_MAX=18,POLICIAL_COOLDOWN_MIN=1.1,POLICIAL_COOLDOWN_MAX=2.1;
+const POLICIAL_DANO_MIN=6,POLICIAL_DANO_MAX=11,POLICIAL_COOLDOWN_MIN=1.1,POLICIAL_COOLDOWN_MAX=2.1;
 // ===== PROCURADO =====
 // A barra SÓ desce dentro do esconderijo (casa da favela com a porta fechada). Fora dele não existe
 // decaimento nenhum: correr não limpa ficha, e é isso que dá função ao esconderijo.
