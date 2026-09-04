@@ -926,7 +926,7 @@ function construirCasaOca(l){
   // Piso interno nivelado: sem ele o jogador caminhava sobre o relevo irregular dentro da casa e a
   // altura mudava de um canto para outro. O topo fica exatamente na cota da soleira, então a entrada
   // continua sem degrau e todos os esconderijos têm o mesmo chão plano por dentro.
-  const piso=pecaSolta(new THREE.BoxGeometry(larg-ESP_PAREDE*2,.12,prof-ESP_PAREDE*2),matConcreto,
+  const piso=pecaSolta(new THREE.BoxGeometry(larg-ESP_PAREDE*2,.12,prof-ESP_PAREDE*2),matConcreto(),
     c.x,y0-.06,c.z,l.giro,g);
   superficiesAndaveis.push(piso);
   for(const[dx,dz,mw,md]of[[0,prof/2,larg+.14,ESP_MURETA],[0,-prof/2,larg+.14,ESP_MURETA],
