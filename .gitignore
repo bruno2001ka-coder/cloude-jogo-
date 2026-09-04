@@ -1,1 +1,9 @@
-(src/Police.js is a source file, and there are no build artifacts, dependencies, or temporary files in the changes)
+```
+# Dependencies
+node_modules/
+
+# Environment
+.env
+.env.local
+.env.*
+```

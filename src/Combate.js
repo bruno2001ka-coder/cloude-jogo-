@@ -13,6 +13,7 @@ import*as THREE from'three';
 import{player,PLAYER_HEIGHT}from'./Player.js';
 import{pontoNavegavel}from'./NavMesh.js';
 import{COMBATE,ZONAS_ACERTO,FAIXAS_DISTANCIA as FAIXAS_CONFIG}from'./Config.js';
+import{obterPontoNascimento,atualizarPosicaoJogador,atualizarPortasHospital,atualizarLuzesEmergencia}from'./Hospital.js';
 
 // ===== ALTURAS DO CORPO =====
 // As frações são as de ZONAS_JOGADOR/ZONAS_POLICIAL: tronco de .313 a .657, cabeça de .657 a .9.
@@ -44,6 +45,8 @@ export function atualizarCombate(dt){
   velJogador.z+=(vz-velJogador.z)*k;
   velocidadeJogador=Math.hypot(velJogador.x,velJogador.z);
   ultimaPos.copy(player.position);
+  // Atualiza posição para o hospital saber quando abrir/fechar portas
+  atualizarPosicaoJogador(player.position.x,player.position.z);
 }
 export function velocidadeDoJogador(){return velocidadeJogador}
 // Quanto da antecipação perfeita o policial acerta. 1 seria um robô que nunca erra o cálculo; 0,62
