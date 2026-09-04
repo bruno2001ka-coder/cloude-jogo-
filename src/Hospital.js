@@ -349,6 +349,7 @@ boxHospital.setFromCenterAndSize(
 obstaculos.push(boxHospital);
 
 // Exportar posição do jogador para o Police.js usar
+import{player}from'./Player.js';
 let playerPos={x:0,z:0};
 export function atualizarPosicaoJogador(x,z){playerPos={x,z}};
 
