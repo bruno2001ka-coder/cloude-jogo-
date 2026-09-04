@@ -10,6 +10,7 @@ import{player}from'./Player.js';
 import{POLOS,PRECOS}from'./Poles.js';
 import{ARMAS,ORDEM_ARMAS,equiparArma}from'./Weapons.js';
 import{pontoDeEntregaAtual}from'./DeliveryPoints.js';
+import{ECONOMIA as CONFIG_ECONOMIA}from'./Config.js';
 // ===== GANCHOS DA POLÍCIA (saúde e procurado) =====
 // NÃO dá pra importar Police aqui. Police já importa `inventario` deste módulo, e importar de volta
 // fecha o ciclo com a Economy avaliando DEPOIS: `inventario` é uma const, e const acessada antes da
@@ -23,7 +24,7 @@ export function registrarGanchosPolicia(g){ganchosPolicia={...ganchosPolicia,...
 const jogadorPrecisaCurar=()=>ganchosPolicia.precisaCurar();
 
 // Saldo inicial de teste para validar lojas, armas, munição e atividades sem grind.
-export let dinheiro=10000;
+export let dinheiro=CONFIG_ECONOMIA.DINHEIRO_INICIAL;
 // `municao` e `colete` são consumidos pelo sistema de combate (Police.js). Ficam no inventário, e não
 // dentro do Police, porque Economy → Police seria dependência circular: o Police já importa a Economy.
 // `armas` (o que o jogador POSSUI) e `municao` (estoque POR ARMA) seguem a mesma regra: o Weapons.js
@@ -35,7 +36,7 @@ const potMat=new THREE.MeshStandardMaterial({color:0x8a5a3a,roughness:.85});
 const floraMat=new THREE.MeshStandardMaterial({color:0x9fc75c,roughness:.8});
 const floraAcentoMat=new THREE.MeshStandardMaterial({color:0xf3e9b8,roughness:.6,emissive:0xc9b878,emissiveIntensity:.15});
 const caulePlantaMat=new THREE.MeshStandardMaterial({color:0x5a7a3c,roughness:.85});
-const TEMPO_ESTAGIO=22;// segundos por estágio (broto→vegetativa→flora): ritmo de jogo casual, não é guia real de cultivo
+const TEMPO_ESTAGIO=CONFIG_ECONOMIA.TEMPO_ESTAGIO_PLANTA;// segundos por estágio (broto→vegetativa→flora): ritmo de jogo casual, não é guia real de cultivo
 export const plantas=[];
 function distXZ(a,b){return Math.hypot(a.x-b.x,a.z-b.z)}
 function bloco(geo,material,x,y,z,parent){const m=new THREE.Mesh(geo,material);m.position.set(x,y,z);m.castShadow=true;m.receiveShadow=true;parent.add(m);return m}
@@ -90,7 +91,7 @@ export function atualizarPlantas(){
 }
 // ===== MIRA DE PLANTIO: raycaster a partir da câmera (combina com a mira fixa no centro da tela) contra o
 // terreno E as superfícies elevadas (lajes/degraus) — dá pra plantar em qualquer lugar, rua ou telhado.
-const raycasterMira=new THREE.Raycaster(),ALCANCE_MIRA=14;
+const raycasterMira=new THREE.Raycaster(),ALCANCE_MIRA=CONFIG_ECONOMIA.ALCANCE_MIRA_PLANTIO;
 const potGhostMat=new THREE.MeshBasicMaterial({color:0x33ff55,transparent:true,opacity:.5,depthTest:false});
 const potGhost=new THREE.Mesh(new THREE.CylinderGeometry(.2,.16,.26,8),potGhostMat);potGhost.visible=false;potGhost.renderOrder=2;scene.add(potGhost);
 const miraEl=document.getElementById('mira');
