@@ -15,7 +15,6 @@ import*as THREE from'three';
 import{scene}from'./core.js';
 import{obterElevacao}from'./Terrain.js';
 import{obstaculos}from'./Physics.js';
-import{criarMaterialConcreto,criarMaterialVidro,criarMaterialMetal}from'./Materials.js';
 
 export const HOSPITAL_POS={x:-45,z:-60};
 const ALTURA_PISO=0.15;
