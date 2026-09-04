@@ -44,10 +44,12 @@ import{colidePedestre,waypointsVielas}from'./NPCs.js';
 import{vestirPolicial,despirPolicial,atualizarCorpoPolicial}from'./PersonagemPolicial.js';
 import{ALT_TORSO,ALT_OLHO,ALT_CANO,atualizarCombate,espalhamentoDoTiro,tempoDeReacao,
   distribuirPapeis,destinoDoPapel,procurarCobertura,PAPEL,velJogador,LEAD_FATOR,LEAD_RUIDO}from'./Combate.js';
+import{obterPontoNascimento}from'./Hospital.js';
 import{POLOS}from'./Poles.js';
 import{plantas,confiscarPlanta,aplicarMulta,obterDinheiro,inventario,atualizarStatusEconomia,isInventarioAberto,registrarGanchosPolicia}from'./Economy.js';
 import{dispararBala,atualizarBalas,limparBalas,VELOCIDADE_BALA}from'./Bullets.js';
 import{aplicarDano,renderizarVidaJogador,criarBarraMundo}from'./HealthBar.js';
+import{definirColeteVisivel}from'./Player.js';
 import{droneState,miraState}from'./Camera.js';
 import{crimeAtivo,alertarDisparoProximo,alertarColisaoPolicial,alertarEntregaIlegal,definirArmaVisivel}from'./CrimeTriggers.js';
 import{pontoDeEntregaAtual}from'./DeliveryPoints.js';
@@ -512,14 +514,16 @@ function renderJogador(){
   // rendição deixaria a placa no corpo depois do respawn sem o jogador ter pagado por ela.
   // A carga vai junto: ser rendido apreende os pacotes. Deixar a mochila cheia depois da prisão
   // faria o flagrante recomeçar no mesmo instante do respawn.
-  armaduraJogador=0;inventario.colete=0;inventario.pacote=0;atualizarStatusEconomia();
+  armaduraJogador=0;inventario.colete=0;inventario.pacote=0;definirColeteVisivel(false);atualizarStatusEconomia();
   mostrarAviso('Você foi rendido pela polícia — plantação perdida e multa aplicada.',3400);
   if(policia.alvoPlanta&&!policia.alvoPlanta.colhida)confiscarPlanta(policia.alvoPlanta);
   // A penalidade é proporcional ao saldo atual: morrer custa 25%, mas não apaga quase todo o dinheiro.
   aplicarMulta(Math.round(obterDinheiro()*PENALIDADE_MORTE));
   setTimeout(()=>{
-    player.position.set(SPAWN_X,obterElevacao(SPAWN_X,SPAWN_Z),SPAWN_Z);
+    const pontoHospital=obterPontoNascimento();
+    player.position.set(pontoHospital.x,pontoHospital.y,pontoHospital.z);
     saudeJogador=JOGADOR_HP_MAX;jogadorRendido=false;atualizarHudSaude();
+    mostrarAviso('Você acordou no hospital — multa aplicada e itens apreendidos.',2800);
   },1400);
 }
 // O colete comprado na loja de armas entra em uso sozinho quando o anterior acaba. É verificado aqui, e
@@ -527,6 +531,7 @@ function renderJogador(){
 function conferirColete(){
   if(armaduraJogador<=0&&inventario.colete>0){
     inventario.colete--;armaduraJogador=JOGADOR_ARMADURA_MAX;
+    definirColeteVisivel(true);
     tocarSomEquiparColete();
     atualizarStatusEconomia();atualizarHudSaude();
     mostrarAviso('Colete equipado — a armadura absorve parte do dano.',2200);
@@ -538,6 +543,7 @@ function conferirColete(){
 function equiparColeteComprado(){
   if(armaduraJogador>0)return false;
   armaduraJogador=JOGADOR_ARMADURA_MAX;
+  definirColeteVisivel(true);
   tocarSomEquiparColete();atualizarStatusEconomia();atualizarHudSaude();
   mostrarAviso('Colete equipado — a armadura absorve parte do dano.',2200);
   return true;
@@ -1582,7 +1588,7 @@ export function aplicarEstadoPoliciaDoSave(s){
     armaduraJogador=Number.isFinite(arm)?Math.min(JOGADOR_ARMADURA_MAX,Math.max(0,Math.floor(arm))):0;
     // Migra saves antigos que acumulavam coletes: se já há armadura equipada, não existe uma segunda
     // unidade escondida no inventário. O jogo trabalha com no máximo um colete total.
-    if(armaduraJogador>0)inventario.colete=0;
+    if(armaduraJogador>0){inventario.colete=0;definirColeteVisivel(true)}else{definirColeteVisivel(false)}
     vigiadoAte=performance.now()/1000+restante;
   }catch(e){policia.procurado=0;vigiadoAte=0}
 }
