@@ -29,6 +29,27 @@ const MORROS=[
   {x:  0,z:-24,a:12.5,s:27},// cume principal
   {x:-24,z:-40,a: 6.0,s:17},// esporão noroeste
   {x: 20,z:-10,a: 5.0,s:15},// esporão sudeste
+  // ===== MORRO DO SUL, PEDIDO EM (31.3, 71.7) =====
+  // Ali o chão estava a -1,97 m: a parte baixa e arenosa do mapa, encostando no piso de -2,5 do
+  // `clamp`. Era uma planície vazia — nenhum objeto, nenhum colisor, casa mais próxima a 73 m e o
+  // receptador a 46 m —, e foi por isso que deu pra levantar 12 metros de terra aqui sem enterrar
+  // nem lançar nada: tudo no mapa se assenta chamando `obterElevacao`, então quem estava por perto
+  // simplesmente subiu junto com o chão (o receptador ganhou 81 cm, a casa mais próxima 1 cm).
+  //
+  // A AMPLITUDE DO CUME NÃO É 10 — é 10,864, e a diferença não é arredondamento. A altura final passa pelo
+  // ruído dos senos e pelo terraceamento (`PLATO_FORCA`), que somam e subtraem por cima da gaussiana;
+  // pedir amplitude 10 daria outra coisa no ponto. Este número saiu de bissecção contra a
+  // `obterElevacao` COMPLETA até a leitura bater 10,000 m em (31.3, 71.7), que foi o pedido.
+  //
+  // TRÊS GAUSSIANAS, E NÃO UMA — pelo mesmo motivo que está escrito no alto deste arquivo. Levantei
+  // primeiro com uma só, fotografei, e saiu exatamente o que o comentário lá em cima avisa: uma
+  // BOLHA DE AREIA, simétrica e sem cara de morro. Os dois esporões (deslocados, de tamanhos e
+  // distâncias diferentes) dão cume torto e encostas desiguais: a face norte desce mansa
+  // (10 → 8,5 → 6,2 → 4,4 m) e a sul cai rápido (10 → 9,4 → 5,3 → 2,2 m), com o ombro puxado pra
+  // sudeste. Inclinação máxima 20,2°, ainda de subir a pé.
+  {x:31.3,z:71.7,a:10.864,s:19},// cume — é aqui que a leitura tem que dar 10,000 m
+  {x:  46,z:  83,a: 4.2,s:10},// esporão sudeste, o ombro comprido
+  {x:  19,z:  87,a: 2.8,s: 8},// contraforte sudoeste, quebra a simetria da encosta
 ];
 const PLATO_PASSO=2.6,PLATO_FORCA=.7;
 export function obterElevacao(x,z){
