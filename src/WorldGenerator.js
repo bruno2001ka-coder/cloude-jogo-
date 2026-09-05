@@ -60,6 +60,12 @@ const materialArea=new THREE.MeshStandardMaterial({color:0x9a9890,roughness:.92,
 const platoArea=bloco(new THREE.BoxGeometry(AREA_NIVELADA.larg,.22,AREA_NIVELADA.prof),materialArea,
   AREA_NIVELADA.x,cotaArea-.11,AREA_NIVELADA.z);
 superficiesAndaveis.push(platoArea);
+// Acabamento perimetral baixo: deixa a área nivelada visível contra a terra sem virar uma parede.
+for(const[x,z,w,d]of[[AREA_NIVELADA.x,AREA_NIVELADA.z-AREA_NIVELADA.prof/2,AREA_NIVELADA.larg,.12],
+                      [AREA_NIVELADA.x,AREA_NIVELADA.z+AREA_NIVELADA.prof/2,AREA_NIVELADA.larg,.12],
+                      [AREA_NIVELADA.x-AREA_NIVELADA.larg/2,AREA_NIVELADA.z,.12,AREA_NIVELADA.prof],
+                      [AREA_NIVELADA.x+AREA_NIVELADA.larg/2,AREA_NIVELADA.z,.12,AREA_NIVELADA.prof]])
+  bloco(new THREE.BoxGeometry(w,.08,d),materialArea,x,cotaArea+.04,z);
 
 function mediaBorda(tipo){
   const borda=amostrasArea.filter(a=>tipo==='norte'?a.z<AREA_NIVELADA.z-AREA_NIVELADA.prof/2+.001:
@@ -75,6 +81,7 @@ if(desnivel>.22){
   const degraus=Math.max(2,Math.ceil(desnivel/.18)),espelho=desnivel/degraus;
   const comprimento=bordaBaixa==='norte'||bordaBaixa==='sul'?AREA_NIVELADA.larg:AREA_NIVELADA.prof;
   const pisoDegrau=Math.min(.7,4/degraus),base=cotaBaixa-.08;
+  const materialEscada=new THREE.MeshStandardMaterial({color:0x6f6b65,roughness:.95,metalness:0});
   for(let i=0;i<degraus;i++){
     const topo=cotaBaixa+espelho*(i+1),altura=Math.max(.08,topo-base);
     const recuo=(i+.5)*pisoDegrau;
@@ -86,7 +93,7 @@ if(desnivel>.22){
     const geo=bordaBaixa==='norte'||bordaBaixa==='sul'
       ?new THREE.BoxGeometry(comprimento,altura,pisoDegrau)
       :new THREE.BoxGeometry(pisoDegrau,altura,comprimento);
-    const degrau=bloco(geo,materialArea,x,base+altura/2,z);
+    const degrau=bloco(geo,materialEscada,x,base+altura/2,z);
     superficiesAndaveis.push(degrau);
   }
 }
