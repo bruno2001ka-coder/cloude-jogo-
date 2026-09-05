@@ -21,10 +21,10 @@ hospital.position.set(CENTRO.x,cotaPiso,CENTRO.z);
 scene.add(hospital);
 
 const paredeMat=matReboco(0xe5e8e5),fundacaoMat=matConcreto(),telhadoMat=matTelha(0x6d7379);
-const vidroMat=new THREE.MeshPhysicalMaterial({color:0x8fd4e8,transparent:true,opacity:.38,roughness:.12,metalness:.08,transmission:.15,side:THREE.DoubleSide});
+const vidroMat=new THREE.MeshStandardMaterial({color:0x6baebe,transparent:true,opacity:.24,roughness:.28,metalness:.12,side:THREE.DoubleSide,depthWrite:false});
 const metalMat=new THREE.MeshStandardMaterial({color:0x9da7ad,roughness:.34,metalness:.72});
 const azulMat=new THREE.MeshStandardMaterial({color:0x2a78a2,roughness:.42,metalness:.18});
-const brancoMat=new THREE.MeshStandardMaterial({color:0xf5f7f5,roughness:.7});
+const brancoMat=new THREE.MeshStandardMaterial({color:0xcdd4d4,roughness:.82});
 const vermelhoMat=new THREE.MeshStandardMaterial({color:0xd83232,roughness:.48,emissive:0x360000,emissiveIntensity:.18});
 const pisoMat=new THREE.MeshStandardMaterial({color:0xd4d8d8,roughness:.86});
 
@@ -97,11 +97,23 @@ bloco(new THREE.BoxGeometry(2.35,.95,.65),matMadeira(0x8b6549),-1.45,.58,0,hospi
 bloco(new THREE.BoxGeometry(1.65,.06,.55),brancoMat,-1.45,1.08,0);
 bloco(new THREE.BoxGeometry(1.65,.16,.68),metalMat,1.35,.92,-1.65,hospital,'maca-hospital');
 bloco(new THREE.BoxGeometry(1.52,.16,.62),brancoMat,1.35,1.08,-1.65);
+for(const z of[-1.9,-1.4])bloco(new THREE.CylinderGeometry(.045,.045,.76,8),metalMat,1.35,.48,z);
+// Desfibrilador móvel: carrinho, gabinete, tela e pás apoiados no conjunto, sem peças suspensas.
+const telaMat=new THREE.MeshStandardMaterial({color:0x16333b,roughness:.3,emissive:0x08262d,emissiveIntensity:.28});
+bloco(new THREE.BoxGeometry(.72,.08,.5),metalMat,2.05,.08,-.15,hospital,'desfibrilador-carrinho');
+for(const z of[-.34,.04])bloco(new THREE.CylinderGeometry(.035,.035,.72,8),metalMat,2.05,.43,z);
+bloco(new THREE.BoxGeometry(.55,.75,.28),brancoMat,2.05,1.02,-.15,hospital,'desfibrilador');
+bloco(new THREE.BoxGeometry(.46,.28,.03),telaMat,2.05,1.27,-.30);
+for(const z of[-.22,-.08])bloco(new THREE.CylinderGeometry(.035,.035,.42,8),vermelhoMat,2.05,1.53,z);
+// Monitor cardíaco fixado na parede, com base e cabo visual descendo até o apoio da maca.
+bloco(new THREE.BoxGeometry(.95,.85,.12),metalMat,.35,2.0,-meiaL+.08,hospital,'monitor-cardiaco');
+bloco(new THREE.BoxGeometry(.72,.48,.03),telaMat,.35,2.08,-meiaL+.15);
+const linhaMonitor=bloco(new THREE.CylinderGeometry(.018,.018,.8,6),vermelhoMat,.35,1.42,-meiaL+.12).mesh;linhaMonitor.rotation.z=.12;
 bloco(new THREE.BoxGeometry(.75,1.7,.55),matMadeira(0xb2b7b5),2.25,.85,1.55,hospital,'armario-hospital');
 bloco(new THREE.BoxGeometry(1.55,.18,.48),matMadeira(0x68747a),-.2,.48,1.55,hospital,'banco-hospital');
 
-const luzInterior=new THREE.PointLight(0xe9f7ff,1.8,9);luzInterior.position.set(0,2.7,0);hospital.add(luzInterior);
-const luzEntrada=new THREE.PointLight(0x66d8ff,1.6,7);luzEntrada.position.set(meiaP+.5,2.8,0);hospital.add(luzEntrada);
+const luzInterior=new THREE.PointLight(0xe9f7ff,.42,8);luzInterior.position.set(0,2.55,0);hospital.add(luzInterior);
+const luzEntrada=new THREE.PointLight(0x66d8ff,.32,6);luzEntrada.position.set(meiaP+.5,2.55,0);hospital.add(luzEntrada);
 function spriteTexto(texto,cor,x,y,z,escalaX){
   const cv=document.createElement('canvas');cv.width=512;cv.height=128;const ctx=cv.getContext('2d');ctx.font='bold 58px Arial';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle=cor;ctx.fillText(texto,256,64);
   const tx=new THREE.CanvasTexture(cv);tx.colorSpace=THREE.SRGBColorSpace;const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:tx,transparent:true,depthWrite:false}));sp.position.set(x,y,z);sp.scale.set(escalaX,.75,1);hospital.add(sp);
@@ -114,5 +126,5 @@ bloco(new THREE.BoxGeometry(.7,.22,.08),vermelhoMat,meiaP+.15,2.55,0);
 const PONTO_NASCIMENTO={x:CENTRO.x-1.1,y:cotaPiso+.22,z:CENTRO.z+1.35};
 export function obterPontoNascimento(){return{...PONTO_NASCIMENTO}}
 export function atualizarPosicaoJogador(){}
-export function atualizarLuzesEmergencia(){luzEntrada.intensity=1.4+.2*Math.sin(performance.now()*.006)}
+export function atualizarLuzesEmergencia(){luzEntrada.intensity=.28+.04*Math.sin(performance.now()*.006)}
 export const hospitalInfo={x:CENTRO.x,z:CENTRO.z,largura:LARGURA,profundidade:PROFUNDIDADE,cota:cotaPiso};
