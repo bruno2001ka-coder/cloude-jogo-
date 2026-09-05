@@ -15,6 +15,8 @@ import{inputState,keys,initDragLook,atualizarSuavizacaoInput,fatorVelocidadeDese
 import{atualizarSkyline}from'./Skyline.js';
 import{carregar,atualizarSave,instalarSalvamentoAoSair,saveDisponivel,apagarSave}from'./Save.js';
 import{personagemCarregado}from'./Personagem.js';
+import{atualizarEfeitos}from'./CombatFX.js';
+import{atualizarRecuoArmas}from'./Weapons.js';
 
 camera.position.set(0,EYE_HEIGHT,16);
 initDragLook(renderer.domElement);
@@ -128,7 +130,7 @@ function quadro(){
   // atualizarBalas que roda lá dentro, com os alvos deste frame. Depois, ela ficaria um frame parada
   // no cano. Fica no loop principal, e não dentro da máquina de estados da polícia, porque é leitura
   // de input, não IA.
-  atualizarPlantas();atualizarRadar();atualizarNPCs(dt);atualizarAnimais(dt);atualizarRefugios(dt);atualizarClienteLaje(dt,player.position);atualizarTiroContinuo();atualizarPortasHospital(dt);atualizarHospital(dt);atualizarLuzesEmergencia(dt);atualizarPolicia(dt);atualizarDebugNavMesh();
+  atualizarPlantas();atualizarRadar();atualizarNPCs(dt);atualizarAnimais(dt);atualizarRefugios(dt);atualizarClienteLaje(dt,player.position);atualizarTiroContinuo();atualizarEfeitos(dt);atualizarRecuoArmas(dt);atualizarPortasHospital(dt);atualizarHospital(dt);atualizarLuzesEmergencia(dt);atualizarPolicia(dt);atualizarDebugNavMesh();
   if(isInventarioAberto()){atualizarMiraPlantio();renderizarInventario()}
   {const chave=chaveContexto(contextoAtual());if(chave!==getUltimoContextoTipo())renderizarAcoes()}
   pos.textContent=droneState.ativo?`🚁 x ${droneState.x.toFixed(1)} · z ${droneState.z.toFixed(1)} · alt ${droneState.y.toFixed(0)}m`:`x ${player.position.x.toFixed(1)} · z ${player.position.z.toFixed(1)}`;

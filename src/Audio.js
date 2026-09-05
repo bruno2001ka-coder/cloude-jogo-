@@ -1,35 +1,12 @@
-// Efeitos sonoros curtos do jogo. Não usa arquivos externos: evita peso extra e falhas de CDN.
-let contexto=null;
-
-function obterContexto(){
-  try{
-    const AudioContext=globalThis.AudioContext||globalThis.webkitAudioContext;
-    if(!AudioContext)return null;
-    contexto??=new AudioContext();
-    if(contexto.state==='suspended')contexto.resume().catch(()=>{});
-    return contexto;
-  }catch(e){
-    // Áudio é opcional: nenhuma falha sonora pode interromper o gameplay.
-    return null;
-  }
-}
-
-function tom(ctx,quando,duracao,frequencia,volume,tipo='square'){
-  const oscilador=ctx.createOscillator();
-  const ganho=ctx.createGain();
-  oscilador.type=tipo;oscilador.frequency.setValueAtTime(frequencia,quando);
-  ganho.gain.setValueAtTime(.0001,quando);
-  ganho.gain.exponentialRampToValueAtTime(volume,quando+.006);
-  ganho.gain.exponentialRampToValueAtTime(.0001,quando+duracao);
-  oscilador.connect(ganho);ganho.connect(ctx.destination);
-  oscilador.start(quando);oscilador.stop(quando+duracao+.02);
-}
-
-export function tocarSomEquiparColete(){
-  const ctx=obterContexto();
-  if(!ctx)return;
-  const agora=ctx.currentTime;
-  // Dois cliques curtos simulam a fivela e o encaixe da placa, sem ser um som agressivo.
-  tom(ctx,agora,.075,155,.045,'square');
-  tom(ctx,agora+.085,.11,235,.035,'triangle');
-}
+// ===== SOUND ENGINE NATIVO =====
+// Sons procedurais: zero downloads, baixa latência e degradação silenciosa se o browser bloquear áudio.
+let contexto=null,ruidoBuffer=null;
+function obterContexto(){try{const AudioContext=globalThis.AudioContext||globalThis.webkitAudioContext;if(!AudioContext)return null;contexto??=new AudioContext();if(contexto.state==='suspended')contexto.resume().catch(()=>{});return contexto}catch(e){return null}}
+export function desbloquearAudio(){const ctx=obterContexto();if(ctx?.state==='suspended')ctx.resume().catch(()=>{});return ctx}
+if(typeof window!=='undefined'){const acordar=()=>desbloquearAudio();window.addEventListener('pointerdown',acordar,{once:false,passive:true});window.addEventListener('touchstart',acordar,{once:false,passive:true})}
+function ruido(ctx){if(ruidoBuffer)return ruidoBuffer;const n=Math.floor(ctx.sampleRate*.32),b=ctx.createBuffer(1,n,ctx.sampleRate),d=b.getChannelData(0);for(let i=0;i<n;i++)d[i]=Math.random()*2-1;return ruidoBuffer=b}
+function ganho(ctx,quando,valor,queda){const g=ctx.createGain();g.gain.setValueAtTime(.0001,quando);g.gain.exponentialRampToValueAtTime(valor,quando+.004);g.gain.exponentialRampToValueAtTime(.0001,quando+queda);g.connect(ctx.destination);return g}
+function tom(ctx,t,d,f,vol,tipo='sine',fim=f){const o=ctx.createOscillator(),g=ganho(ctx,t,vol,d);o.type=tipo;o.frequency.setValueAtTime(f,t);o.frequency.exponentialRampToValueAtTime(Math.max(20,fim),t+Math.min(.1,d));o.connect(g);o.start(t);o.stop(t+d+.02)}
+export function tocarSomEquiparColete(){const ctx=obterContexto();if(!ctx)return;const t=ctx.currentTime;tom(ctx,t,.075,155,.045,'square');tom(ctx,t+.085,.11,235,.035,'triangle')}
+export function tocarSomTiro(){const ctx=obterContexto();if(!ctx)return;const t=ctx.currentTime;tom(ctx,t,.12,150,.16,'sine',30);const src=ctx.createBufferSource(),f=ctx.createBiquadFilter();f.type='bandpass';f.frequency.setValueAtTime(1800,t);f.Q.setValueAtTime(1.4,t);src.buffer=ruido(ctx);const g=ganho(ctx,t,.11,.11);src.connect(f);f.connect(g);src.start(t);src.stop(t+.12);const eco=ctx.createDelay(.18);eco.delayTime.value=.075;const eg=ctx.createGain();eg.gain.value=.12;g.connect(eco);eco.connect(eg);eg.connect(ctx.destination)}
+export function tocarSomImpacto(alvo='parede'){const ctx=obterContexto();if(!ctx)return;const t=ctx.currentTime;if(alvo==='inimigo'){tom(ctx,t,.09,95,.08,'triangle',45);return}const src=ctx.createBufferSource(),f=ctx.createBiquadFilter();f.type='highpass';f.frequency.value=900;src.buffer=ruido(ctx);const g=ganho(ctx,t,.07,.075);src.connect(f);f.connect(g);src.start(t);src.stop(t+.08)}

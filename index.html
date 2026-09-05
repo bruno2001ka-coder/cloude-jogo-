@@ -162,6 +162,7 @@ body.debug #debugBtn{display:block}
    deitada; sem isto, um dedo que encosta na borda dela não chega no botão que está atrás. */
 #hint{pointer-events:none}
  .startSteps{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;max-width:460px;margin:-8px 0 22px;color:#d4e3ca;font-size:11px;letter-spacing:.02em}.startSteps span{display:flex;align-items:center;gap:6px;padding:7px 10px;border:1px solid rgba(180,217,156,.28);border-radius:999px;background:rgba(9,18,10,.24)}.startSteps b{display:grid;place-items:center;width:19px;height:19px;border-radius:50%;background:#e7c568;color:#1b2417;font-size:10px}
+ #fireSecondary{display:none;align-items:center;justify-content:center;position:fixed;z-index:8;left:18px;top:142px;width:54px;height:54px;border-radius:50%;border:2px solid #ff9b78;background:rgba(160,48,28,.86);color:#fff2ea;font-size:18px;box-shadow:0 6px 18px rgba(0,0,0,.35);touch-action:none;user-select:none}#fireSecondary:active{transform:scale(.92)}
 </style>
 </head>
 <body>
@@ -174,6 +175,7 @@ body.debug #debugBtn{display:block}
 <button id="debugBtn" aria-label="Alternar caixas de colisão">DEBUG</button>
 <canvas id="radar" aria-label="Radar"></canvas>
 <button id="droneBtn" aria-label="Modo drone">🚁</button>
+<button id="fireSecondary" aria-label="Atirar com gatilho esquerdo">🔫</button>
 <button id="destravarBtn" aria-label="Destravar personagem">DESTRAVAR</button>
 <div id="hint"><span id="hintPC">WASD andar · Shift correr · Espaço pular · Mouse olhar · Botão esq. atirar · Botão dir. mirar · E colher/porta · Q inventário · Tab/X ou rodinha trocar arma · 1-4 arma · F rajada</span><span id="hintTouch">Joystick esquerdo andar · empurre até o fim pra CORRER · arraste o lado direito para mirar · segure 🔫 para atirar · toque na arma pra trocar</span><br><span style="opacity:.8">🔵 sementes · 🟠 armas · 🟡 fazenda · 🔴 receptador · 🟢 sua muda · 🟥 refúgio (entre na casa)</span></div>
 <div id="alertaPolicia">🚁 ALERTA POLICIAL</div>

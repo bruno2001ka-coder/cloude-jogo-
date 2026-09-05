@@ -38,7 +38,7 @@ import{obterElevacao}from'./Terrain.js';
 import{primeiroImpactoNoSegmento,intersectarSegmentoCaixa,buscarPosicaoLivre}from'./Physics.js';
 import{encontrarCaminho,visaoHorizontalLivre,pontoNavegavel}from'./NavMesh.js';
 import{player,zonasDeAcertoJogador,PLAYER_HEIGHT,encararDirecao,definirAnimacaoTiro}from'./Player.js';
-import{ORDEM_ARMAS,armaEquipada,idArmaEquipada,equiparArma,obterBocaDaArma,direcaoComDispersao,definirArmaEmpunhada}from'./Weapons.js';
+import{ORDEM_ARMAS,armaEquipada,idArmaEquipada,equiparArma,obterBocaDaArma,direcaoComDispersao,definirArmaEmpunhada,aplicarRecuoArma}from'./Weapons.js';
 import{estaEscondido,refugioEmQueEsta,refugios}from'./WorldGenerator.js';
 import{colidePedestre,waypointsVielas}from'./NPCs.js';
 import{vestirPolicial,despirPolicial,atualizarCorpoPolicial}from'./PersonagemPolicial.js';
@@ -53,7 +53,9 @@ import{droneState,miraState}from'./Camera.js';
 import{crimeAtivo,alertarDisparoProximo,alertarColisaoPolicial,alertarEntregaIlegal,definirArmaVisivel}from'./CrimeTriggers.js';
 import{pontoDeEntregaAtual}from'./DeliveryPoints.js';
 import{hasWeaponEquipped}from'./Weapons.js';
-import{tocarSomEquiparColete}from'./Audio.js';
+import{tocarSomEquiparColete,tocarSomTiro}from'./Audio.js';
+import{efeitoDisparo}from'./CombatFX.js';
+import{adicionarTremorCamera}from'./Camera.js';
 import{obterPontoNascimento,registrarCuraHospital}from'./Hospital.js';
 
 
@@ -419,7 +421,7 @@ let proximoTiroJogador=0;
 const alertaEl=document.getElementById('alertaPolicia'),
   atencaoEl=document.getElementById('atencaoPolicia'),
   refugioEl=document.getElementById('refugioIndicador'),miraCombateEl=document.getElementById('miraCombate'),
-  fireBtn=document.getElementById('fireBtn'),danoFlash=document.getElementById('danoFlash'),
+  fireBtn=document.getElementById('fireBtn'),fireSecondary=document.getElementById('fireSecondary'),danoFlash=document.getElementById('danoFlash'),
   avisoPolicia=document.getElementById('avisoPolicia'),municaoEl=document.getElementById('municaoHud'),
   armaBtn=document.getElementById('armaBtn'),armaIconeEl=document.getElementById('armaIcone'),
   armaMunicaoEl=document.getElementById('armaMunicao'),miraBtn=document.getElementById('miraBtn'),aimBase=document.getElementById('aimBase');
@@ -1031,6 +1033,7 @@ export function atirar(){
   encararDirecao(_dirCamera.x,_dirCamera.z);
   const boca=obterBocaDaArma();
   _dirTiro.copy(visado).sub(boca).normalize();
+  tocarSomTiro();efeitoDisparo(boca,visado);aplicarRecuoArma();adicionarTremorCamera(.08,.018);
   // Mirando, o cone fecha pra 30%: é a recompensa concreta de parar pra mirar em vez de sair
   // atirando andando. A escopeta continua espalhando (30% de 5° ainda é 1,5°), só que muito mais
   // fechada — o que a torna utilizável a média distância sem deixar de ser escopeta.
@@ -1740,6 +1743,7 @@ export function atualizarPolicia(dt){
   // existe arma no jogo. Fora do combate ele fica esmaecido, indicando que não há em quem atirar.
   fireBtn.style.display=(emAlerta||temArma)?'flex':'none';
   fireBtn.style.opacity=emCombate&&temArma?'1':'.45';
+  if(fireSecondary)fireSecondary.style.display=(podeMirar&&(emAlerta||temArma)&&matchMedia('(pointer: coarse)').matches)?'flex':'none';
   // No touch, o joystick direito substitui o botão de tiro e o alternador de mira: o próprio gesto
   // aponta e mantém o gatilho pressionado, como nos jogos twin-stick.
   if(aimBase)aimBase.style.display=(podeMirar&&(emAlerta||temArma)&&matchMedia('(pointer: coarse)').matches)?'block':'none';
@@ -1766,10 +1770,11 @@ export function atualizarPolicia(dt){
 // obrigatório — sem ele, o dedo deslizando pra fora do botão faz o pointerup cair noutro elemento e o
 // gatilho fica preso ligado, atirando até acabar a munição. Mesmo tratamento que o joystick já usa.
 fireBtn?.addEventListener('pointerdown',e=>{
+  if(e.pointerType!=='mouse')return;
   e.preventDefault();fireBtn.setPointerCapture?.(e.pointerId);
   definirGatilho(true);atirar();// tiro imediato: o primeiro disparo não pode esperar o próximo frame
 });
-for(const ev of['pointerup','pointercancel','pointerleave','lostpointercapture'])fireBtn?.addEventListener(ev,()=>definirGatilho(false));
+for(const ev of['pointerup','pointercancel','lostpointercapture'])fireBtn?.addEventListener(ev,()=>definirGatilho(false));
 addEventListener('blur',()=>definirGatilho(false));// alt-tab com o dedo/tecla presos
 armaBtn?.addEventListener('pointerdown',e=>{e.preventDefault();trocarArma()});
 // Mira no celular é ALTERNADOR, não "segurar": o polegar direito já está ocupado com o gatilho, e

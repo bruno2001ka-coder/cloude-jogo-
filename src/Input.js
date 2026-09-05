@@ -6,6 +6,7 @@ import{alternarDebug}from'./UI.js';
 import{trocarArma,definirGatilho,definirMira}from'./Police.js';
 import{acaoPrimaria,alternarInventario}from'./Economy.js';
 import{ORDEM_ARMAS}from'./Weapons.js';
+import{desbloquearAudio}from'./Audio.js';
 
 // ===== SENSIBILIDADE (mexa AQUI pra deixar a câmera mais rápida/lenta) =====
 // Positivo = comportamento NORMAL (não invertido). rad por pixel de movimento do mouse.
@@ -51,6 +52,19 @@ document.addEventListener('visibilitychange',()=>{if(document.hidden)clearKeys()
 
 const jumpBtn=document.getElementById('jumpBtn');
 jumpBtn.addEventListener('pointerdown',e=>{e.preventDefault();pularOuSubir()});
+
+// ===== GATILHO TOUCH ARRASTÁVEL =====
+// O mesmo dedo que começa o disparo também pode arrastar a câmera. O pointerId é o equivalente
+// seguro ao touch.identifier: o joystick esquerdo e o gatilho direito nunca compartilham estado.
+const fireBtn=document.getElementById('fireBtn'),fireSecondary=document.getElementById('fireSecondary');
+let fireId=null,fireLastX=0,fireLastY=0;
+function moverMiraNoDisparo(e){if(e.pointerId!==fireId)return;const dx=e.clientX-fireLastX,dy=e.clientY-fireLastY;fireLastX=e.clientX;fireLastY=e.clientY;inputState.targetYaw-=dx*AIM_SENS_X;inputState.targetPitch=limitarPitch(inputState.targetPitch+dy*AIM_SENS_Y)}
+function iniciarDisparoTouch(e){if(e.pointerType==='mouse'||fireId!==null)return;e.preventDefault();desbloquearAudio();fireId=e.pointerId;fireLastX=e.clientX;fireLastY=e.clientY;e.currentTarget.setPointerCapture?.(e.pointerId);definirGatilho(true)}
+function terminarDisparoTouch(e){if(e.pointerId!==fireId)return;e.preventDefault();fireId=null;definirGatilho(false)}
+fireBtn?.addEventListener('pointerdown',iniciarDisparoTouch);fireBtn?.addEventListener('pointermove',moverMiraNoDisparo);
+for(const ev of['pointerup','pointercancel','lostpointercapture'])fireBtn?.addEventListener(ev,terminarDisparoTouch);
+fireSecondary?.addEventListener('pointerdown',e=>{if(e.pointerType==='mouse')return;e.preventDefault();desbloquearAudio();e.currentTarget.setPointerCapture?.(e.pointerId);definirGatilho(true)});
+for(const ev of['pointerup','pointercancel','pointerleave','lostpointercapture'])fireSecondary?.addEventListener(ev,()=>definirGatilho(false));
 
 // ===== CORRER É EMPURRAR O JOYSTICK ATÉ O BATENTE =====
 // Foi um BOTÃO por uma versão, e o Bruno pediu o jeito de jogo de tiro: "pra correr rápido tem que

@@ -120,3 +120,6 @@ export function direcaoComDispersao(dir,grausMax,out){
   const raio=Math.tan(grausMax*Math.PI/180)*Math.sqrt(Math.random()),fi=Math.random()*Math.PI*2;
   return out.copy(dir).addScaledVector(_eA,Math.cos(fi)*raio).addScaledVector(_eB,Math.sin(fi)*raio).normalize();
 }
+
+export function aplicarRecuoArma(){const g=ARMAS[idEquipado].grupo;g.userData.recuo=Math.min(.16,(g.userData.recuo||0)+.075)}
+export function atualizarRecuoArmas(dt){for(const id of ORDEM_ARMAS){const g=ARMAS[id].grupo;const base=g.userData.baseZ??(g.userData.baseZ=g.position.z);g.userData.recuo=Math.max(0,(g.userData.recuo||0)-dt*1.8);g.position.z=base-(g.userData.recuo||0)}}
