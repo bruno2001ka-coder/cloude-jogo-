@@ -50,21 +50,22 @@ export{casasPos,casasCliente,BECOS,refugios,BAR,BIQUEIRA,sumirCaixa,alternarPort
 // de uma casa específica. A cota é calculada antes da geometria para o piso ficar plano mesmo no morro.
 const AREA_NIVELADA={x:65.7,z:-1.8,larg:10,prof:8};
 const amostrasArea=[];
-for(let ix=0;ix<=4;ix++)for(let iz=0;iz<=4;iz++){
-  const x=AREA_NIVELADA.x-AREA_NIVELADA.larg/2+ix*AREA_NIVELADA.larg/4;
-  const z=AREA_NIVELADA.z-AREA_NIVELADA.prof/2+iz*AREA_NIVELADA.prof/4;
+for(let ix=0;ix<=20;ix++)for(let iz=0;iz<=16;iz++){
+  const x=AREA_NIVELADA.x-AREA_NIVELADA.larg/2+ix*AREA_NIVELADA.larg/20;
+  const z=AREA_NIVELADA.z-AREA_NIVELADA.prof/2+iz*AREA_NIVELADA.prof/16;
   amostrasArea.push({x,z,h:obterElevacao(x,z)});
 }
-const cotaArea=Math.max(...amostrasArea.map(a=>a.h))+.04;
-const platoArea=bloco(new THREE.BoxGeometry(AREA_NIVELADA.larg,.16,AREA_NIVELADA.prof),matConcreto(),
-  AREA_NIVELADA.x,cotaArea-.08,AREA_NIVELADA.z);
+const cotaArea=Math.max(...amostrasArea.map(a=>a.h))+.12;
+const materialArea=new THREE.MeshStandardMaterial({color:0x9a9890,roughness:.92,metalness:0});
+const platoArea=bloco(new THREE.BoxGeometry(AREA_NIVELADA.larg,.22,AREA_NIVELADA.prof),materialArea,
+  AREA_NIVELADA.x,cotaArea-.11,AREA_NIVELADA.z);
 superficiesAndaveis.push(platoArea);
 
 function mediaBorda(tipo){
-  const borda=amostrasArea.filter(a=>tipo==='norte'?a.z<AREA_NIVELADA.z-AREA_NIVELADA.prof/2+.01:
-    tipo==='sul'?a.z>AREA_NIVELADA.z+AREA_NIVELADA.prof/2-.01:
-    tipo==='oeste'?a.x<AREA_NIVELADA.x-AREA_NIVELADA.larg/2+.01:
-    a.x>AREA_NIVELADA.x+AREA_NIVELADA.larg/2-.01);
+  const borda=amostrasArea.filter(a=>tipo==='norte'?a.z<AREA_NIVELADA.z-AREA_NIVELADA.prof/2+.001:
+    tipo==='sul'?a.z>AREA_NIVELADA.z+AREA_NIVELADA.prof/2-.001:
+    tipo==='oeste'?a.x<AREA_NIVELADA.x-AREA_NIVELADA.larg/2+.001:
+    a.x>AREA_NIVELADA.x+AREA_NIVELADA.larg/2-.001);
   return borda.reduce((s,a)=>s+a.h,0)/borda.length;
 }
 const bordas=['norte','sul','oeste','leste'];
@@ -85,7 +86,7 @@ if(desnivel>.22){
     const geo=bordaBaixa==='norte'||bordaBaixa==='sul'
       ?new THREE.BoxGeometry(comprimento,altura,pisoDegrau)
       :new THREE.BoxGeometry(pisoDegrau,altura,comprimento);
-    const degrau=bloco(geo,matConcreto(),x,base+altura/2,z);
+    const degrau=bloco(geo,materialArea,x,base+altura/2,z);
     superficiesAndaveis.push(degrau);
   }
 }
