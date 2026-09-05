@@ -35,7 +35,7 @@ export const AJUSTE={
 
 // Nomes das animações dentro do GLB. Ficam aqui em cima porque são o contrato com o arquivo: trocar o
 // modelo é trocar esta tabela, não caçar string no meio da lógica.
-const ANIM={andar:'Walking',correr:'Running',andarAtirando:'Walk_Forward_While_Shooting'};
+const ANIM={andar:'Walking',correr:'Running',andarAtirando:'Walk_Forward_While_Shooting',atirandoParado:'Shooting_Still'};
 const TRANSICAO=.16;// segundos de mistura entre uma animação e outra
 
 // Velocidade (em unidades de mundo por segundo) a partir da qual o passo vira corrida. O jogador anda a
@@ -240,10 +240,10 @@ export function atualizarAnimacaoPersonagem(dt,velocidade,atirando){
   if(aNormalizar)normalizar();
   const parado=velocidade<VEL_PARADO;
   const correndo=velocidade>=VEL_CORRIDA;
-  const alvo=parado?ANIM.andar:(atirando?ANIM.andarAtirando:(correndo?ANIM.correr:ANIM.andar));
+  const alvo=parado?(atirando?ANIM.atirandoParado:ANIM.andar):(atirando?ANIM.andarAtirando:(correndo?ANIM.correr:ANIM.andar));
   trocar(alvo);
   if(atual){
-    if(parado){
+    if(parado&&!atirando){
       // Congela no primeiro quadro em vez de deixar o passo rodando no lugar.
       atual.paused=true;atual.time=0;
     }else{
