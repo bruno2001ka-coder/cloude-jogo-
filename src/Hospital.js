@@ -17,7 +17,9 @@ import{obterElevacao}from'./Terrain.js';
 import{obstaculos}from'./Physics.js';
 
 export const HOSPITAL_POS={x:-45,z:-60};
-const ESCALA_HOSPITAL=.62;
+// O modelo foi criado em escala de referência grande. Em .62 ele ocupava quase uma quadra e
+// destacava-se das casas; .42 mantém a porta e a rampa jogáveis sem transformar o prédio num marco.
+const ESCALA_HOSPITAL=.42;
 const ALTURA_PISO=0.08;
 
 // ===== MATERIAIS CLÍNICOS =====
@@ -37,18 +39,17 @@ const grupoHospital=new THREE.Group();
 // O prédio foi modelado num tamanho de referência maior que as casas do mapa. A escala mantém o
 // interior, as portas e o heliponto proporcionais sem reescrever dezenas de medidas locais.
 grupoHospital.scale.setScalar(ESCALA_HOSPITAL);
-// O terreno tem declive nessa região. Apoiar pelo centro deixava as extremidades flutuando; usar o
-// menor ponto sob a fundação garante que a base encoste no relevo (o lado alto fica parcialmente
-// embutido, nunca suspenso).
-const meioX=LARGURA*ESCALA_HOSPITAL/2,meioZ=PROFUNDIDADE*ESCALA_HOSPITAL/2;
-const terrenoHospital=Math.min(
-  obterElevacao(HOSPITAL_POS.x-meioX,HOSPITAL_POS.z-meioZ),
-  obterElevacao(HOSPITAL_POS.x+meioX,HOSPITAL_POS.z-meioZ),
-  obterElevacao(HOSPITAL_POS.x-meioX,HOSPITAL_POS.z+meioZ),
-  obterElevacao(HOSPITAL_POS.x+meioX,HOSPITAL_POS.z+meioZ),
-  obterElevacao(HOSPITAL_POS.x,HOSPITAL_POS.z)
-);
-grupoHospital.position.set(HOSPITAL_POS.x,terrenoHospital+.34,HOSPITAL_POS.z);
+// O terreno tem declive e ruído em escala menor que o prédio. Medir uma grade sob toda a fundação
+// evita usar apenas os quatro cantos, que podia deixar um trecho da base no ar.
+const meioX=(LARGURA+.6)*ESCALA_HOSPITAL/2,meioZ=(PROFUNDIDADE+.6)*ESCALA_HOSPITAL/2;
+let terrenoHospital=Infinity;
+for(let ix=0;ix<=8;ix++)for(let iz=0;iz<=8;iz++){
+  const x=HOSPITAL_POS.x-meioX+ix*meioX*2/8;
+  const z=HOSPITAL_POS.z-meioZ+iz*meioZ*2/8;
+  terrenoHospital=Math.min(terrenoHospital,obterElevacao(x,z));
+}
+const ALTURA_BASE_LOCAL=.55;
+grupoHospital.position.set(HOSPITAL_POS.x,terrenoHospital+ALTURA_BASE_LOCAL*ESCALA_HOSPITAL,HOSPITAL_POS.z);
 scene.add(grupoHospital);
 
 // ===== FUNDAÇÃO =====
@@ -356,9 +357,10 @@ export const PONTO_NASCIMENTO={
 
 // Referências para colisão
 const boxHospital=new THREE.Box3();
+const ALTURA_TOPO_LOCAL=ALTURA_PAVIMENTO+2.4+0.3;
 boxHospital.setFromCenterAndSize(
-  new THREE.Vector3(HOSPITAL_POS.x,grupoHospital.position.y+ALTURA_PAVIMENTO*ESCALA_HOSPITAL,HOSPITAL_POS.z),
-  new THREE.Vector3(LARGURA*ESCALA_HOSPITAL,ALTURA_PAVIMENTO*2*ESCALA_HOSPITAL,PROFUNDIDADE*ESCALA_HOSPITAL)
+  new THREE.Vector3(HOSPITAL_POS.x,grupoHospital.position.y+(ALTURA_TOPO_LOCAL-ALTURA_BASE_LOCAL)*ESCALA_HOSPITAL/2,HOSPITAL_POS.z),
+  new THREE.Vector3((LARGURA+.6)*ESCALA_HOSPITAL,(ALTURA_TOPO_LOCAL+ALTURA_BASE_LOCAL)*ESCALA_HOSPITAL,(PROFUNDIDADE+.6)*ESCALA_HOSPITAL)
 );
 obstaculos.push(boxHospital);
 
