@@ -17,7 +17,8 @@ import{obterElevacao}from'./Terrain.js';
 import{obstaculos}from'./Physics.js';
 
 export const HOSPITAL_POS={x:-45,z:-60};
-const ALTURA_PISO=0.15;
+const ESCALA_HOSPITAL=.62;
+const ALTURA_PISO=0.08;
 
 // ===== MATERIAIS CLÍNICOS =====
 const matParede=new THREE.MeshStandardMaterial({color:0xf5f5f0,roughness:0.7,metalness:0.0});
@@ -28,13 +29,27 @@ const matVidro=new THREE.MeshStandardMaterial({color:0xa8d8e8,roughness:0.1,meta
 const matAzulHospital=new THREE.MeshStandardMaterial({color:0x4a90b8,roughness:0.6,metalness:0.1});
 const matVerdeCirurgical=new THREE.MeshStandardMaterial({color:0x2d5a3f,roughness:0.5,metalness:0.0});
 
-const grupoHospital=new THREE.Group();
-grupoHospital.position.set(HOSPITAL_POS.x,obterElevacao(HOSPITAL_POS.x,HOSPITAL_POS.z)+ALTURA_PISO,HOSPITAL_POS.z);
-scene.add(grupoHospital);
-
 // ===== DIMENSÕES DO EDIFÍCIO =====
 const LARGURA=18,PROFUNDIDADE=24,ALTURA=5.2;
 const ALTURA_PAVIMENTO=3.2;
+
+const grupoHospital=new THREE.Group();
+// O prédio foi modelado num tamanho de referência maior que as casas do mapa. A escala mantém o
+// interior, as portas e o heliponto proporcionais sem reescrever dezenas de medidas locais.
+grupoHospital.scale.setScalar(ESCALA_HOSPITAL);
+// O terreno tem declive nessa região. Apoiar pelo centro deixava as extremidades flutuando; usar o
+// menor ponto sob a fundação garante que a base encoste no relevo (o lado alto fica parcialmente
+// embutido, nunca suspenso).
+const meioX=LARGURA*ESCALA_HOSPITAL/2,meioZ=PROFUNDIDADE*ESCALA_HOSPITAL/2;
+const terrenoHospital=Math.min(
+  obterElevacao(HOSPITAL_POS.x-meioX,HOSPITAL_POS.z-meioZ),
+  obterElevacao(HOSPITAL_POS.x+meioX,HOSPITAL_POS.z-meioZ),
+  obterElevacao(HOSPITAL_POS.x-meioX,HOSPITAL_POS.z+meioZ),
+  obterElevacao(HOSPITAL_POS.x+meioX,HOSPITAL_POS.z+meioZ),
+  obterElevacao(HOSPITAL_POS.x,HOSPITAL_POS.z)
+);
+grupoHospital.position.set(HOSPITAL_POS.x,terrenoHospital+.34,HOSPITAL_POS.z);
+scene.add(grupoHospital);
 
 // ===== FUNDAÇÃO =====
 const fundacao=new THREE.Mesh(
@@ -334,16 +349,16 @@ criarPlaca('ELEVADOR',-4,2.2,0,Math.PI/2);
 
 // ===== PONTO DE NASCIMENTO (dentro do hospital, na área de emergência) =====
 export const PONTO_NASCIMENTO={
-  x:HOSPITAL_POS.x+2,
-  y:obterElevacao(HOSPITAL_POS.x,HOSPITAL_POS.z)+ALTURA_PISO+0.02,
-  z:HOSPITAL_POS.z-3
+  x:HOSPITAL_POS.x+2*ESCALA_HOSPITAL,
+  y:grupoHospital.position.y+ALTURA_PISO*ESCALA_HOSPITAL+0.02,
+  z:HOSPITAL_POS.z-3*ESCALA_HOSPITAL
 };
 
 // Referências para colisão
 const boxHospital=new THREE.Box3();
 boxHospital.setFromCenterAndSize(
-  new THREE.Vector3(HOSPITAL_POS.x,obterElevacao(HOSPITAL_POS.x,HOSPITAL_POS.z)+ALTURA_PAVIMENTO,HOSPITAL_POS.z),
-  new THREE.Vector3(LARGURA,ALTURA_PAVIMENTO*2,PROFUNDIDADE)
+  new THREE.Vector3(HOSPITAL_POS.x,grupoHospital.position.y+ALTURA_PAVIMENTO*ESCALA_HOSPITAL,HOSPITAL_POS.z),
+  new THREE.Vector3(LARGURA*ESCALA_HOSPITAL,ALTURA_PAVIMENTO*2*ESCALA_HOSPITAL,PROFUNDIDADE*ESCALA_HOSPITAL)
 );
 obstaculos.push(boxHospital);
 
