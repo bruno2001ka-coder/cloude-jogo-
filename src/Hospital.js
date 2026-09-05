@@ -36,7 +36,7 @@ function bloco(geo,material,x,y,z,parent=hospital,collider=null){
 }
 
 // Fundação enterrada e piso plano.
-bloco(new THREE.BoxGeometry(LARGURA+.28,.65,PROFUNDIDADE+.28),fundacaoMat,0,-.325,0,hospital,'fundacao-hospital');
+bloco(new THREE.BoxGeometry(LARGURA+.28,.65,PROFUNDIDADE+.28),fundacaoMat,0,-.325,0);
 const piso=bloco(new THREE.BoxGeometry(LARGURA,.16,PROFUNDIDADE),pisoMat,0,-.08,0).mesh;
 superficiesAndaveis.push(piso);
 
