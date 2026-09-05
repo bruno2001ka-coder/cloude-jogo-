@@ -69,7 +69,7 @@ arms[1].add(maoDireita);
 let atirandoAgora=false,atirandoAte=0;
 export function definirAnimacaoTiro(v){
   atirandoAgora=!!v;
-  if(v)atirandoAte=performance.now()+420;
+  if(v)atirandoAte=performance.now()+1400;
 }
 carregarPersonagem(player,PLAYER_HEIGHT,()=>{
   // A ordem importa: primeiro a arma sai do braço-caixa e vai pro osso da mão, DEPOIS as caixas somem.
