@@ -84,7 +84,8 @@ if(desnivel>.22){
   const materialEscada=new THREE.MeshStandardMaterial({color:0x6f6b65,roughness:.95,metalness:0});
   for(let i=0;i<degraus;i++){
     const topo=cotaBaixa+espelho*(i+1),altura=Math.max(.08,topo-base);
-    const recuo=(i+.5)*pisoDegrau;
+    // O primeiro degrau fica no terreno baixo, e os seguintes avançam em direção ao platô.
+    const recuo=(degraus-i-.5)*pisoDegrau;
     let x=AREA_NIVELADA.x,z=AREA_NIVELADA.z;
     if(bordaBaixa==='norte')z=AREA_NIVELADA.z-AREA_NIVELADA.prof/2-recuo;
     if(bordaBaixa==='sul')z=AREA_NIVELADA.z+AREA_NIVELADA.prof/2+recuo;
