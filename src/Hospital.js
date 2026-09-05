@@ -14,7 +14,7 @@
 import*as THREE from'three';
 import{scene}from'./core.js';
 import{obterElevacao}from'./Terrain.js';
-import{registrarObstaculo,registrarCaixa,marcarSemFusao,marcarObstaculoMovel}from'./Physics.js';
+import{registrarObstaculo,registrarCaixa,marcarSemFusao,marcarObstaculoMovel,superficiesAndaveis}from'./Physics.js';
 
 export const HOSPITAL_POS={x:-45,z:-60};
 // O modelo foi criado em escala de referência grande. Em .62 ele ocupava quase uma quadra e
@@ -40,17 +40,23 @@ const paredesHospital=[];
 // O prédio foi modelado num tamanho de referência maior que as casas do mapa. A escala mantém o
 // interior, as portas e o heliponto proporcionais sem reescrever dezenas de medidas locais.
 grupoHospital.scale.setScalar(ESCALA_HOSPITAL);
-// O terreno tem declive e ruído em escala menor que o prédio. Medir uma grade sob toda a fundação
-// evita usar apenas os quatro cantos, que podia deixar um trecho da base no ar.
+// O terreno tem declive e ruído em escala menor que o prédio. Medimos a fundação inteira e o interior
+// separadamente: a fundação pode ser enterrada, mas o piso precisa ficar acima do ponto mais alto do
+// terreno interno para que nenhuma faixa de terra atravesse o Hospital.
 const meioX=(LARGURA+.6)*ESCALA_HOSPITAL/2,meioZ=(PROFUNDIDADE+.6)*ESCALA_HOSPITAL/2;
-let terrenoHospital=Infinity;
+let terrenoHospital=Infinity,terrenoInterior=-Infinity;
 for(let ix=0;ix<=8;ix++)for(let iz=0;iz<=8;iz++){
   const x=HOSPITAL_POS.x-meioX+ix*meioX*2/8;
   const z=HOSPITAL_POS.z-meioZ+iz*meioZ*2/8;
-  terrenoHospital=Math.min(terrenoHospital,obterElevacao(x,z));
+  const h=obterElevacao(x,z);terrenoHospital=Math.min(terrenoHospital,h);
+  const interiorX=Math.abs(x-HOSPITAL_POS.x)<(LARGURA/2-.5)*ESCALA_HOSPITAL;
+  const interiorZ=Math.abs(z-HOSPITAL_POS.z)<(PROFUNDIDADE/2-.5)*ESCALA_HOSPITAL;
+  if(interiorX&&interiorZ)terrenoInterior=Math.max(terrenoInterior,h);
 }
 const ALTURA_BASE_LOCAL=.55;
-grupoHospital.position.set(HOSPITAL_POS.x,terrenoHospital+ALTURA_BASE_LOCAL*ESCALA_HOSPITAL,HOSPITAL_POS.z);
+const ALTURA_TOPO_PISO_LOCAL=.15;
+const COTA_PISO_HOSPITAL=terrenoInterior+.04;
+grupoHospital.position.set(HOSPITAL_POS.x,COTA_PISO_HOSPITAL-ALTURA_TOPO_PISO_LOCAL*ESCALA_HOSPITAL,HOSPITAL_POS.z);
 scene.add(grupoHospital);
 
 // ===== FUNDAÇÃO =====
@@ -67,6 +73,18 @@ const pisoTerreo=new THREE.Mesh(new THREE.BoxGeometry(LARGURA,0.3,PROFUNDIDADE),
 pisoTerreo.position.y=0;
 pisoTerreo.receiveShadow=true;
 grupoHospital.add(pisoTerreo);
+// O raycast vertical do jogador precisa reconhecer o piso interno, não apenas o terreno natural.
+superficiesAndaveis.push(pisoTerreo);
+const fundoPlatôLocal=(terrenoHospital-grupoHospital.position.y)/ESCALA_HOSPITAL-.08;
+const topoPlatôLocal=-.15;
+const alturaPlatô=Math.max(.25,topoPlatôLocal-fundoPlatôLocal);
+const platoNivelamento=new THREE.Mesh(
+  new THREE.BoxGeometry(LARGURA+.9,alturaPlatô,PROFUNDIDADE+.9),
+  new THREE.MeshStandardMaterial({color:0x777770,roughness:0.9})
+);
+platoNivelamento.position.y=(fundoPlatôLocal+topoPlatôLocal)/2;
+platoNivelamento.receiveShadow=true;
+grupoHospital.add(platoNivelamento);
 
 // ===== PAREDES EXTERNAS =====
 function criarParede(x,y,z,larg,alt,prof,comVidro=false,vidroY=0,vidroH=0){
@@ -244,13 +262,21 @@ for(let x of [-LARGURA/2+1,LARGURA/2-1]){
 }
 
 // ===== RAMPAS DE ACESSO (cadeirante/macas) =====
-const rampaGeo=new THREE.BoxGeometry(4,0.15,6);
+// A rampa liga o terreno natural dianteiro ao topo do piso plano. Assim o Hospital pode estar
+// nivelado sem deixar um degrau na porta.
+const COMP_RAMPA=6,meiaRampa=COMP_RAMPA/2;
+const terrenoFrente=obterElevacao(HOSPITAL_POS.x,HOSPITAL_POS.z-PROFUNDIDADE*ESCALA_HOSPITAL/2-meiaRampa*ESCALA_HOSPITAL);
+const rampaLocalExterna=(terrenoFrente-grupoHospital.position.y)/ESCALA_HOSPITAL;
+const rampaLocalInterna=ALTURA_TOPO_PISO_LOCAL;
+const rampaInclinacao=-Math.atan((rampaLocalInterna-rampaLocalExterna)/COMP_RAMPA);
+const rampaGeo=new THREE.BoxGeometry(4,0.15,COMP_RAMPA);
 const rampaMat=new THREE.MeshStandardMaterial({color:0x888880,roughness:0.7});
 const rampa=new THREE.Mesh(rampaGeo,rampaMat);
-rampa.position.set(0,0.075,-PROFUNDIDADE/2-2);
-rampa.rotation.x=Math.atan(0.15/3);
+rampa.position.set(0,(rampaLocalExterna+rampaLocalInterna)*ESCALA_HOSPITAL/2,-PROFUNDIDADE/2-meiaRampa);
+rampa.rotation.x=rampaInclinacao;
 rampa.receiveShadow=true;
 grupoHospital.add(rampa);
+superficiesAndaveis.push(rampa);
 
 // Corrimão da rampa
 for(let lado of[-1,1]){
@@ -376,7 +402,7 @@ criarPlaca('ELEVADOR',-4,2.2,0,Math.PI/2);
 // ===== PONTO DE NASCIMENTO (dentro do hospital, na área de emergência) =====
 export const PONTO_NASCIMENTO={
   x:HOSPITAL_POS.x+2*ESCALA_HOSPITAL,
-  y:grupoHospital.position.y+ALTURA_PISO*ESCALA_HOSPITAL+0.02,
+  y:grupoHospital.position.y+ALTURA_TOPO_PISO_LOCAL*ESCALA_HOSPITAL+0.02,
   z:HOSPITAL_POS.z-3*ESCALA_HOSPITAL
 };
 
