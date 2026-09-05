@@ -1023,8 +1023,6 @@ export function atirar(){
   }
   avisouSemMunicao=false;
   proximoTiroJogador=agora+arma.cooldown;
-  // O disparo confirmado também aciona a pose: no touch o pointerup pode ocorrer antes do próximo frame.
-  definirAnimacaoTiro(true);
   alertarDisparoProximo(player.position.x,player.position.z);
   inventario.municao[arma.id]-=arma.gasto;atualizarHudMunicao();
   // Resolve o alvo primeiro: além do ponto visado, isso deixa _dirCamera preenchido com a direção da

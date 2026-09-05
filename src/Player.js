@@ -66,11 +66,8 @@ arms[1].add(maoDireita);
 
 // ===== TROCA PELO MODELO 3D =====
 // Assíncrono de propósito (ver Personagem.js): o jogo roda com o boneco de caixas até o GLB chegar.
-let atirandoAgora=false,atirandoAte=0;
-export function definirAnimacaoTiro(v){
-  atirandoAgora=!!v;
-  if(v)atirandoAte=performance.now()+1400;
-}
+let atirandoAgora=false;
+export function definirAnimacaoTiro(v){atirandoAgora=!!v}
 carregarPersonagem(player,PLAYER_HEIGHT,()=>{
   // A ordem importa: primeiro a arma sai do braço-caixa e vai pro osso da mão, DEPOIS as caixas somem.
   // Ao contrário, esconder o braço levaria a arma junto (ela é filha dele).
@@ -292,7 +289,7 @@ export function atualizarMovimentoJogador(dt,keys,joyX,joyY,yaw,fatorVelocidade=
   }
   if(personagemCarregado()){
     // Com o modelo 3D quem move braços e pernas é o esqueleto; o balanço manual abaixo fica de fora.
-    atualizarAnimacaoPersonagem(dt,speed,atirandoAgora||performance.now()<atirandoAte);
+    atualizarAnimacaoPersonagem(dt,speed,atirandoAgora);
   }else if(speed>.08){
     walk+=dt*(6+speed*1.3);
     const swing=Math.sin(walk)*Math.min(.55,speed*.24);
