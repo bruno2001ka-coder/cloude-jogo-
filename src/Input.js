@@ -1,6 +1,6 @@
 // Teclado, joystick virtual e olhar por arraste/Pointer Lock. PULAR (tecla ou botão) sobe o drone quando ele está ativo.
 import*as THREE from'three';
-import{pularJogador}from'./Player.js';
+import{pularJogador,alternarAgachado}from'./Player.js';
 import{droneState,subirDrone,miraState}from'./Camera.js';
 import{alternarDebug}from'./UI.js';
 import{trocarArma,definirGatilho,definirMira}from'./Police.js';
@@ -27,6 +27,7 @@ function pularOuSubir(){if(droneState.ativo){subirDrone()}else{pularJogador()}}
 addEventListener('keydown',e=>{
   if(e.repeat&&(e.code==='KeyE'||e.code==='KeyQ'||e.code==='KeyX'||e.code==='Tab'))return;// autorrepeat abriria/fecharia o inventário em loop
   if(e.code==='Space'){pularOuSubir();e.preventDefault();return}
+  if(e.code==='KeyC'&&!e.repeat){alternarAgachado();e.preventDefault();return}
   if(e.code==='KeyV'){alternarDebug();return}
   // E = ação de mundo (colher planta, abrir/fechar porta). Não toca em mira nem gatilho: dá pra agir mirando.
   if(e.code==='KeyE'){acaoPrimaria();e.preventDefault();return}

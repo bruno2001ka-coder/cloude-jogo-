@@ -246,14 +246,24 @@ export function vigiarTravamento(dt,querendoAndar){
 // encolher o personagem transformava a mesma caminhada numa corrida desproporcional.
 const VELOCIDADE=PLAYER_HEIGHT*4.6;
 let walk=0;const velocity=new THREE.Vector3(),desired=new THREE.Vector3();
+let agachado=false;
 const _frente=new THREE.Vector3(),_lado=new THREE.Vector3();
 // O terreno ocupa de -130 a +130 em X/Z. Os limites antigos (-100..92 em X e -100..100 em Z)
 // eram menores que a área renderizada e criavam uma parede invisível antes do fim do mapa.
 // A margem evita que a hitbox atravesse a borda da malha, mas deixa o jogador explorar todo o terreno.
 const LIMITE_TERRENO=130, MARGEM_BORDA=.6;
 const LIMITE_JOGADOR=LIMITE_TERRENO-MARGEM_BORDA;
+export function alternarAgachado(){agachado=!agachado;if(agachado)velocity.set(0,0,0);return agachado}
+export function estaAgachado(){return agachado}
 export function atualizarMovimentoJogador(dt,keys,joyX,joyY,yaw,fatorVelocidade=1){
   const smooth=1-Math.exp(-18*dt);
+  if(agachado){
+    velocity.set(0,0,0);desired.set(0,0,0);
+    atualizarFisicaVertical(dt);
+    preencherHitboxJogador(jogadorBoxDebugTemp,player.position.x,player.position.z);
+    if(personagemCarregado())atualizarAnimacaoPersonagem(dt,0,false,true);
+    return;
+  }
   let x=(keys.KeyD?1:0)-(keys.KeyA?1:0)+joyX,z=(keys.KeyS?1:0)-(keys.KeyW?1:0)+joyY;
   const m=Math.hypot(x,z);
   desired.set(0,0,0);
@@ -289,7 +299,7 @@ export function atualizarMovimentoJogador(dt,keys,joyX,joyY,yaw,fatorVelocidade=
   }
   if(personagemCarregado()){
     // Com o modelo 3D quem move braços e pernas é o esqueleto; o balanço manual abaixo fica de fora.
-    atualizarAnimacaoPersonagem(dt,speed,atirandoAgora);
+    atualizarAnimacaoPersonagem(dt,speed,atirandoAgora,agachado);
   }else if(speed>.08){
     walk+=dt*(6+speed*1.3);
     const swing=Math.sin(walk)*Math.min(.55,speed*.24);

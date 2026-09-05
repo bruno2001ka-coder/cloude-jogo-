@@ -46,6 +46,7 @@ const VEL_CORRIDA=5.4;
 const VEL_PARADO=.35;
 
 let mixer=null,acoes=null,atual=null,raiz=null,maoOsso=null,malhaPele=null,troncoOsso=null;
+let acaoAgachado=null;
 let aNormalizar=false,alvoAltura=0,playerRef=null,aoProntoCb=null;
 // Colete 3D: o arquivo e o encaixe no corpo. Chegam em ordem imprevisível (o GLB do colete pode vir
 // antes ou depois do primeiro quadro do boneco), então o encaixe é tentado dos dois lados.
@@ -180,6 +181,12 @@ export function carregarPersonagem(player,alturaMundo,aoCarregar){
       acoes[clipe.name]=a;
       if(clipe.name===ANIM.andar&&clipe.duration>0)velocidadeAndar=1/clipe.duration;
     }
+    // O arquivo separado tem o mesmo esqueleto e nomes de ossos do personagem; usamos só o clipe,
+    // não outra malha. Assim mochila, colete e escala continuam presos ao mesmo corpo.
+    new GLTFLoader().load('assets/agachado.glb',ag=>{
+      const clip=ag.animations.find(c=>c.name==='rigify_clip')||ag.animations[0];
+      if(clip){acaoAgachado=mixer.clipAction(clip);acaoAgachado.enabled=true;acaoAgachado.setLoop(THREE.LoopOnce,1);acaoAgachado.clampWhenFinished=true}
+    },undefined,err=>console.warn('Quintal 3D: animação agachada não carregou.',err));
     // Nasce parado: a animação de andar congelada no primeiro quadro. O GLB não traz um clipe de
     // "parado", e o primeiro quadro do passo é uma pose neutra de pé — serve como repouso.
     trocar(ANIM.andar,0);
@@ -235,9 +242,19 @@ function normalizar(){
 
 // Chamado uma vez por quadro pelo Player. `velocidade` é o módulo da velocidade horizontal em unidades
 // de mundo por segundo; `atirando` vem do gatilho.
-export function atualizarAnimacaoPersonagem(dt,velocidade,atirando){
+export function atualizarAnimacaoPersonagem(dt,velocidade,atirando,agachado=false){
   if(!mixer)return;
   if(aNormalizar)normalizar();
+  if(agachado){
+    if(acaoAgachado){
+      if(atual!==acaoAgachado){
+        if(atual)atual.crossFadeTo(acaoAgachado,TRANSICAO,false);
+        acaoAgachado.reset();acaoAgachado.setEffectiveWeight(1);acaoAgachado.play();atual=acaoAgachado;
+      }
+      acaoAgachado.paused=false;
+    }else if(atual){atual.paused=true}
+    mixer.update(dt);return;
+  }
   const parado=velocidade<VEL_PARADO;
   const correndo=velocidade>=VEL_CORRIDA;
   const alvo=parado?(atirando?ANIM.atirandoParado:ANIM.andar):(atirando?ANIM.andarAtirando:(correndo?ANIM.correr:ANIM.andar));

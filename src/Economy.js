@@ -196,9 +196,9 @@ export function comprar(item,preco,quantidade=1){
   if(dinheiro<preco)return;
   if(item==='colete'&&(inventario.colete>0||ganchosPolicia.coleteEmUso()))return;
   if(item==='colete'&&ganchosPolicia.equiparColete()){
-    dinheiro-=preco;atualizarStatusEconomia();renderizarAcoes();renderizarInventario();return;
+    dinheiro-=preco;atualizarStatusEconomia();renderizarAcoes();renderizarInventario();dispatchEvent(new Event('quintal3d:estado-mudou'));return;
   }
-  dinheiro-=preco;inventario[item]+=quantidade;atualizarStatusEconomia();renderizarAcoes();renderizarInventario();
+  dinheiro-=preco;inventario[item]+=quantidade;atualizarStatusEconomia();renderizarAcoes();renderizarInventario();dispatchEvent(new Event('quintal3d:estado-mudou'));
 }
 // Arma sem bala é compra morta: o jogador sai da loja, aperta o gatilho, não sai tiro e acha que
 // quebrou. Por isso a compra já vem com um pacote de munição e equipa a arma na hora.
