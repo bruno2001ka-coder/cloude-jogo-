@@ -80,21 +80,21 @@ const cotaBaixa=mediaBorda(bordaBaixa),desnivel=cotaArea-cotaBaixa;
 if(desnivel>.22){
   const degraus=Math.max(2,Math.ceil(desnivel/.18)),espelho=desnivel/degraus;
   const comprimento=bordaBaixa==='norte'||bordaBaixa==='sul'?AREA_NIVELADA.larg:AREA_NIVELADA.prof;
-  const pisoDegrau=Math.min(.7,4/degraus),base=cotaBaixa-.08;
+  const pisoDegrau=Math.min(.7,4/degraus),espessuraDegrau=.16;
   const materialEscada=new THREE.MeshStandardMaterial({color:0x6f6b65,roughness:.95,metalness:0});
   for(let i=0;i<degraus;i++){
-    const topo=cotaBaixa+espelho*(i+1),altura=Math.max(.08,topo-base);
-    // O primeiro degrau fica no terreno baixo, e os seguintes avançam em direção ao platô.
+    const topo=cotaBaixa+espelho*(i+1);
+    // O primeiro degrau fica no terreno baixo; cada degrau sobe até encostar no platô.
     const recuo=(degraus-i-.5)*pisoDegrau;
     let x=AREA_NIVELADA.x,z=AREA_NIVELADA.z;
-    if(bordaBaixa==='norte')z=AREA_NIVELADA.z+AREA_NIVELADA.prof/2+recuo;
-    if(bordaBaixa==='sul')z=AREA_NIVELADA.z-AREA_NIVELADA.prof/2-recuo;
-    if(bordaBaixa==='oeste')x=AREA_NIVELADA.x+AREA_NIVELADA.larg/2+recuo;
-    if(bordaBaixa==='leste')x=AREA_NIVELADA.x-AREA_NIVELADA.larg/2-recuo;
+    if(bordaBaixa==='norte')z=AREA_NIVELADA.z-AREA_NIVELADA.prof/2-recuo;
+    if(bordaBaixa==='sul')z=AREA_NIVELADA.z+AREA_NIVELADA.prof/2+recuo;
+    if(bordaBaixa==='oeste')x=AREA_NIVELADA.x-AREA_NIVELADA.larg/2-recuo;
+    if(bordaBaixa==='leste')x=AREA_NIVELADA.x+AREA_NIVELADA.larg/2+recuo;
     const geo=bordaBaixa==='norte'||bordaBaixa==='sul'
-      ?new THREE.BoxGeometry(comprimento,altura,pisoDegrau)
-      :new THREE.BoxGeometry(pisoDegrau,altura,comprimento);
-    const degrau=bloco(geo,materialEscada,x,base+altura/2,z);
+      ?new THREE.BoxGeometry(comprimento,espessuraDegrau,pisoDegrau)
+      :new THREE.BoxGeometry(pisoDegrau,espessuraDegrau,comprimento);
+    const degrau=bloco(geo,materialEscada,x,topo-espessuraDegrau/2,z);
     superficiesAndaveis.push(degrau);
   }
 }
