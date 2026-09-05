@@ -54,6 +54,7 @@ import{crimeAtivo,alertarDisparoProximo,alertarColisaoPolicial,alertarEntregaIle
 import{pontoDeEntregaAtual}from'./DeliveryPoints.js';
 import{hasWeaponEquipped}from'./Weapons.js';
 import{tocarSomEquiparColete}from'./Audio.js';
+import{obterPontoNascimento}from'./Hospital.js';
 
 
 const HELI_ALTURA=38,HELI_VELOCIDADE=12,MAPA_LIMITE=95;
@@ -519,9 +520,10 @@ function renderJogador(){
   // A penalidade é proporcional ao saldo atual: morrer custa 25%, mas não apaga quase todo o dinheiro.
   aplicarMulta(Math.round(obterDinheiro()*PENALIDADE_MORTE));
   setTimeout(()=>{
-    player.position.set(0,obterElevacao(0,8),8);
+    const pontoHospital=obterPontoNascimento();
+    player.position.set(pontoHospital.x,pontoHospital.y,pontoHospital.z);
     saudeJogador=JOGADOR_HP_MAX;jogadorRendido=false;atualizarHudSaude();
-    mostrarAviso('Você voltou ao ponto inicial — multa aplicada e itens apreendidos.',2800);
+    mostrarAviso('Você acordou no Hospital — multa aplicada e itens apreendidos.',2800);
   },1400);
 }
 // O colete comprado na loja de armas entra em uso sozinho quando o anterior acaba. É verificado aqui, e
