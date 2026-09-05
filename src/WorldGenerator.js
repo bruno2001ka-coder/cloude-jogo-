@@ -45,6 +45,51 @@ bairro.add(favela);
 export{casasPos,casasCliente,BECOS,refugios,BAR,BIQUEIRA,sumirCaixa,alternarPortaRefugio,
   refugioEmQueEsta,estaEscondido,atualizarRefugios};
 
+// ===== ÁREA NIVELADA 10 x 8 =====
+// Posição indicada pelo HUD da referência enviada: o platô fica no lado leste do mapa e não depende
+// de uma casa específica. A cota é calculada antes da geometria para o piso ficar plano mesmo no morro.
+const AREA_NIVELADA={x:65.7,z:-1.8,larg:10,prof:8};
+const amostrasArea=[];
+for(let ix=0;ix<=4;ix++)for(let iz=0;iz<=4;iz++){
+  const x=AREA_NIVELADA.x-AREA_NIVELADA.larg/2+ix*AREA_NIVELADA.larg/4;
+  const z=AREA_NIVELADA.z-AREA_NIVELADA.prof/2+iz*AREA_NIVELADA.prof/4;
+  amostrasArea.push({x,z,h:obterElevacao(x,z)});
+}
+const cotaArea=Math.max(...amostrasArea.map(a=>a.h))+.04;
+const platoArea=bloco(new THREE.BoxGeometry(AREA_NIVELADA.larg,.16,AREA_NIVELADA.prof),matConcreto(),
+  AREA_NIVELADA.x,cotaArea-.08,AREA_NIVELADA.z);
+superficiesAndaveis.push(platoArea);
+
+function mediaBorda(tipo){
+  const borda=amostrasArea.filter(a=>tipo==='norte'?a.z<AREA_NIVELADA.z-AREA_NIVELADA.prof/2+.01:
+    tipo==='sul'?a.z>AREA_NIVELADA.z+AREA_NIVELADA.prof/2-.01:
+    tipo==='oeste'?a.x<AREA_NIVELADA.x-AREA_NIVELADA.larg/2+.01:
+    a.x>AREA_NIVELADA.x+AREA_NIVELADA.larg/2-.01);
+  return borda.reduce((s,a)=>s+a.h,0)/borda.length;
+}
+const bordas=['norte','sul','oeste','leste'];
+const bordaBaixa=bordas.reduce((melhor,tipo)=>mediaBorda(tipo)<mediaBorda(melhor)?tipo:melhor,'norte');
+const cotaBaixa=mediaBorda(bordaBaixa),desnivel=cotaArea-cotaBaixa;
+if(desnivel>.22){
+  const degraus=Math.max(2,Math.ceil(desnivel/.18)),espelho=desnivel/degraus;
+  const comprimento=bordaBaixa==='norte'||bordaBaixa==='sul'?AREA_NIVELADA.larg:AREA_NIVELADA.prof;
+  const pisoDegrau=Math.min(.7,4/degraus),base=cotaBaixa-.08;
+  for(let i=0;i<degraus;i++){
+    const topo=cotaBaixa+espelho*(i+1),altura=Math.max(.08,topo-base);
+    const recuo=(i+.5)*pisoDegrau;
+    let x=AREA_NIVELADA.x,z=AREA_NIVELADA.z;
+    if(bordaBaixa==='norte')z=AREA_NIVELADA.z-AREA_NIVELADA.prof/2-recuo;
+    if(bordaBaixa==='sul')z=AREA_NIVELADA.z+AREA_NIVELADA.prof/2+recuo;
+    if(bordaBaixa==='oeste')x=AREA_NIVELADA.x-AREA_NIVELADA.larg/2-recuo;
+    if(bordaBaixa==='leste')x=AREA_NIVELADA.x+AREA_NIVELADA.larg/2+recuo;
+    const geo=bordaBaixa==='norte'||bordaBaixa==='sul'
+      ?new THREE.BoxGeometry(comprimento,altura,pisoDegrau)
+      :new THREE.BoxGeometry(pisoDegrau,altura,comprimento);
+    const degrau=bloco(geo,matConcreto(),x,base+altura/2,z);
+    superficiesAndaveis.push(degrau);
+  }
+}
+
 // A árvore ficou aqui: ela é da FAZENDA (o pomar do sítio), não da favela.
 function arvore(x,z,s=1){const g=new THREE.Group();g.position.set(x,obterElevacao(x,z),z);bairro.add(g);
   bloco(new THREE.CylinderGeometry(.16*s,.22*s,1.5*s,6),posteMat,0,.75*s,0,g);
