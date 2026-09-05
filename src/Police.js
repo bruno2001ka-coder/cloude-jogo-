@@ -242,6 +242,15 @@ const uniformeMat=new THREE.MeshStandardMaterial({color:0x232c3d,roughness:.7}),
   // Mesmo tom do rosto do morador (NPCs.js), de propósito: os dois são gente do mesmo mundo.
   rostoMat=new THREE.MeshStandardMaterial({color:0x171712,roughness:.8});
 function blocoP(geo,mat,x,y,z,parent){const m=new THREE.Mesh(geo,mat);m.position.set(x,y,z);m.castShadow=true;m.receiveShadow=true;parent.add(m);return m}
+function construirArmaPolicial(){
+  const g=new THREE.Group();g.name='pistolaPolicial';
+  blocoP(GEO_POL.armaCorpo,armaMat,0,0,.12,g);
+  const cano=blocoP(GEO_POL.armaCano,armaMat,0,.01,.39,g);cano.rotation.x=Math.PI/2;
+  const emp=blocoP(GEO_POL.armaEmpunhadura,coleteMat,0,-.13,.01,g);emp.rotation.x=-.22;
+  blocoP(GEO_POL.armaGuarda,armaMat,0,-.035,.095,g);
+  blocoP(GEO_POL.armaMira,armaMat,0,.085,.34,g);
+  return g;
+}
 
 // A malha crua do policial mede 1,78 nesta escala — dividindo por PLAYER_HEIGHT dá a escala que
 // deixa o policial exatamente do mesmo tamanho do personagem principal.
@@ -275,7 +284,11 @@ const GEO_POL={
   olho:new THREE.BoxGeometry(.06,.06,.03),
   boca:new THREE.BoxGeometry(.13,.03,.02),
   braco:new THREE.BoxGeometry(.13,.58,.16),
-  arma:new THREE.BoxGeometry(.08,.1,.42),
+  armaCorpo:new THREE.BoxGeometry(.14,.12,.34),
+  armaCano:new THREE.CylinderGeometry(.022,.025,.24,8),
+  armaEmpunhadura:new THREE.BoxGeometry(.09,.2,.11),
+  armaGuarda:new THREE.BoxGeometry(.025,.08,.075),
+  armaMira:new THREE.BoxGeometry(.025,.025,.055),
 };
 const MATS_PELE=skinPolicial.map(c=>new THREE.MeshStandardMaterial({color:c,roughness:.55}));
 
@@ -296,7 +309,7 @@ function criarPolicial(indice,tipo='rapel'){
   blocoP(GEO_POL.bone,boneMat,0,1.7,0,g);
   const pernas=[-.14,.14].map(lx=>blocoP(GEO_POL.perna,uniformeMat,lx,.29,0,g));
   const bracos=[-.37,.37].map(lx=>blocoP(GEO_POL.braco,skinMat,lx,.9,0,g));
-  const arma=blocoP(GEO_POL.arma,armaMat,.37,.68,.18,g);
+  const arma=construirArmaPolicial();arma.position.set(.37,.68,.18);g.add(arma);
   g.scale.setScalar(ESCALA_POLICIAL);
   scene.add(g);
   const pol={
@@ -306,7 +319,7 @@ function criarPolicial(indice,tipo='rapel'){
     pos:new THREE.Vector3(),proximoTiro:0,caminhando:0,
     // Estado da trocação (ver Combate.js): relógio da mira, papel na equipe e cobertura escolhida.
     viuDesde:0,viuPor:0,prontoEm:0,tiros:0,hpAnterior:POLICIAL_HP,papel:null,papelAte:0,ladoFlanco:1,
-    cobertura:null,proximaCobertura:0,faseCobertura:0,pressionadoAte:0,ultimoEspalhamento:0,
+    cobertura:null,proximaCobertura:0,faseCobertura:0,pressionadoAte:0,tiroVisualAte:0,ultimoEspalhamento:0,
     // Percepção: `proximaVisao` defasa a checagem entre policiais (ver comentário do custo por frame);
     // `viu` é o resultado da última avaliação, reaproveitado pelos frames intermediários.
     proximaVisao:indice*VISAO_DEFASAGEM,viu:false,olharY:0,
@@ -864,7 +877,7 @@ function tentarAtirar(pol,agora,viu,andando){
   // A linha é medida do CANO ao TRONCO, que é por onde a bala passa. Medir de outro par de alturas
   // deixava o policial atirar na parede achando que tinha caminho.
   if(!temLinhaDeVisao(ox,oy,oz,player.position.x,player.position.y+ALT_TORSO,player.position.z))return false;
-  pol.proximoTiro=agora+cooldownTiro();
+  pol.proximoTiro=agora+cooldownTiro();pol.tiroVisualAte=agora+1.15;
   const espalhamento=espalhamentoDoTiro({
     dist,tempoMirando:agora-pol.viuDesde,policialAndando:andando,procurado:policia.procurado});
   pol.ultimoEspalhamento=espalhamento;
@@ -1646,7 +1659,7 @@ export function atualizarPolicia(dt){
   separarCorpos();
   // Um quadro de animação por policial VIVO. Morto não anima: ele está tombando por rotação do grupo,
   // e deixar o clipe de andar correndo por cima faria o corpo caído continuar dando passos.
-  for(const pol of policiais)if(pol.vivo&&pol.corpo)atualizarCorpoPolicial(pol.corpo,dt,pol.velocidadeAndando||0);
+  for(const pol of policiais)if(pol.vivo&&pol.corpo)atualizarCorpoPolicial(pol.corpo,dt,pol.velocidadeAndando||0,agora<(pol.tiroVisualAte||0));
 
   montarAlvosDoFrame();
   atualizarBalas(dt,alvosDaBala);
