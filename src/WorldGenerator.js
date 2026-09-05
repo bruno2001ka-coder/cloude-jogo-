@@ -88,18 +88,20 @@ if(desnivel>.22){
   const pisoDegrau=Math.min(.7,4/Math.max(1,degraus-4)),espessuraDegrau=.16;
   const materialEscada=new THREE.MeshStandardMaterial({color:0x6f6b65,roughness:.95,metalness:0});
   for(let i=0;i<degraus;i++){
-    // O primeiro degrau fica no terreno baixo; cada degrau sobe até encostar no platô.
+    // Cada degrau recebe a cota do terreno exatamente sob ele: o corpo desce até o solo e não flutua.
     const recuo=(degraus-i-.5)*pisoDegrau;
     let x=AREA_NIVELADA.x,z=AREA_NIVELADA.z;
     if(bordaBaixa==='norte')z=AREA_NIVELADA.z-AREA_NIVELADA.prof/2-recuo;
     if(bordaBaixa==='sul')z=AREA_NIVELADA.z+AREA_NIVELADA.prof/2+recuo;
     if(bordaBaixa==='oeste')x=AREA_NIVELADA.x-AREA_NIVELADA.larg/2-recuo;
     if(bordaBaixa==='leste')x=AREA_NIVELADA.x+AREA_NIVELADA.larg/2+recuo;
-    const topo=i===0?obterElevacao(x,z)+.08:cotaBaixa+espelho*(i+1);
+    const cotaSoloDegrau=obterElevacao(x,z);
+    const topo=Math.max(cotaSoloDegrau+.08,cotaBaixa+espelho*(i+1));
+    const altura=Math.max(.16,topo-cotaSoloDegrau);
     const geo=bordaBaixa==='norte'||bordaBaixa==='sul'
-      ?new THREE.BoxGeometry(comprimento,espessuraDegrau,pisoDegrau)
-      :new THREE.BoxGeometry(pisoDegrau,espessuraDegrau,comprimento);
-    const degrau=bloco(geo,materialEscada,x,topo-espessuraDegrau/2,z);
+      ?new THREE.BoxGeometry(comprimento,altura,pisoDegrau)
+      :new THREE.BoxGeometry(pisoDegrau,altura,comprimento);
+    const degrau=bloco(geo,materialEscada,x,cotaSoloDegrau+altura/2,z);
     superficiesAndaveis.push(degrau);
   }
 }
