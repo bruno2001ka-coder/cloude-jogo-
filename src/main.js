@@ -26,7 +26,7 @@ document.getElementById('destravarBtn').addEventListener('click',()=>destravarJo
 // Marca de versão na tela inicial. Existe por um motivo prático: quando uma novidade "não aparece",
 // a primeira pergunta é se o navegador está servindo o build novo ou um cache velho — e sem isso não
 // há como responder olhando a tela. O segundo campo diz se o boneco 3D entrou.
-const VERSAO_JOGO='2026-09-03g';
+const VERSAO_JOGO='2026-09-05a';
 {const el=document.getElementById('versaoJogo');
  if(el){el.textContent=`versão ${VERSAO_JOGO} · boneco 3D: carregando…`;
    const marcar=()=>{el.textContent=`versão ${VERSAO_JOGO} · boneco 3D: ${personagemCarregado()?'ok':'não carregou'}`};
@@ -102,6 +102,15 @@ function tick(){
 function quadro(){
   const dt=Math.min(clock.getDelta(),.05);
   atualizarSuavizacaoInput(dt);
+  // A cena continua renderizando por trás da tela inicial, mas nenhum sistema de jogo deve
+  // consumir input, mover NPCs ou alterar a economia antes de o jogador começar. Sem esta guarda,
+  // um toque acidental no joystick enquanto o overlay estava aberto podia deslocar o personagem
+  // antes mesmo da primeira partida.
+  if(!gameStarted){
+    atualizarAmbiente(dt,player.position);atualizarSkyline();
+    composer.render();
+    return;
+  }
   if(droneState.ativo){
     atualizarCameraDrone(dt,keys,inputState.joyX,inputState.joyY,inputState.yaw,inputState.pitch);
   }else{

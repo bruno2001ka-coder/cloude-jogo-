@@ -19,7 +19,7 @@ export const keys=Object.create(null);
 const keyMap={w:'KeyW',a:'KeyA',s:'KeyS',d:'KeyD',ArrowUp:'KeyW',ArrowLeft:'KeyA',ArrowDown:'KeyS',ArrowRight:'KeyD'};
 // Solta o gatilho junto com as teclas: trocar de aba com F pressionado deixaria o tiro preso ligado.
 // Solta também a corrida: se o Shift ficar "preso" ao trocar de aba, o jogador voltaria correndo sozinho.
-const clearKeys=()=>{for(const k in keys)keys[k]=false;inputState.correndo=false;inputState.joyForca=0;inputState.aimX=0;inputState.aimY=0;inputState.aimActive=false;inputState.aimId=null;definirGatilho(false);if(document.pointerLockElement)definirMira(false)};
+const clearKeys=()=>{for(const k in keys)keys[k]=false;inputState.correndo=false;inputState.joyX=0;inputState.joyY=0;inputState.joyForca=0;inputState.joyActive=false;inputState.joyId=null;inputState.aimX=0;inputState.aimY=0;inputState.aimActive=false;inputState.aimId=null;stickBase?.classList.remove('correndo');if(stick)stick.style.transform='translate(0,0)';if(aimStick)aimStick.style.transform='translate(0,0)';definirGatilho(false);if(document.pointerLockElement)definirMira(false)};
 
 function pularOuSubir(){if(droneState.ativo){subirDrone()}else{pularJogador()}}
 
