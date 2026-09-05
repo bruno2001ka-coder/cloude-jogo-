@@ -87,10 +87,10 @@ if(desnivel>.22){
     // O primeiro degrau fica no terreno baixo, e os seguintes avançam em direção ao platô.
     const recuo=(degraus-i-.5)*pisoDegrau;
     let x=AREA_NIVELADA.x,z=AREA_NIVELADA.z;
-    if(bordaBaixa==='norte')z=AREA_NIVELADA.z-AREA_NIVELADA.prof/2-recuo;
-    if(bordaBaixa==='sul')z=AREA_NIVELADA.z+AREA_NIVELADA.prof/2+recuo;
-    if(bordaBaixa==='oeste')x=AREA_NIVELADA.x-AREA_NIVELADA.larg/2-recuo;
-    if(bordaBaixa==='leste')x=AREA_NIVELADA.x+AREA_NIVELADA.larg/2+recuo;
+    if(bordaBaixa==='norte')z=AREA_NIVELADA.z+AREA_NIVELADA.prof/2+recuo;
+    if(bordaBaixa==='sul')z=AREA_NIVELADA.z-AREA_NIVELADA.prof/2-recuo;
+    if(bordaBaixa==='oeste')x=AREA_NIVELADA.x+AREA_NIVELADA.larg/2+recuo;
+    if(bordaBaixa==='leste')x=AREA_NIVELADA.x-AREA_NIVELADA.larg/2-recuo;
     const geo=bordaBaixa==='norte'||bordaBaixa==='sul'
       ?new THREE.BoxGeometry(comprimento,altura,pisoDegrau)
       :new THREE.BoxGeometry(pisoDegrau,altura,comprimento);
