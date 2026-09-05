@@ -44,7 +44,7 @@ function construirRifle(){
   new GLTFLoader().load('assets/riflekar89.glb',gltf=>{
     const modelo=gltf.scene;
     for(const filho of [...g.children]){g.remove(filho);filho.traverse(o=>{o.geometry?.dispose?.();if(Array.isArray(o.material))o.material.forEach(m=>m.dispose?.());else o.material?.dispose?.()})}
-    modelo.rotation.y=-Math.PI/2;// o GLB está longitudinal no eixo X; o jogo aponta as armas no +Z
+    modelo.rotation.y=Math.PI/2;// o GLB estava longitudinal no sentido inverso; agora o cano aponta para o +Z do jogo
     modelo.scale.setScalar(.65);// comprimento final próximo ao rifle procedural que ele substitui
     modelo.position.set(0,-.13,.18);// centraliza altura e mantém a empunhadura próxima à mão
     modelo.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;o.frustumCulled=false}});
