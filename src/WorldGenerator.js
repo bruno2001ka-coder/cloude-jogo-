@@ -58,7 +58,8 @@ for(let ix=0;ix<=20;ix++)for(let iz=0;iz<=16;iz++){
 const cotaArea=Math.max(...amostrasArea.map(a=>a.h))+.12;
 const materialArea=new THREE.MeshStandardMaterial({color:0x9a9890,roughness:.92,metalness:0});
 // Corpo enterrado: o topo continua nivelado, mas a base desce no terreno para não parecer suspensa.
-const ESPESSURA_NIVELAMENTO=1.2;
+const menorCotaArea=Math.min(...amostrasArea.map(a=>a.h));
+const ESPESSURA_NIVELAMENTO=Math.max(1.8,cotaArea-menorCotaArea+.3);
 const platoArea=bloco(new THREE.BoxGeometry(AREA_NIVELADA.larg,ESPESSURA_NIVELAMENTO,AREA_NIVELADA.prof),materialArea,
   AREA_NIVELADA.x,cotaArea-ESPESSURA_NIVELAMENTO/2,AREA_NIVELADA.z);
 superficiesAndaveis.push(platoArea);
@@ -87,7 +88,6 @@ if(desnivel>.22){
   const pisoDegrau=Math.min(.7,4/Math.max(1,degraus-4)),espessuraDegrau=.16;
   const materialEscada=new THREE.MeshStandardMaterial({color:0x6f6b65,roughness:.95,metalness:0});
   for(let i=0;i<degraus;i++){
-    const topo=cotaBaixa+espelho*(i+1);
     // O primeiro degrau fica no terreno baixo; cada degrau sobe até encostar no platô.
     const recuo=(degraus-i-.5)*pisoDegrau;
     let x=AREA_NIVELADA.x,z=AREA_NIVELADA.z;
@@ -95,6 +95,7 @@ if(desnivel>.22){
     if(bordaBaixa==='sul')z=AREA_NIVELADA.z+AREA_NIVELADA.prof/2+recuo;
     if(bordaBaixa==='oeste')x=AREA_NIVELADA.x-AREA_NIVELADA.larg/2-recuo;
     if(bordaBaixa==='leste')x=AREA_NIVELADA.x+AREA_NIVELADA.larg/2+recuo;
+    const topo=i===0?obterElevacao(x,z)+.08:cotaBaixa+espelho*(i+1);
     const geo=bordaBaixa==='norte'||bordaBaixa==='sul'
       ?new THREE.BoxGeometry(comprimento,espessuraDegrau,pisoDegrau)
       :new THREE.BoxGeometry(pisoDegrau,espessuraDegrau,comprimento);
