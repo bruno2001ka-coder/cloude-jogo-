@@ -179,13 +179,14 @@ const sensor=new THREE.Mesh(new THREE.BoxGeometry(0.3,0.15,0.2),new THREE.MeshSt
 sensor.position.set(0,2.5,0.2);
 portaGrupo.add(sensor);
 
-const caixaPorta=new THREE.Box3();
+const caixaPortaEsq=new THREE.Box3(),caixaPortaDir=new THREE.Box3();
 function atualizarColliderPorta(){
   portaEsq.updateWorldMatrix(true,false);portaDir.updateWorldMatrix(true,false);
-  caixaPorta.copy(new THREE.Box3().setFromObject(portaEsq)).union(new THREE.Box3().setFromObject(portaDir));
+  caixaPortaEsq.setFromObject(portaEsq);caixaPortaDir.setFromObject(portaDir);
 }
 atualizarColliderPorta();
-marcarObstaculoMovel(registrarCaixa(caixaPorta,'porta-hospital'));
+marcarObstaculoMovel(registrarCaixa(caixaPortaEsq,'porta-hospital-esquerda'));
+marcarObstaculoMovel(registrarCaixa(caixaPortaDir,'porta-hospital-direita'));
 
 // Estado das portas
 let portaAberta=false,portaAnimando=false,tempoPorta=0;
