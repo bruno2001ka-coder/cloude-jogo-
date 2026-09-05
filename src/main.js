@@ -17,6 +17,7 @@ import{carregar,atualizarSave,instalarSalvamentoAoSair,saveDisponivel,apagarSave
 import{personagemCarregado}from'./Personagem.js';
 import{atualizarEfeitos}from'./CombatFX.js';
 import{atualizarRecuoArmas}from'./Weapons.js';
+import{isHUDEditando}from'./HUDEditor.js';
 
 camera.position.set(0,EYE_HEIGHT,16);
 initDragLook(renderer.domElement);
@@ -104,6 +105,7 @@ function tick(){
 function quadro(){
   const dt=Math.min(clock.getDelta(),.05);
   atualizarSuavizacaoInput(dt);
+  if(isHUDEditando()){composer.render();return}
   // A cena continua renderizando por trás da tela inicial, mas nenhum sistema de jogo deve
   // consumir input, mover NPCs ou alterar a economia antes de o jogador começar. Sem esta guarda,
   // um toque acidental no joystick enquanto o overlay estava aberto podia deslocar o personagem

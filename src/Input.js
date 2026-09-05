@@ -49,6 +49,7 @@ addEventListener('keyup',e=>{
 });
 addEventListener('blur',clearKeys);
 document.addEventListener('visibilitychange',()=>{if(document.hidden)clearKeys()});
+addEventListener('hudeditingchange',clearKeys);
 
 const jumpBtn=document.getElementById('jumpBtn');
 jumpBtn.addEventListener('pointerdown',e=>{e.preventDefault();pularOuSubir()});
