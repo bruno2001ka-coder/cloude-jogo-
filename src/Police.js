@@ -53,7 +53,7 @@ import{droneState,miraState}from'./Camera.js';
 import{crimeAtivo,alertarDisparoProximo,alertarColisaoPolicial,alertarEntregaIlegal,definirArmaVisivel}from'./CrimeTriggers.js';
 import{pontoDeEntregaAtual}from'./DeliveryPoints.js';
 import{hasWeaponEquipped}from'./Weapons.js';
-import{tocarSomEquiparColete,tocarSomTiro}from'./Audio.js';
+import{tocarSomEquiparColete,tocarSomTiro,tocarSomSemMunicao}from'./Audio.js';
 import{efeitoDisparo}from'./CombatFX.js';
 import{adicionarTremorCamera}from'./Camera.js';
 import{obterPontoNascimento,registrarCuraHospital}from'./Hospital.js';
@@ -875,6 +875,7 @@ function tentarAtirar(pol,agora,viu,andando){
   _dir.z+=(Math.random()*2-1)*espalhamento;
   _origem.set(ox,oy,oz);
   dispararBala(_origem,_dir,false);
+  tocarSomTiro('policia',_origem,'policia');
   pol.tiros=(pol.tiros||0)+1;
   return true;
 }
@@ -1018,7 +1019,7 @@ export function atirar(){
   if(restante<arma.gasto){
     // Com o gatilho segurado o dedo fica no botão: sem esta trava o aviso repetiria a cada 0,9 s pra
     // sempre. Volta a false quando o gatilho solta ou quando sai um tiro válido.
-    if(!avisouSemMunicao){avisouSemMunicao=true;mostrarAviso(`Sem munição de ${arma.nome} — compre na Loja de Armas (nordeste do mapa).`,2400)}
+    if(!avisouSemMunicao){avisouSemMunicao=true;mostrarAviso(`Sem munição de ${arma.nome} — compre na Loja de Armas (nordeste do mapa).`,2400);tocarSomSemMunicao()}
     proximoTiroJogador=agora+.9;return;
   }
   avisouSemMunicao=false;
@@ -1033,7 +1034,7 @@ export function atirar(){
   encararDirecao(_dirCamera.x,_dirCamera.z);
   const boca=obterBocaDaArma();
   _dirTiro.copy(visado).sub(boca).normalize();
-  tocarSomTiro();efeitoDisparo(boca,visado);aplicarRecuoArma();adicionarTremorCamera(.08,.018);
+  tocarSomTiro(arma.som,player.position,'jogador');efeitoDisparo(boca,visado);aplicarRecuoArma();adicionarTremorCamera(.08,.018);
   // Mirando, o cone fecha pra 30%: é a recompensa concreta de parar pra mirar em vez de sair
   // atirando andando. A escopeta continua espalhando (30% de 5° ainda é 1,5°), só que muito mais
   // fechada — o que a torna utilizável a média distância sem deixar de ser escopeta.

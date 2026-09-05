@@ -18,6 +18,7 @@ import{personagemCarregado}from'./Personagem.js';
 import{atualizarEfeitos}from'./CombatFX.js';
 import{atualizarRecuoArmas}from'./Weapons.js';
 import{isHUDEditando}from'./HUDEditor.js';
+import{definirPosicaoAudio}from'./Audio.js';
 
 camera.position.set(0,EYE_HEIGHT,16);
 initDragLook(renderer.domElement);
@@ -126,7 +127,7 @@ function quadro(){
     vigiarTravamento(dt,querendoAndar);
     atualizarCameraSeguidora(dt,player.position,inputState.yaw,inputState.pitch,EYE_HEIGHT);
   }
-  atualizarAmbiente(dt,player.position);atualizarSkyline();
+  atualizarAmbiente(dt,player.position);atualizarSkyline();definirPosicaoAudio(camera.position.x,camera.position.z);
   {const banda=obterBandaFase();if(banda!==bandaAnteriorHud){faseIcone.textContent=ICONES_FASE[banda];bandaAnteriorHud=banda}}
   // O tiro contínuo vem ANTES do atualizarPolicia: a bala criada neste frame já entra no
   // atualizarBalas que roda lá dentro, com os alvos deste frame. Depois, ela ficaria um frame parada

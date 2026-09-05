@@ -67,13 +67,13 @@ function construirMetralhadora(){
 // regressão. `alcance` alimenta só o raycast de mira; a bala física morre pelo tempo de vida dela.
 // `gasto` existe pra escopeta queimar 1 CARTUCHO e soltar 6 chumbos sem espalhar essa regra no atirar().
 export const ARMAS={
-  pistola:{id:'pistola',nome:'Pistola',icone:'🔫',dano:34,cooldown:.28,alcance:120,projeteis:1,dispersao:0,gasto:1,
+  pistola:{id:'pistola',nome:'Pistola',som:'pistola',icone:'🔫',dano:34,cooldown:.28,alcance:120,projeteis:1,dispersao:0,gasto:1,
     boca:new THREE.Vector3(0,.03,.48),grupo:construirPistola(),preco:PRECOS.armas.pistola},
-  rifle:{id:'rifle',nome:'Rifle',icone:'🎯',dano:50,cooldown:.45,alcance:160,projeteis:1,dispersao:.5,gasto:1,
+  rifle:{id:'rifle',nome:'Rifle',som:'rifle',icone:'🎯',dano:50,cooldown:.45,alcance:160,projeteis:1,dispersao:.5,gasto:1,
     boca:new THREE.Vector3(0,.05,1.06),grupo:construirRifle(),preco:PRECOS.armas.rifle},
-  escopeta:{id:'escopeta',nome:'Escopeta',icone:'💥',dano:14,cooldown:.85,alcance:40,projeteis:6,dispersao:5,gasto:1,
+  escopeta:{id:'escopeta',nome:'Escopeta',som:'escopeta',icone:'💥',dano:14,cooldown:.85,alcance:40,projeteis:6,dispersao:5,gasto:1,
     boca:new THREE.Vector3(0,.05,.94),grupo:construirEscopeta(),preco:PRECOS.armas.escopeta},
-  metralhadora:{id:'metralhadora',nome:'Metralhadora',icone:'⚡',dano:20,cooldown:.11,alcance:90,projeteis:1,dispersao:2.2,gasto:1,
+  metralhadora:{id:'metralhadora',nome:'Metralhadora',som:'metralhadora',icone:'⚡',dano:20,cooldown:.11,alcance:90,projeteis:1,dispersao:2.2,gasto:1,
     boca:new THREE.Vector3(0,.045,.8),grupo:construirMetralhadora(),preco:PRECOS.armas.metralhadora},
 };
 
