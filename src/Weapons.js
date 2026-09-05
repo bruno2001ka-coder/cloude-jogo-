@@ -7,6 +7,7 @@
 //   Economy  → quais armas o jogador POSSUI e quanta munição tem de cada
 //   Police   → junta os dois na hora de atirar e de trocar
 import*as THREE from'three';
+import{GLTFLoader}from'three/addons/loaders/GLTFLoader.js';
 import{maoDireita}from'./Player.js';
 import{PRECOS}from'./Poles.js';
 
@@ -32,6 +33,7 @@ function construirPistola(){
 }
 function construirRifle(){
   const g=novoGrupo();
+  // Fallback imediato: o tiro e a âncora da mão funcionam mesmo antes do GLB terminar de baixar.
   peca(new THREE.BoxGeometry(.1,.14,.7),armaMat,0,0,.2,0,g);
   peca(new THREE.CylinderGeometry(.024,.024,.62,6),armaMat,0,.05,.75,Math.PI/2,g);
   peca(new THREE.BoxGeometry(.085,.1,.26),armaMadeira,0,-.01,.5,0,g);
@@ -39,6 +41,16 @@ function construirRifle(){
   peca(new THREE.BoxGeometry(.06,.2,.09),armaMat,0,-.15,.12,.16,g);
   peca(new THREE.BoxGeometry(.02,.055,.02),armaMat,0,.13,.36,0,g);
   peca(new THREE.BoxGeometry(.02,.04,.02),armaMat,0,.12,.98,0,g);
+  new GLTFLoader().load('assets/riflekar89.glb',gltf=>{
+    const modelo=gltf.scene;
+    for(const filho of [...g.children]){g.remove(filho);filho.traverse(o=>{o.geometry?.dispose?.();if(Array.isArray(o.material))o.material.forEach(m=>m.dispose?.());else o.material?.dispose?.()})}
+    modelo.rotation.y=-Math.PI/2;// o GLB está longitudinal no eixo X; o jogo aponta as armas no +Z
+    modelo.scale.setScalar(.65);// comprimento final próximo ao rifle procedural que ele substitui
+    modelo.position.set(0,-.13,.18);// centraliza altura e mantém a empunhadura próxima à mão
+    modelo.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;o.frustumCulled=false}});
+    g.add(modelo);
+    console.info('Quintal 3D: riflekar89.glb carregado.');
+  },undefined,err=>console.warn('Quintal 3D: riflekar89.glb não carregou; mantendo o fallback.',err));
   return g;
 }
 function construirEscopeta(){
@@ -70,7 +82,7 @@ export const ARMAS={
   pistola:{id:'pistola',nome:'Pistola',som:'pistola',icone:'🔫',dano:34,cooldown:.28,alcance:120,projeteis:1,dispersao:0,gasto:1,
     boca:new THREE.Vector3(0,.03,.48),grupo:construirPistola(),preco:PRECOS.armas.pistola},
   rifle:{id:'rifle',nome:'Rifle',som:'rifle',icone:'🎯',dano:50,cooldown:.45,alcance:160,projeteis:1,dispersao:.5,gasto:1,
-    boca:new THREE.Vector3(0,.05,1.06),grupo:construirRifle(),preco:PRECOS.armas.rifle},
+    boca:new THREE.Vector3(0,.05,.88),grupo:construirRifle(),preco:PRECOS.armas.rifle},
   escopeta:{id:'escopeta',nome:'Escopeta',som:'escopeta',icone:'💥',dano:14,cooldown:.85,alcance:40,projeteis:6,dispersao:5,gasto:1,
     boca:new THREE.Vector3(0,.05,.94),grupo:construirEscopeta(),preco:PRECOS.armas.escopeta},
   metralhadora:{id:'metralhadora',nome:'Metralhadora',som:'metralhadora',icone:'⚡',dano:20,cooldown:.11,alcance:90,projeteis:1,dispersao:2.2,gasto:1,
