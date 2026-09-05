@@ -74,6 +74,7 @@ for(const p of portas){
 }
 function atualizarBoxPorta(p,aberta){
   const z=p.lado*(aberta?1.06:.45),minX=CENTRO.x+meiaP+.09,maxX=minX+.08;
+  if(aberta){p.box.min.set(minX,9999,z+CENTRO.z-(PORTA_LARG/4-.02));p.box.max.set(maxX,10000,z+CENTRO.z+(PORTA_LARG/4-.02));return}
   p.box.min.set(minX,cotaPiso+.04,z+CENTRO.z-(PORTA_LARG/4-.02));
   p.box.max.set(maxX,cotaPiso+PORTA_ALT,z+CENTRO.z+(PORTA_LARG/4-.02));
 }
@@ -82,7 +83,7 @@ export function atualizarPortasHospital(dt){
   const d=Math.hypot(player.position.x-(CENTRO.x+meiaP),player.position.z-CENTRO.z),alvo=d<4.2?1:0;
   portaAbertura+=((alvo-portaAbertura)*Math.min(1,dt*5));
   const aberta=portaAbertura>.92;
-  portas.forEach(p=>{p.folha.position.z=p.lado*(.45+.61*portaAbertura);p.box.min.y=aberta?9999:cotaPiso+.04;p.box.max.y=aberta?10000:cotaPiso+PORTA_ALT;atualizarBoxPorta(p,aberta)});
+  portas.forEach(p=>{p.folha.position.z=p.lado*(.45+.61*portaAbertura);atualizarBoxPorta(p,aberta)});
 }
 portas.forEach(p=>atualizarBoxPorta(p,false));
 
