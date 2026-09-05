@@ -78,13 +78,18 @@ function atualizarBoxPorta(p,aberta){
   p.box.min.set(minX,cotaPiso+.04,z+CENTRO.z-(PORTA_LARG/4-.02));
   p.box.max.set(maxX,cotaPiso+PORTA_ALT,z+CENTRO.z+(PORTA_LARG/4-.02));
 }
-let portaAbertura=0;
+let portaAbertura=0,curarHospital=()=>{};
 export function atualizarPortasHospital(dt){
   const d=Math.hypot(player.position.x-(CENTRO.x+meiaP),player.position.z-CENTRO.z),alvo=d<4.2?1:0;
   portaAbertura+=((alvo-portaAbertura)*Math.min(1,dt*5));
   const aberta=portaAbertura>.92;
   portas.forEach(p=>{p.folha.position.z=p.lado*(.45+.61*portaAbertura);atualizarBoxPorta(p,aberta)});
 }
+export function atualizarHospital(dt){
+  const dentro=Math.abs(player.position.x-(CENTRO.x-1.1))<1.5&&Math.abs(player.position.z-(CENTRO.z+1.35))<1.25;
+  if(dentro)curarHospital(18*dt);
+}
+export function registrarCuraHospital(fn){curarHospital=typeof fn==='function'?fn:()=>{}}
 portas.forEach(p=>atualizarBoxPorta(p,false));
 
 // Recepção e emergência: o corredor central fica livre da porta até a maca.

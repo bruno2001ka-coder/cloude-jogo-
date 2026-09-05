@@ -54,7 +54,7 @@ import{crimeAtivo,alertarDisparoProximo,alertarColisaoPolicial,alertarEntregaIle
 import{pontoDeEntregaAtual}from'./DeliveryPoints.js';
 import{hasWeaponEquipped}from'./Weapons.js';
 import{tocarSomEquiparColete}from'./Audio.js';
-import{obterPontoNascimento}from'./Hospital.js';
+import{obterPontoNascimento,registrarCuraHospital}from'./Hospital.js';
 
 
 const HELI_ALTURA=38,HELI_VELOCIDADE=12,MAPA_LIMITE=95;
@@ -1556,6 +1556,7 @@ export function curarJogador(pontos){
   atualizarHudSaude();return true;
 }
 export function jogadorPrecisaCurar(){return !jogadorRendido&&saudeJogador<JOGADOR_HP_MAX}
+registrarCuraHospital(curarJogador);
 // Vender na biqueira é venda NA RUA, à vista de todo mundo: sobe uma estrela.
 export function denunciarBoca(){somarProcurado(1);mostrarAviso('Venderam na tua cara. A polícia soube.',2600)}
 // Entrega os ganchos pra Economy no momento em que este módulo é avaliado. É o sentido de

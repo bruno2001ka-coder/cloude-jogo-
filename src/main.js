@@ -10,7 +10,7 @@ import{atualizarNPCs}from'./NPCs.js';
 import{atualizarPlantas,atualizarMiraPlantio,isInventarioAberto,renderizarInventario,contextoAtual,chaveContexto,getUltimoContextoTipo,renderizarAcoes}from'./Economy.js';
 import{atualizarRadar,atualizarDebugNavMesh}from'./UI.js';
 import{atualizarPolicia,atualizarTiroContinuo,jogadorComColete,jogadorComMochila}from'./Police.js';
-import{atualizarPortasHospital,atualizarLuzesEmergencia}from'./Hospital.js';
+import{atualizarPortasHospital,atualizarLuzesEmergencia,atualizarHospital}from'./Hospital.js';
 import{inputState,keys,initDragLook,atualizarSuavizacaoInput,fatorVelocidadeDesejado}from'./Input.js';
 import{atualizarSkyline}from'./Skyline.js';
 import{carregar,atualizarSave,instalarSalvamentoAoSair,saveDisponivel,apagarSave}from'./Save.js';
@@ -119,7 +119,7 @@ function quadro(){
   // atualizarBalas que roda lá dentro, com os alvos deste frame. Depois, ela ficaria um frame parada
   // no cano. Fica no loop principal, e não dentro da máquina de estados da polícia, porque é leitura
   // de input, não IA.
-  atualizarPlantas();atualizarRadar();atualizarNPCs(dt);atualizarAnimais(dt);atualizarRefugios(dt);atualizarClienteLaje(dt,player.position);atualizarTiroContinuo();atualizarPortasHospital(dt);atualizarLuzesEmergencia(dt);atualizarPolicia(dt);atualizarDebugNavMesh();
+  atualizarPlantas();atualizarRadar();atualizarNPCs(dt);atualizarAnimais(dt);atualizarRefugios(dt);atualizarClienteLaje(dt,player.position);atualizarTiroContinuo();atualizarPortasHospital(dt);atualizarHospital(dt);atualizarLuzesEmergencia(dt);atualizarPolicia(dt);atualizarDebugNavMesh();
   if(isInventarioAberto()){atualizarMiraPlantio();renderizarInventario()}
   {const chave=chaveContexto(contextoAtual());if(chave!==getUltimoContextoTipo())renderizarAcoes()}
   pos.textContent=droneState.ativo?`🚁 x ${droneState.x.toFixed(1)} · z ${droneState.z.toFixed(1)} · alt ${droneState.y.toFixed(0)}m`:`x ${player.position.x.toFixed(1)} · z ${player.position.z.toFixed(1)}`;
