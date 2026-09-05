@@ -14,7 +14,7 @@
 import*as THREE from'three';
 import{scene}from'./core.js';
 import{obterElevacao}from'./Terrain.js';
-import{obstaculos}from'./Physics.js';
+import{registrarObstaculo,registrarCaixa,marcarSemFusao,marcarObstaculoMovel}from'./Physics.js';
 
 export const HOSPITAL_POS={x:-45,z:-60};
 // O modelo foi criado em escala de referência grande. Em .62 ele ocupava quase uma quadra e
@@ -36,6 +36,7 @@ const LARGURA=18,PROFUNDIDADE=24,ALTURA=5.2;
 const ALTURA_PAVIMENTO=3.2;
 
 const grupoHospital=new THREE.Group();
+const paredesHospital=[];
 // O prédio foi modelado num tamanho de referência maior que as casas do mapa. A escala mantém o
 // interior, as portas e o heliponto proporcionais sem reescrever dezenas de medidas locais.
 grupoHospital.scale.setScalar(ESCALA_HOSPITAL);
@@ -84,15 +85,22 @@ function criarParede(x,y,z,larg,alt,prof,comVidro=false,vidroY=0,vidroH=0){
   }
   return parede;
 }
+function registrarParedeHospital(parede){
+  paredesHospital.push(marcarSemFusao(registrarObstaculo(parede,'hospital')));
+  return parede;
+}
 
-// Parede frontal (entrada)
-criarParede(0,ALTURA_PAVIMENTO/2,-PROFUNDIDADE/2,LARGURA,ALTURA_PAVIMENTO,0.25,true,0.3,1.6);
+// Fachada frontal com vão real de entrada: as três peças não podem virar uma caixa única na fusão.
+const VAO_ENTRADA=3.8,ALTURA_ENTRADA=2.55,ABA_FACHADA=(LARGURA-VAO_ENTRADA)/2;
+registrarParedeHospital(criarParede(-(LARGURA+VAO_ENTRADA)/4,ALTURA_PAVIMENTO/2,-PROFUNDIDADE/2,ABA_FACHADA,ALTURA_PAVIMENTO,0.25,true,0.3,1.6));
+registrarParedeHospital(criarParede( (LARGURA+VAO_ENTRADA)/4,ALTURA_PAVIMENTO/2,-PROFUNDIDADE/2,ABA_FACHADA,ALTURA_PAVIMENTO,0.25,true,0.3,1.6));
+registrarParedeHospital(criarParede(0,ALTURA_ENTRADA+(ALTURA_PAVIMENTO-ALTURA_ENTRADA)/2,-PROFUNDIDADE/2,VAO_ENTRADA,ALTURA_PAVIMENTO-ALTURA_ENTRADA,0.25));
 // Parede traseira
-criarParede(0,ALTURA_PAVIMENTO/2,PROFUNDIDADE/2,LARGURA,ALTURA_PAVIMENTO,0.25);
+registrarParedeHospital(criarParede(0,ALTURA_PAVIMENTO/2,PROFUNDIDADE/2,LARGURA,ALTURA_PAVIMENTO,0.25));
 // Parede esquerda
-criarParede(-LARGURA/2,ALTURA_PAVIMENTO/2,0,0.25,ALTURA_PAVIMENTO,PROFUNDIDADE);
+registrarParedeHospital(criarParede(-LARGURA/2,ALTURA_PAVIMENTO/2,0,0.25,ALTURA_PAVIMENTO,PROFUNDIDADE));
 // Parede direita
-criarParede(LARGURA/2,ALTURA_PAVIMENTO/2,0,0.25,ALTURA_PAVIMENTO,PROFUNDIDADE);
+registrarParedeHospital(criarParede(LARGURA/2,ALTURA_PAVIMENTO/2,0,0.25,ALTURA_PAVIMENTO,PROFUNDIDADE));
 
 // ===== SEGUNDO PAVIMENTO =====
 const pisoSuperior=new THREE.Mesh(new THREE.BoxGeometry(LARGURA-0.5,0.25,PROFUNDIDADE-0.5),matPiso);
@@ -127,23 +135,39 @@ for(let i=0;i<3;i++){
 
 // ===== PORTA AUTOMÁTICA DE ENTRADA =====
 const portaGrupo=new THREE.Group();
-portaGrupo.position.set(0,0.15,-PROFUNDIDADE/2+0.15);
+portaGrupo.position.set(0,0.08,-PROFUNDIDADE/2-0.16);
 grupoHospital.add(portaGrupo);
 
-const portaEsq=new THREE.Mesh(new THREE.BoxGeometry(1.4,2.4,0.15),matPorta);
-portaEsq.position.set(-0.75,1.2,0);
+const portaEsq=new THREE.Mesh(new THREE.BoxGeometry(1.7,2.4,0.12),matVidro);
+portaEsq.position.set(-0.88,1.2,0);
 portaEsq.castShadow=true;
 portaGrupo.add(portaEsq);
 
-const portaDir=new THREE.Mesh(new THREE.BoxGeometry(1.4,2.4,0.15),matPorta);
-portaDir.position.set(0.75,1.2,0);
+const portaDir=new THREE.Mesh(new THREE.BoxGeometry(1.7,2.4,0.12),matVidro);
+portaDir.position.set(0.88,1.2,0);
 portaDir.castShadow=true;
 portaGrupo.add(portaDir);
+
+const molduraEntrada=new THREE.Mesh(new THREE.BoxGeometry(VAO_ENTRADA+0.25,0.16,0.22),matPorta);
+molduraEntrada.position.set(0,ALTURA_ENTRADA+0.08,0);
+portaGrupo.add(molduraEntrada);
+for(const x of[-(VAO_ENTRADA/2+0.08),VAO_ENTRADA/2+0.08]){
+  const coluna=new THREE.Mesh(new THREE.BoxGeometry(0.16,ALTURA_ENTRADA,0.22),matPorta);
+  coluna.position.set(x,ALTURA_ENTRADA/2,0);portaGrupo.add(coluna);
+}
 
 // Sensor de movimento (luz verde acima da porta)
 const sensor=new THREE.Mesh(new THREE.BoxGeometry(0.3,0.15,0.2),new THREE.MeshStandardMaterial({color:0x222220,emissive:0x00ff00,emissiveIntensity:0.3}));
 sensor.position.set(0,2.5,0.2);
 portaGrupo.add(sensor);
+
+const caixaPorta=new THREE.Box3();
+function atualizarColliderPorta(){
+  portaEsq.updateWorldMatrix(true,false);portaDir.updateWorldMatrix(true,false);
+  caixaPorta.copy(new THREE.Box3().setFromObject(portaEsq)).union(new THREE.Box3().setFromObject(portaDir));
+}
+atualizarColliderPorta();
+marcarObstaculoMovel(registrarCaixa(caixaPorta,'porta-hospital'));
 
 // Estado das portas
 let portaAberta=false,portaAnimando=false,tempoPorta=0;
@@ -161,14 +185,15 @@ export function atualizarPortasHospital(dt){
     const easing=t<0.5?2*t*t:1-Math.pow(-2*t+2,2)/2;// easeInOutQuad
     
     if(deveAbrir){
-      portaEsq.position.x=THREE.MathUtils.lerp(-0.75,-1.6,easing);
-      portaDir.position.x=THREE.MathUtils.lerp(0.75,1.6,easing);
+      portaEsq.position.x=THREE.MathUtils.lerp(-0.88,-1.9,easing);
+      portaDir.position.x=THREE.MathUtils.lerp(0.88,1.9,easing);
       if(t>=1){portaAberta=true;portaAnimando=false}
     }else{
-      portaEsq.position.x=THREE.MathUtils.lerp(-1.6,-0.75,easing);
-      portaDir.position.x=THREE.MathUtils.lerp(1.6,0.75,easing);
+      portaEsq.position.x=THREE.MathUtils.lerp(-1.9,-0.88,easing);
+      portaDir.position.x=THREE.MathUtils.lerp(1.9,0.88,easing);
       if(t>=1){portaAberta=false;portaAnimando=false}
     }
+    atualizarColliderPorta();
   }
 }
 
@@ -354,15 +379,6 @@ export const PONTO_NASCIMENTO={
   y:grupoHospital.position.y+ALTURA_PISO*ESCALA_HOSPITAL+0.02,
   z:HOSPITAL_POS.z-3*ESCALA_HOSPITAL
 };
-
-// Referências para colisão
-const boxHospital=new THREE.Box3();
-const ALTURA_TOPO_LOCAL=ALTURA_PAVIMENTO+2.4+0.3;
-boxHospital.setFromCenterAndSize(
-  new THREE.Vector3(HOSPITAL_POS.x,grupoHospital.position.y+(ALTURA_TOPO_LOCAL-ALTURA_BASE_LOCAL)*ESCALA_HOSPITAL/2,HOSPITAL_POS.z),
-  new THREE.Vector3((LARGURA+.6)*ESCALA_HOSPITAL,(ALTURA_TOPO_LOCAL+ALTURA_BASE_LOCAL)*ESCALA_HOSPITAL,(PROFUNDIDADE+.6)*ESCALA_HOSPITAL)
-);
-obstaculos.push(boxHospital);
 
 // Exportar posição do jogador para o Police.js usar
 import{player}from'./Player.js';
