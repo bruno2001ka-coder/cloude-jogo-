@@ -44,7 +44,6 @@ import{colidePedestre,waypointsVielas}from'./NPCs.js';
 import{vestirPolicial,despirPolicial,atualizarCorpoPolicial}from'./PersonagemPolicial.js';
 import{ALT_TORSO,ALT_OLHO,ALT_CANO,atualizarCombate,espalhamentoDoTiro,tempoDeReacao,
   distribuirPapeis,destinoDoPapel,procurarCobertura,PAPEL,velJogador,LEAD_FATOR,LEAD_RUIDO}from'./Combate.js';
-import{obterPontoNascimento}from'./Hospital.js';
 import{POLOS}from'./Poles.js';
 import{plantas,confiscarPlanta,aplicarMulta,obterDinheiro,inventario,atualizarStatusEconomia,isInventarioAberto,registrarGanchosPolicia}from'./Economy.js';
 import{dispararBala,atualizarBalas,limparBalas,VELOCIDADE_BALA}from'./Bullets.js';
@@ -520,10 +519,9 @@ function renderJogador(){
   // A penalidade é proporcional ao saldo atual: morrer custa 25%, mas não apaga quase todo o dinheiro.
   aplicarMulta(Math.round(obterDinheiro()*PENALIDADE_MORTE));
   setTimeout(()=>{
-    const pontoHospital=obterPontoNascimento();
-    player.position.set(pontoHospital.x,pontoHospital.y,pontoHospital.z);
+    player.position.set(0,obterElevacao(0,8),8);
     saudeJogador=JOGADOR_HP_MAX;jogadorRendido=false;atualizarHudSaude();
-    mostrarAviso('Você acordou no hospital — multa aplicada e itens apreendidos.',2800);
+    mostrarAviso('Você voltou ao ponto inicial — multa aplicada e itens apreendidos.',2800);
   },1400);
 }
 // O colete comprado na loja de armas entra em uso sozinho quando o anterior acaba. É verificado aqui, e
