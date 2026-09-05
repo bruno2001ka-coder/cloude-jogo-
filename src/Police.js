@@ -54,7 +54,6 @@ import{crimeAtivo,alertarDisparoProximo,alertarColisaoPolicial,alertarEntregaIle
 import{pontoDeEntregaAtual}from'./DeliveryPoints.js';
 import{hasWeaponEquipped}from'./Weapons.js';
 import{tocarSomEquiparColete,tocarSomTiro,tocarSomSemMunicao}from'./Audio.js';
-import{efeitoDisparo}from'./CombatFX.js';
 import{adicionarTremorCamera}from'./Camera.js';
 import{obterPontoNascimento,registrarCuraHospital}from'./Hospital.js';
 
@@ -1034,7 +1033,7 @@ export function atirar(){
   encararDirecao(_dirCamera.x,_dirCamera.z);
   const boca=obterBocaDaArma();
   _dirTiro.copy(visado).sub(boca).normalize();
-  tocarSomTiro(arma.som,player.position,'jogador');efeitoDisparo(boca,visado);aplicarRecuoArma();adicionarTremorCamera(.08,.018);
+  tocarSomTiro(arma.som,player.position,'jogador');aplicarRecuoArma();adicionarTremorCamera(.08,.018);
   // Mirando, o cone fecha pra 30%: é a recompensa concreta de parar pra mirar em vez de sair
   // atirando andando. A escopeta continua espalhando (30% de 5° ainda é 1,5°), só que muito mais
   // fechada — o que a torna utilizável a média distância sem deixar de ser escopeta.
