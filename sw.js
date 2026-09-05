@@ -20,7 +20,7 @@
 // disciplina que ninguém seguia. Agora ela não depende mais de eu lembrar: o que decide se o jogador
 // recebe código novo é a estratégia de rede-primeiro pro `src/` lá embaixo, e este número serve só
 // pra faxina do cache velho quando a CASCA muda.
-const VERSAO='quintal3d-v24-arma-mao';
+const VERSAO='quintal3d-v25-arma-diagonal';
 const CASCA=[
   './',
   './index.html',

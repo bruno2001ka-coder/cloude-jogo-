@@ -23,7 +23,7 @@ export const AJUSTE={
   // Posição e giro da ARMA na mão. Ela já nasce alinhada aos eixos do corpo; isto é o ajuste fino.
   // O rig deixa o punho com o cano quase horizontal; 1 radiano no eixo X inclina o cano para baixo
   // mantendo a empunhadura próxima da mão, sem alterar a direção real das balas.
-  arma:{x:0,y:0,z:0,giroX:1.0,giroY:0,giroZ:0},
+  arma:{x:0,y:0,z:0,giroX:1.35,giroY:0,giroZ:0},
   // COLETE: ele é PENDURADO PELOS OMBROS, como um colete de verdade, e a escala é uniforme.
   //  · larguraDoOmbro: largura do colete em relação à distância entre as juntas dos ombros. Passa de
   //    1,00 porque a cinta dá a volta pelos lados do tronco, então o colete é mais largo que os ombros.
