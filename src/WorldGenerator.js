@@ -57,8 +57,10 @@ for(let ix=0;ix<=20;ix++)for(let iz=0;iz<=16;iz++){
 }
 const cotaArea=Math.max(...amostrasArea.map(a=>a.h))+.12;
 const materialArea=new THREE.MeshStandardMaterial({color:0x9a9890,roughness:.92,metalness:0});
-const platoArea=bloco(new THREE.BoxGeometry(AREA_NIVELADA.larg,.22,AREA_NIVELADA.prof),materialArea,
-  AREA_NIVELADA.x,cotaArea-.11,AREA_NIVELADA.z);
+// Corpo enterrado: o topo continua nivelado, mas a base desce no terreno para não parecer suspensa.
+const ESPESSURA_NIVELAMENTO=.8;
+const platoArea=bloco(new THREE.BoxGeometry(AREA_NIVELADA.larg,ESPESSURA_NIVELAMENTO,AREA_NIVELADA.prof),materialArea,
+  AREA_NIVELADA.x,cotaArea-ESPESSURA_NIVELAMENTO/2,AREA_NIVELADA.z);
 superficiesAndaveis.push(platoArea);
 // Acabamento perimetral baixo: deixa a área nivelada visível contra a terra sem virar uma parede.
 for(const[x,z,w,d]of[[AREA_NIVELADA.x,AREA_NIVELADA.z-AREA_NIVELADA.prof/2,AREA_NIVELADA.larg,.12],
@@ -78,7 +80,8 @@ const bordas=['norte','sul','oeste','leste'];
 const bordaBaixa=bordas.reduce((melhor,tipo)=>mediaBorda(tipo)<mediaBorda(melhor)?tipo:melhor,'norte');
 const cotaBaixa=mediaBorda(bordaBaixa),desnivel=cotaArea-cotaBaixa;
 if(desnivel>.22){
-  const degraus=Math.max(2,Math.ceil(desnivel/.18)),espelho=desnivel/degraus;
+  // Um degrau extra cria o patamar inferior e faz a escada encostar no chão natural.
+  const degraus=Math.max(3,Math.ceil(desnivel/.18)+1),espelho=desnivel/degraus;
   const comprimento=bordaBaixa==='norte'||bordaBaixa==='sul'?AREA_NIVELADA.larg:AREA_NIVELADA.prof;
   const pisoDegrau=Math.min(.7,4/degraus),espessuraDegrau=.16;
   const materialEscada=new THREE.MeshStandardMaterial({color:0x6f6b65,roughness:.95,metalness:0});
