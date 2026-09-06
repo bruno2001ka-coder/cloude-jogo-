@@ -299,9 +299,16 @@ export const POSE_MOTO={
 };
 // Quanto o boneco sobe do chão pro selim, em metros de jogo. O quadril de pé fica em torno de 0,48 m
 // e o selim está em 0,59: a diferença é isto, e ela é ajustada pela foto.
+// Quanto o boneco sobe do chão pro banco, em metros de jogo. O quadril de pé fica em torno de 0,48 m.
+// Cada veículo passa o seu: a moto tem selim alto (0,59) e o carro tem banco baixo, e usar um número
+// só punha a cabeça do motorista atravessando o teto de um carro de 0,80 m de altura.
 export const ALTURA_SELIM=.09;
-let poseMoto=false,baseYRaiz=null,escalaRaiz=1;
-export function definirPoseMoto(v){poseMoto=!!v}
+let poseMoto=false,baseYRaiz=null,escalaRaiz=1,alturaDoBanco=ALTURA_SELIM,ladoDoBanco=0;
+// `altura` é onde o quadril senta; `lado` desloca o motorista pro banco (negativo = esquerda, que é
+// onde fica o volante). A moto não usa `lado`: o piloto senta no meio.
+export function definirPoseVeiculo(v,altura=ALTURA_SELIM,lado=0){
+  poseMoto=!!v;alturaDoBanco=altura;ladoDoBanco=lado;
+}
 export function pilotando(){return poseMoto}
 const _eP=new THREE.Euler(),_qP=new THREE.Quaternion();
 function aplicarPoseMoto(){
@@ -349,7 +356,10 @@ export function atualizarAnimacaoPersonagem(dt,velocidade,atirando,agachado=fals
   // ficam no quadro congelado da caminhada, que é uma pose neutra de pé — serve de base.
   if(poseMoto){
     aplicarPoseMoto();
-    if(baseYRaiz!==null)raiz.position.y=baseYRaiz+ALTURA_SELIM/escalaRaiz;
+    if(baseYRaiz!==null){
+      raiz.position.y=baseYRaiz+alturaDoBanco/escalaRaiz;
+      raiz.position.x=ladoDoBanco/escalaRaiz;
+    }
     // ===== O PILOTO IA SENTADO DE COSTAS, E A CULPA É DE DUAS CONVENÇÕES =====
     // O CORPO deste boneco olha pra +Z quando `player.rotation.y` é zero: quem vira o personagem a
     // pé é `encararDirecao`, que faz `rotation.y = atan2(dirX, dirZ)` — nessa conta, ângulo zero é
@@ -363,6 +373,7 @@ export function atualizarAnimacaoPersonagem(dt,velocidade,atirando,agachado=fals
     raiz.rotation.y=Math.PI;
   }else{
     if(baseYRaiz!==null&&raiz.position.y!==baseYRaiz)raiz.position.y=baseYRaiz;
+    if(raiz.position.x!==0)raiz.position.x=0;
     if(raiz.rotation.y!==0)raiz.rotation.y=0;// a pé ele volta a olhar pro rumo de sempre
   }
 }

@@ -20,6 +20,7 @@ import{atualizarRecuoArmas}from'./Weapons.js';
 import{isHUDEditando}from'./HUDEditor.js';
 import{definirPosicaoAudio}from'./Audio.js';
 import{atualizarMoto}from'./Moto.js';
+import{atualizarCarro}from'./Carro.js';
 
 camera.position.set(0,EYE_HEIGHT,16);
 initDragLook(renderer.domElement);
@@ -31,7 +32,7 @@ document.getElementById('destravarBtn').addEventListener('click',()=>destravarJo
 // Marca de versão na tela inicial. Existe por um motivo prático: quando uma novidade "não aparece",
 // a primeira pergunta é se o navegador está servindo o build novo ou um cache velho — e sem isso não
 // há como responder olhando a tela. O segundo campo diz se o boneco 3D entrou.
-const VERSAO_JOGO='2026-09-06-plantacao';
+const VERSAO_JOGO='2026-09-06-carro';
 {const el=document.getElementById('versaoJogo');
  if(el){el.textContent=`versão ${VERSAO_JOGO} · boneco 3D: carregando…`;
    const marcar=()=>{el.textContent=`versão ${VERSAO_JOGO} · boneco 3D: ${personagemCarregado()?'ok':'não carregou'}`};
@@ -125,7 +126,11 @@ function quadro(){
   }else{
     // Correr (Shift) e mirar (botão direito) são os dois multiplicadores de velocidade, e quem sabe
     // o estado das duas teclas é o Input — por isso o fator vem de lá pronto.
-    const dirigindoMoto=atualizarMoto(dt,keys,inputState.joyX,inputState.joyY);
+    // Os dois veículos recebem quadro sempre — parados eles ainda se assentam no terreno e mantêm o
+    // colisor em dia. Só UM pode estar sendo dirigido, e é ele quem manda no movimento do jogador.
+    const naMoto=atualizarMoto(dt,keys,inputState.joyX,inputState.joyY);
+    const noCarro=atualizarCarro(dt,keys,inputState.joyX,inputState.joyY);
+    const dirigindoMoto=naMoto||noCarro;
     if(!dirigindoMoto)atualizarMovimentoJogador(dt,keys,inputState.joyX,inputState.joyY,inputState.yaw,fatorVelocidadeDesejado());
     // ===== NA MOTO, A CÂMERA VAI PRA TRÁS DELA =====
     // A PÉ o movimento é RELATIVO À CÂMERA: `atualizarMovimentoJogador` recebe `inputState.yaw` e
