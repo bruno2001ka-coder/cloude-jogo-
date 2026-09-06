@@ -273,25 +273,29 @@ export const POSE_MOTO={
   Spine02:    [ .06, 0, 0],
   neck:       [-.12, 0, 0],
   Head:       [-.08, 0, 0],
-  // PERNAS: resolvidas contra a pedaleira, com alvo LATERAL também — e esse foi o conserto que a
-  // foto cobrou. A primeira versão acertava a altura (0,26 m) mas deixava o pé a só 0,10 m do eixo,
-  // dentro da carenagem de uma moto que tem 0,47 m de largura: na imagem o piloto aparecia SEM
-  // PERNAS, engolido pelo motor. Agora o pé fica em 0,259 / 0,001 / 0,170 (erro de 2 mm) e o joelho
-  // sai 0,148 m pro lado, passando por fora do tanque como numa moto de verdade.
-  RightUpLeg: [ .679, 0,  .354],
-  LeftUpLeg:  [ .679, 0, -.354],
-  RightLeg:   [-1.464, 0, 0],
-  LeftLeg:    [-1.464, 0, 0],
-  // BRAÇOS: resolvidos contra a MANOPLA, que foi medida no `moto.glb` em 0,73 m de altura, 0,16 m à
-  // frente do centro e 0,235 m pro lado. A mão ficou em 0,736 / 0,127 / 0,219 — 3,7 cm de erro.
-  // A primeira busca tinha dado 1 mm, mas rodou com o tronco RETO; quando a inclinação do tronco
-  // entrou, o ombro andou junto e levou a mão 9 cm acima do guidão. Estes números saíram de uma
-  // busca feita com a pose inteira já no lugar, que é a única que vale.
+  // PERNAS: resolvidas contra a pedaleira, com alvo LATERAL e alvo de JOELHO. Os dois extras vieram
+  // de erro medido, não de capricho:
+  //   · sem o lateral, o pé caía a 0,10 m do eixo, dentro da carenagem de uma moto de 0,47 m de
+  //     largura — na foto o piloto aparecia SEM PERNAS, engolido pelo motor;
+  //   · sem o joelho, a busca achava uma perna dobrada PRA TRÁS que punha o pé no lugar certo. Pé
+  //     no destino certo com forma de ajoelhado, não de piloto.
+  // Ficou: pé em 0,275 / -0,006 / 0,167 e joelho em 0,437 / +0,073 / 0,120 — à frente do quadril
+  // (que está em -0,075) e por fora do tanque.
+  RightUpLeg: [-.827, 0,  .371],
+  LeftUpLeg:  [-.827, 0, -.371],
+  RightLeg:   [1.11, 0, 0],
+  LeftLeg:    [1.11, 0, 0],
+  // BRAÇOS: resolvidos contra a MANOPLA, medida no `moto.glb` em 0,73 m de altura, 0,16 m à frente e
+  // 0,235 m pro lado. A mão ficou em 0,738 / 0,120 / 0,201 — 5,3 cm de erro.
+  // Estes números foram resolvidos DUAS vezes, e a segunda é a que vale: a primeira rodou com o
+  // corpo ainda de costas (ver a meia-volta em `aplicarPoseMoto`), e depois de virar o piloto os
+  // braços passaram a apontar pra trás. Qualquer mexida na orientação do corpo obriga a refazer
+  // esta busca — a pose é toda relativa a ele.
   // O Z é o que ESPALHA as mãos pra largura do guidão; sem ele as duas ficavam juntas no meio.
-  RightArm:   [ .80, 0, .45],
-  LeftArm:    [ .80, 0,-.45],
-  RightForeArm:[ .30, 0, 0],
-  LeftForeArm: [ .30, 0, 0],
+  RightArm:   [-1.818, 0,  .569],
+  LeftArm:    [-1.818, 0, -.569],
+  RightForeArm:[ .416, 0, 0],
+  LeftForeArm: [ .416, 0, 0],
 };
 // Quanto o boneco sobe do chão pro selim, em metros de jogo. O quadril de pé fica em torno de 0,48 m
 // e o selim está em 0,59: a diferença é isto, e ela é ajustada pela foto.
@@ -346,8 +350,20 @@ export function atualizarAnimacaoPersonagem(dt,velocidade,atirando,agachado=fals
   if(poseMoto){
     aplicarPoseMoto();
     if(baseYRaiz!==null)raiz.position.y=baseYRaiz+ALTURA_SELIM/escalaRaiz;
-  }else if(baseYRaiz!==null&&raiz.position.y!==baseYRaiz){
-    raiz.position.y=baseYRaiz;
+    // ===== O PILOTO IA SENTADO DE COSTAS, E A CULPA É DE DUAS CONVENÇÕES =====
+    // O CORPO deste boneco olha pra +Z quando `player.rotation.y` é zero: quem vira o personagem a
+    // pé é `encararDirecao`, que faz `rotation.y = atan2(dirX, dirZ)` — nessa conta, ângulo zero é
+    // +Z. Já o MOVIMENTO do jogo usa `(-sen, -cos)`, em que ângulo zero é -Z. As duas convivem a pé
+    // porque `encararDirecao` recebe a direção do movimento e faz a conversão sozinha.
+    // A moto não passa por ela: ela escreve `player.rotation.y` direto como rumo de marcha. O
+    // resultado, medido com o osso `headfront`: a cara apontava pra +2° e a moto andava pra -180°,
+    // ou seja o piloto descia a rua olhando pra trás — o Bruno viu na foto.
+    // Meia-volta no boneco (e só nele) acerta sem mexer no rumo de marcha, que já está certo e
+    // testado. Também é onde o problema está: é o corpo que discorda, não a moto.
+    raiz.rotation.y=Math.PI;
+  }else{
+    if(baseYRaiz!==null&&raiz.position.y!==baseYRaiz)raiz.position.y=baseYRaiz;
+    if(raiz.rotation.y!==0)raiz.rotation.y=0;// a pé ele volta a olhar pro rumo de sempre
   }
 }
 
