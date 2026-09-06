@@ -22,10 +22,10 @@ function ajustarModelo(root){
   root.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true}});
   _box.setFromObject(root);_box.getSize(_size);const maior=Math.max(_size.x,_size.y,_size.z)||1;root.scale.setScalar(2.2/maior);
   _box.setFromObject(root);_box.getCenter(_center);root.position.sub(_center);root.position.y+=_size.y*.5/maior*2.2;
-  // O GLB foi exportado longitudinalmente no eixo X, com a frente apontando para -X.
-  // A física da moto usa +Z como frente quando a rotação é zero; este giro interno
-  // alinha guidão e roda dianteira ao vetor de deslocamento sem alterar a física.
-  root.rotation.y=Math.PI/2;
+  // O GLB foi exportado longitudinalmente no eixo X, com a frente apontando para +X.
+  // A física da moto usa +Z como frente quando a rotação é zero; -90° transforma
+  // o eixo frontal do modelo em +Z sem alterar a física do veículo.
+  root.rotation.y=-Math.PI/2;
 }
 new GLTFLoader().load('assets/moto.glb',gltf=>{
   modelo=gltf.scene;ajustarModelo(modelo);moto.add(modelo);modeloCarregado=true;
@@ -76,9 +76,7 @@ export function atualizarMoto(dt,keys,joyX=0,joyY=0){
   // por isso o eixo vertical é invertido apenas na leitura, não na apresentação do stick.
   const teclado=(keys.KeyW?1:0)-(keys.KeyS?1:0);
   const acelerador=limitarEntrada(teclado||-joyY);
-  // O eixo de rotação do modelo alinhado faz o sinal geométrico parecer invertido;
-  // D/joystick direito precisa produzir curva visual para a direita.
-  const direcao=-limitarEntrada((keys.KeyD?1:0)-(keys.KeyA?1:0)+joyX);
+  const direcao=limitarEntrada((keys.KeyD?1:0)-(keys.KeyA?1:0)+joyX);
   atualizarVelocidade(dt,acelerador);
 
   const rapidez=Math.min(1,Math.abs(velocidade)/MAX_VEL);
