@@ -84,10 +84,12 @@ export function atualizarMoto(dt,keys,joyX=0,joyY=0){
     // A direção fica leve ao manobrar devagar e firme em velocidade, como uma moto arcade;
     // ao dar ré, o sentido do esterço é naturalmente invertido.
     const taxa=1.05+rapidez*1.25;
-    player.rotation.y+=direcao*taxa*dt*Math.sign(velocidade);
+    // A convenção do jogo usa -Z como frente. Com ela, diminuir o yaw é a curva para a direita.
+    player.rotation.y-=direcao*taxa*dt*Math.sign(velocidade);
   }
 
-  _frente.set(Math.sin(player.rotation.y),0,Math.cos(player.rotation.y));
+  // Mesmo eixo usado pelo jogador e pela câmera: yaw zero avança para -Z.
+  _frente.set(-Math.sin(player.rotation.y),0,-Math.cos(player.rotation.y));
   const distancia=velocidade*dt;
   moverComColisao(_frente.x*distancia,_frente.z*distancia);
 
