@@ -31,12 +31,15 @@ document.getElementById('destravarBtn').addEventListener('click',()=>destravarJo
 // Marca de versão na tela inicial. Existe por um motivo prático: quando uma novidade "não aparece",
 // a primeira pergunta é se o navegador está servindo o build novo ou um cache velho — e sem isso não
 // há como responder olhando a tela. O segundo campo diz se o boneco 3D entrou.
-const VERSAO_JOGO='2026-09-06-moto';
+const VERSAO_JOGO='2026-09-06-moto-camera';
 {const el=document.getElementById('versaoJogo');
  if(el){el.textContent=`versão ${VERSAO_JOGO} · boneco 3D: carregando…`;
    const marcar=()=>{el.textContent=`versão ${VERSAO_JOGO} · boneco 3D: ${personagemCarregado()?'ok':'não carregou'}`};
    setTimeout(marcar,4000);setTimeout(marcar,12000);}}
 
+// Lembra se o quadro anterior já estava na moto: é o que separa "acabou de montar" (câmera encaixa)
+// de "está pilotando" (câmera recentra suave). Ver o bloco da moto em `quadro`.
+let dirigindoMotoAntes=false;
 const startScreen=document.getElementById('startScreen'),playBtn=document.getElementById('playBtn');let gameStarted=false;playBtn.addEventListener('click',()=>{gameStarted=true;startScreen.classList.add('hide');document.body.classList.add('started');
   // O hint cobre a faixa dos botões embaixo. Ele serve pra primeira partida, não pro jogo todo:
   // some sozinho depois de meio minuto em vez de disputar espaço com o PULAR pra sempre.
@@ -124,6 +127,37 @@ function quadro(){
     // o estado das duas teclas é o Input — por isso o fator vem de lá pronto.
     const dirigindoMoto=atualizarMoto(dt,keys,inputState.joyX,inputState.joyY);
     if(!dirigindoMoto)atualizarMovimentoJogador(dt,keys,inputState.joyX,inputState.joyY,inputState.yaw,fatorVelocidadeDesejado());
+    // ===== NA MOTO, A CÂMERA VAI PRA TRÁS DELA =====
+    // A PÉ o movimento é RELATIVO À CÂMERA: `atualizarMovimentoJogador` recebe `inputState.yaw` e
+    // monta a frente com ele, então empurrar o analógico pra cima sempre manda o boneco pra dentro
+    // da tela, olhando pra onde for. DE MOTO não era assim: `atualizarMoto` anda no rumo DA MOTO e
+    // nunca encostava no yaw da câmera. Os dois corriam soltos, e o resultado foi medido:
+    //     ao montar                       câmera   0°  ·  moto   0°  ->  0° de diferença
+    //     depois de olhar pra trás        câmera 180°  ·  moto   0°  -> 180°
+    //     depois de só CURVAR 2 segundos  câmera 180°  ·  moto 124°  ->  56°
+    // Ou seja: SÓ DE FAZER CURVA os dois se separam sozinhos, e com a moto vindo na direção da
+    // câmera o analógico fica espelhado — empurrar pra cima traz a moto PRA CIMA de você. É a cara
+    // de "controle invertido", e é o que sobrou depois de consertar o sinal do acelerador.
+    //
+    // O conserto é o de todo jogo de dirigir: a câmera se recentra ATRÁS do veículo. Fica aqui, no
+    // main, e não dentro do Moto.js, porque juntar dois módulos é o serviço deste arquivo — e o
+    // Moto.js não precisa passar a conhecer o Input pra isso.
+    // Recentra em vez de cravar: dá pra arrastar a tela e olhar pro lado durante a pilotagem, que a
+    // câmera volta pro lugar sozinha em cerca de um segundo.
+    if(dirigindoMoto){
+      if(!dirigindoMotoAntes){
+        // NO INSTANTE DE MONTAR, A CÂMERA ENCAIXA — não vai girando. Montar de costas pra moto deixa
+        // os dois a 180°, e enquanto a câmera dava a volta (perto de 1 segundo) o controle ficava
+        // espelhado: medido, o pico chegava a 170°. Encaixar mata essa janela; o recentro suave
+        // abaixo é pra DEPOIS, quando o que existe é o atraso normal de curva.
+        inputState.yaw=inputState.targetYaw=player.rotation.y;
+      }else{
+        let d=player.rotation.y-inputState.targetYaw;
+        while(d>Math.PI)d-=Math.PI*2;while(d<-Math.PI)d+=Math.PI*2;// caminho angular mais curto
+        inputState.targetYaw+=d*(1-Math.exp(-3.5*dt));
+      }
+    }
+    dirigindoMotoAntes=dirigindoMoto;
     // rede de segurança: só conta como "travado" se ele estiver de fato tentando andar
     const querendoAndar=!!(keys.KeyW||keys.KeyA||keys.KeyS||keys.KeyD)||Math.hypot(inputState.joyX,inputState.joyY)>.2;
     vigiarTravamento(dt,querendoAndar);
