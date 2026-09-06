@@ -72,10 +72,10 @@ export function atualizarMoto(dt,keys,joyX=0,joyY=0){
   if(!modeloCarregado)return montado;
   if(!montado)return false;
 
-  // No teclado, W/S são acelerador e freio. No joystick, Y para cima é aceleração;
-  // por isso o eixo vertical é invertido apenas na leitura, não na apresentação do stick.
+  // No teclado, W/S são acelerador e freio. No joystick, o sinal vertical usado pelo jogo
+  // já vem no sentido de condução: puxar para frente deve produzir avanço positivo.
   const teclado=(keys.KeyW?1:0)-(keys.KeyS?1:0);
-  const acelerador=limitarEntrada(teclado||-joyY);
+  const acelerador=limitarEntrada(teclado||joyY);
   const direcao=limitarEntrada((keys.KeyD?1:0)-(keys.KeyA?1:0)+joyX);
   atualizarVelocidade(dt,acelerador);
 
