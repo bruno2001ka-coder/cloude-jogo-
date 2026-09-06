@@ -101,7 +101,8 @@ const ESCONDIDO_PARA_SUMIR=3,ESCONDIDO_POR_NIVEL=5,CACA_ATRASO=4;
 // O que sobrou é o que ele faz bem: ele é o OLHO. Voa alto, acha plantação madura por sobrevoo e
 // avisa pelo rádio. Quem vem é a polícia de pé, saindo da delegacia e ANDANDO até lá — e essa
 // caminhada é jogo: dá tempo de correr e colher antes de eles chegarem.
-const HELI_ALTURA_RONDA=52,HELI_ALTURA_APONTANDO=30,HELI_ALTURA_POUSO=6;
+// `obterElevacao(x,z)` fornece o chão mesmo nos morros; a margem mantém os esquis acima do relevo.
+const HELI_ALTURA_RONDA=52,HELI_ALTURA_APONTANDO=30,HELI_ALTURA_POUSO=2.4;
 const DESEMBARQUE_QTD=2,DESEMBARQUE_INTERVALO=.65;
 // ===== VISÃO (cone + linha de visão) =====
 // Meia-abertura do cone em radianos: 0,95 rad ≈ 54°, cone total ≈ 109° — perto do campo útil humano.
