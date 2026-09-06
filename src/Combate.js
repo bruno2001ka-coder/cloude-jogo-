@@ -12,6 +12,7 @@
 import*as THREE from'three';
 import{player,PLAYER_HEIGHT}from'./Player.js';
 import{pontoNavegavel}from'./NavMesh.js';
+import{COMBATE,ZONAS_ACERTO,FAIXAS_DISTANCIA as FAIXAS_CONFIG}from'./Config.js';
 
 // ===== ALTURAS DO CORPO =====
 // As frações são as de ZONAS_JOGADOR/ZONAS_POLICIAL: tronco de .313 a .657, cabeça de .657 a .9.

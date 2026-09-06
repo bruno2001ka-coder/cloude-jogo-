@@ -22,10 +22,11 @@ import*as Economia from'./Economy.js';
 import*as Jogador from'./Player.js';
 import*as Armas from'./Weapons.js';
 import*as Policia from'./Police.js';
+import{SAVE_CONFIG,ECONOMIA as CONFIG_ECONOMIA,inteiro,numero,booleano}from'./Config.js';
 
-const CHAVE_A='quintal3d.save.a',CHAVE_B='quintal3d.save.b';
-const VERSAO=1;
-const INTERVALO_AUTOSAVE=5;// segundos
+const CHAVE_A=SAVE_CONFIG.CHAVE_A,CHAVE_B=SAVE_CONFIG.CHAVE_B;
+const VERSAO=SAVE_CONFIG.VERSAO;
+const INTERVALO_AUTOSAVE=SAVE_CONFIG.INTERVALO_AUTOSAVE;// segundos
 
 // Storage pode simplesmente não existir (aba anônima, cookies bloqueados, WebView restrita).
 // Descobrimos UMA vez, e o jogo segue normalmente sem save em vez de quebrar.
@@ -46,9 +47,7 @@ function somaVerificacao(txt){
 // ===== VALIDADORES =====
 // Cada um devolve SEMPRE um valor utilizável. É o que garante que um save adulterado degrade pro
 // padrão em vez de contaminar o jogo.
-const inteiro=(v,padrao=0,min=0,max=1e9)=>{const n=Math.floor(Number(v));return Number.isFinite(n)?Math.min(max,Math.max(min,n)):padrao};
-const numero=(v,padrao=0,min=-1e6,max=1e6)=>{const n=Number(v);return Number.isFinite(n)?Math.min(max,Math.max(min,n)):padrao};
-const booleano=v=>v===true;
+// Funções importadas de Config.js: inteiro(), numero(), booleano()
 
 function montarEstado(){
   const inv=Economia.inventario;
@@ -131,7 +130,7 @@ export function carregar(){
       Jogador.destravarJogador?.(true);// se a posição salva ficou dentro de geometria, sai de lá
     }
     Economia.limparPlantas();
-    if(Array.isArray(s.plantas))for(const p of s.plantas.slice(0,40))// teto: save adulterado com 10 mil mudas travaria o jogo
+    if(Array.isArray(s.plantas))for(const p of s.plantas.slice(0,CONFIG_ECONOMIA.MAX_PLANTAS))// teto: save adulterado com 10 mil mudas travaria o jogo
       Economia.restaurarPlanta(numero(p.x,0,-120,120),numero(p.y,0,-50,200),numero(p.z,0,-120,120),numero(p.i,0,0,1e6));
     Economia.atualizarStatusEconomia();
     Economia.renderizarAcoes();

@@ -27,7 +27,7 @@ import{GLTFLoader}from'three/addons/loaders/GLTFLoader.js';
 import{clone as clonarComEsqueleto}from'three/addons/utils/SkeletonUtils.js';
 import{PLAYER_HEIGHT}from'./Player.js';
 
-const ANIM_POL={andar:'Walking',correr:'Running'};
+const ANIM_POL={andar:'Walking',correr:'Running',atirandoParado:'01a05f36-abe2-72cf-b71b-cd8f5821a04d'};
 const TRANSICAO=.18;
 // Acima disto o policial corre. Ele anda a RUA_VELOCIDADE (1,7) e persegue mais rápido; o corte fica
 // no meio da faixa de perseguição pra a corrida aparecer quando ele está de fato indo atrás de alguém.
@@ -119,7 +119,7 @@ function vestir(pedido){
   const mixer=new THREE.AnimationMixer(raiz);
   const acoes={};
   for(const clipe of modelo.animations){
-    if(clipe.name!==ANIM_POL.andar&&clipe.name!==ANIM_POL.correr)continue;
+    if(clipe.name!==ANIM_POL.andar&&clipe.name!==ANIM_POL.correr&&clipe.name!==ANIM_POL.atirandoParado)continue;
     const a=mixer.clipAction(clipe);
     a.enabled=true;a.setEffectiveWeight(0);a.play();
     acoes[clipe.name]=a;
@@ -216,14 +216,14 @@ function trocar(estado,nome){
 }
 
 // Um quadro de animação de UM policial. `velocidade` é o módulo horizontal em metros por segundo.
-export function atualizarCorpoPolicial(estado,dt,velocidade){
+export function atualizarCorpoPolicial(estado,dt,velocidade,atirandoParado=false){
   if(!estado)return;
   const parado=velocidade<.25;
-  trocar(estado,velocidade>=VEL_CORRIDA_POL?ANIM_POL.correr:ANIM_POL.andar);
+  trocar(estado,atirandoParado&&parado?ANIM_POL.atirandoParado:(velocidade>=VEL_CORRIDA_POL?ANIM_POL.correr:ANIM_POL.andar));
   if(estado.atual){
     // Parado congela no primeiro quadro em vez de marchar no lugar — o mesmo tratamento do jogador.
-    estado.atual.paused=parado;
-    if(parado)estado.atual.time=0;
+    estado.atual.paused=parado&&!atirandoParado;
+    if(parado&&!atirandoParado)estado.atual.time=0;
     estado.atual.setEffectiveWeight(1);
   }
   estado.mixer.update(dt);

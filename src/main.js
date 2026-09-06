@@ -10,10 +10,16 @@ import{atualizarNPCs}from'./NPCs.js';
 import{atualizarPlantas,atualizarMiraPlantio,isInventarioAberto,renderizarInventario,contextoAtual,chaveContexto,getUltimoContextoTipo,renderizarAcoes}from'./Economy.js';
 import{atualizarRadar,atualizarDebugNavMesh}from'./UI.js';
 import{atualizarPolicia,atualizarTiroContinuo,jogadorComColete,jogadorComMochila}from'./Police.js';
+import{atualizarPortasHospital,atualizarLuzesEmergencia,atualizarHospital}from'./Hospital.js';
 import{inputState,keys,initDragLook,atualizarSuavizacaoInput,fatorVelocidadeDesejado}from'./Input.js';
 import{atualizarSkyline}from'./Skyline.js';
 import{carregar,atualizarSave,instalarSalvamentoAoSair,saveDisponivel,apagarSave}from'./Save.js';
 import{personagemCarregado}from'./Personagem.js';
+import{atualizarEfeitos}from'./CombatFX.js';
+import{atualizarRecuoArmas}from'./Weapons.js';
+import{isHUDEditando}from'./HUDEditor.js';
+import{definirPosicaoAudio}from'./Audio.js';
+import{atualizarMoto}from'./Moto.js';
 
 camera.position.set(0,EYE_HEIGHT,16);
 initDragLook(renderer.domElement);
@@ -25,7 +31,7 @@ document.getElementById('destravarBtn').addEventListener('click',()=>destravarJo
 // Marca de versão na tela inicial. Existe por um motivo prático: quando uma novidade "não aparece",
 // a primeira pergunta é se o navegador está servindo o build novo ou um cache velho — e sem isso não
 // há como responder olhando a tela. O segundo campo diz se o boneco 3D entrou.
-const VERSAO_JOGO='2026-09-03g';
+const VERSAO_JOGO='2026-09-05c';
 {const el=document.getElementById('versaoJogo');
  if(el){el.textContent=`versão ${VERSAO_JOGO} · boneco 3D: carregando…`;
    const marcar=()=>{el.textContent=`versão ${VERSAO_JOGO} · boneco 3D: ${personagemCarregado()?'ok':'não carregou'}`};
@@ -101,24 +107,35 @@ function tick(){
 function quadro(){
   const dt=Math.min(clock.getDelta(),.05);
   atualizarSuavizacaoInput(dt);
+  if(isHUDEditando()){composer.render();return}
+  // A cena continua renderizando por trás da tela inicial, mas nenhum sistema de jogo deve
+  // consumir input, mover NPCs ou alterar a economia antes de o jogador começar. Sem esta guarda,
+  // um toque acidental no joystick enquanto o overlay estava aberto podia deslocar o personagem
+  // antes mesmo da primeira partida.
+  if(!gameStarted){
+    atualizarAmbiente(dt,player.position);atualizarSkyline();
+    composer.render();
+    return;
+  }
   if(droneState.ativo){
     atualizarCameraDrone(dt,keys,inputState.joyX,inputState.joyY,inputState.yaw,inputState.pitch);
   }else{
     // Correr (Shift) e mirar (botão direito) são os dois multiplicadores de velocidade, e quem sabe
     // o estado das duas teclas é o Input — por isso o fator vem de lá pronto.
-    atualizarMovimentoJogador(dt,keys,inputState.joyX,inputState.joyY,inputState.yaw,fatorVelocidadeDesejado());
+    const dirigindoMoto=atualizarMoto(dt,keys,inputState.joyX,inputState.joyY);
+    if(!dirigindoMoto)atualizarMovimentoJogador(dt,keys,inputState.joyX,inputState.joyY,inputState.yaw,fatorVelocidadeDesejado());
     // rede de segurança: só conta como "travado" se ele estiver de fato tentando andar
     const querendoAndar=!!(keys.KeyW||keys.KeyA||keys.KeyS||keys.KeyD)||Math.hypot(inputState.joyX,inputState.joyY)>.2;
     vigiarTravamento(dt,querendoAndar);
     atualizarCameraSeguidora(dt,player.position,inputState.yaw,inputState.pitch,EYE_HEIGHT);
   }
-  atualizarAmbiente(dt,player.position);atualizarSkyline();
+  atualizarAmbiente(dt,player.position);atualizarSkyline();definirPosicaoAudio(camera.position.x,camera.position.z);
   {const banda=obterBandaFase();if(banda!==bandaAnteriorHud){faseIcone.textContent=ICONES_FASE[banda];bandaAnteriorHud=banda}}
   // O tiro contínuo vem ANTES do atualizarPolicia: a bala criada neste frame já entra no
   // atualizarBalas que roda lá dentro, com os alvos deste frame. Depois, ela ficaria um frame parada
   // no cano. Fica no loop principal, e não dentro da máquina de estados da polícia, porque é leitura
   // de input, não IA.
-  atualizarPlantas();atualizarRadar();atualizarNPCs(dt);atualizarAnimais(dt);atualizarRefugios(dt);atualizarClienteLaje(dt,player.position);atualizarTiroContinuo();atualizarPolicia(dt);atualizarDebugNavMesh();
+  atualizarPlantas();atualizarRadar();atualizarNPCs(dt);atualizarAnimais(dt);atualizarRefugios(dt);atualizarClienteLaje(dt,player.position);atualizarTiroContinuo();atualizarEfeitos(dt);atualizarRecuoArmas(dt);atualizarPortasHospital(dt);atualizarHospital(dt);atualizarLuzesEmergencia(dt);atualizarPolicia(dt);atualizarDebugNavMesh();
   if(isInventarioAberto()){atualizarMiraPlantio();renderizarInventario()}
   {const chave=chaveContexto(contextoAtual());if(chave!==getUltimoContextoTipo())renderizarAcoes()}
   pos.textContent=droneState.ativo?`🚁 x ${droneState.x.toFixed(1)} · z ${droneState.z.toFixed(1)} · alt ${droneState.y.toFixed(0)}m`:`x ${player.position.x.toFixed(1)} · z ${player.position.z.toFixed(1)}`;

@@ -38,7 +38,7 @@ import{obterElevacao}from'./Terrain.js';
 import{primeiroImpactoNoSegmento,intersectarSegmentoCaixa,buscarPosicaoLivre}from'./Physics.js';
 import{encontrarCaminho,visaoHorizontalLivre,pontoNavegavel}from'./NavMesh.js';
 import{player,zonasDeAcertoJogador,PLAYER_HEIGHT,encararDirecao,definirAnimacaoTiro}from'./Player.js';
-import{ORDEM_ARMAS,armaEquipada,idArmaEquipada,equiparArma,obterBocaDaArma,direcaoComDispersao,definirArmaEmpunhada}from'./Weapons.js';
+import{ORDEM_ARMAS,armaEquipada,idArmaEquipada,equiparArma,obterBocaDaArma,direcaoComDispersao,definirArmaEmpunhada,aplicarRecuoArma}from'./Weapons.js';
 import{estaEscondido,refugioEmQueEsta,refugios}from'./WorldGenerator.js';
 import{colidePedestre,waypointsVielas}from'./NPCs.js';
 import{vestirPolicial,despirPolicial,atualizarCorpoPolicial}from'./PersonagemPolicial.js';
@@ -48,14 +48,18 @@ import{POLOS}from'./Poles.js';
 import{plantas,confiscarPlanta,aplicarMulta,obterDinheiro,inventario,atualizarStatusEconomia,isInventarioAberto,registrarGanchosPolicia}from'./Economy.js';
 import{dispararBala,atualizarBalas,limparBalas,VELOCIDADE_BALA}from'./Bullets.js';
 import{aplicarDano,renderizarVidaJogador,criarBarraMundo}from'./HealthBar.js';
+import{definirColeteVisivel}from'./Player.js';
 import{droneState,miraState}from'./Camera.js';
 import{crimeAtivo,alertarDisparoProximo,alertarColisaoPolicial,alertarEntregaIlegal,definirArmaVisivel}from'./CrimeTriggers.js';
 import{pontoDeEntregaAtual}from'./DeliveryPoints.js';
 import{hasWeaponEquipped}from'./Weapons.js';
-import{tocarSomEquiparColete}from'./Audio.js';
+import{tocarSomEquiparColete,tocarSomTiro,tocarSomSemMunicao}from'./Audio.js';
+import{adicionarTremorCamera}from'./Camera.js';
+import{obterPontoNascimento,registrarCuraHospital}from'./Hospital.js';
 
 
-const HELI_ALTURA=38,HELI_VELOCIDADE=12,MAPA_LIMITE=95;
+// O terreno mede 260x260 (aprox. -130 a 130). O limite antigo de 95 deixava uma faixa grande sem patrulha.
+const HELI_ALTURA=38,HELI_VELOCIDADE=14,MAPA_LIMITE=124;
 const SALDO_RESPAWN=300;
 // Raio de detecção dimensionado pra funcionar em SOBREVOO, agora que o heli não vai mais direto na
 // coordenada da muda: mapa de 190x190 = 36.100 m², heli a 12 m/s, faixa varrida = 2R x v.
@@ -71,7 +75,7 @@ const PLANTA_DETECTAVEL_ESTAGIO=2;
 const PATRULHA_VIES=.55,PATRULHA_RAIO_VIES=30;
 const POLICIAL_HP=100,POLICIAL_VELOCIDADE=2,POLICIAL_ALCANCE_TIRO=13;
 export const stoppingDistance=3.0;
-const POLICIAL_DANO_MIN=10,POLICIAL_DANO_MAX=18,POLICIAL_COOLDOWN_MIN=1.1,POLICIAL_COOLDOWN_MAX=2.1;
+const POLICIAL_DANO_MIN=6,POLICIAL_DANO_MAX=11,POLICIAL_COOLDOWN_MIN=1.1,POLICIAL_COOLDOWN_MAX=2.1;
 // ===== PROCURADO =====
 // A barra SÓ desce dentro do esconderijo (casa da favela com a porta fechada). Fora dele não existe
 // decaimento nenhum: correr não limpa ficha, e é isso que dá função ao esconderijo.
@@ -97,7 +101,9 @@ const ESCONDIDO_PARA_SUMIR=3,ESCONDIDO_POR_NIVEL=5,CACA_ATRASO=4;
 // O que sobrou é o que ele faz bem: ele é o OLHO. Voa alto, acha plantação madura por sobrevoo e
 // avisa pelo rádio. Quem vem é a polícia de pé, saindo da delegacia e ANDANDO até lá — e essa
 // caminhada é jogo: dá tempo de correr e colher antes de eles chegarem.
-const HELI_ALTURA_RONDA=52,HELI_ALTURA_APONTANDO=30;
+// `obterElevacao(x,z)` fornece o chão mesmo nos morros; a margem mantém os esquis acima do relevo.
+const HELI_ALTURA_RONDA=52,HELI_ALTURA_APONTANDO=30,HELI_ALTURA_POUSO=2.4;
+const DESEMBARQUE_QTD=2,DESEMBARQUE_INTERVALO=.65;
 // ===== VISÃO (cone + linha de visão) =====
 // Meia-abertura do cone em radianos: 0,95 rad ≈ 54°, cone total ≈ 109° — perto do campo útil humano.
 // Sobe 0,07 rad por estrela (na ficha 5 vai a 1,30 rad ≈ 74°, cone de ~149°): com ficha alta eles estão
@@ -239,6 +245,15 @@ const uniformeMat=new THREE.MeshStandardMaterial({color:0x232c3d,roughness:.7}),
   // Mesmo tom do rosto do morador (NPCs.js), de propósito: os dois são gente do mesmo mundo.
   rostoMat=new THREE.MeshStandardMaterial({color:0x171712,roughness:.8});
 function blocoP(geo,mat,x,y,z,parent){const m=new THREE.Mesh(geo,mat);m.position.set(x,y,z);m.castShadow=true;m.receiveShadow=true;parent.add(m);return m}
+function construirArmaPolicial(){
+  const g=new THREE.Group();g.name='pistolaPolicial';
+  blocoP(GEO_POL.armaCorpo,armaMat,0,0,.12,g);
+  const cano=blocoP(GEO_POL.armaCano,armaMat,0,.01,.39,g);cano.rotation.x=Math.PI/2;
+  const emp=blocoP(GEO_POL.armaEmpunhadura,coleteMat,0,-.13,.01,g);emp.rotation.x=-.22;
+  blocoP(GEO_POL.armaGuarda,armaMat,0,-.035,.095,g);
+  blocoP(GEO_POL.armaMira,armaMat,0,.085,.34,g);
+  return g;
+}
 
 // A malha crua do policial mede 1,78 nesta escala — dividindo por PLAYER_HEIGHT dá a escala que
 // deixa o policial exatamente do mesmo tamanho do personagem principal.
@@ -272,7 +287,11 @@ const GEO_POL={
   olho:new THREE.BoxGeometry(.06,.06,.03),
   boca:new THREE.BoxGeometry(.13,.03,.02),
   braco:new THREE.BoxGeometry(.13,.58,.16),
-  arma:new THREE.BoxGeometry(.08,.1,.42),
+  armaCorpo:new THREE.BoxGeometry(.14,.12,.34),
+  armaCano:new THREE.CylinderGeometry(.022,.025,.24,8),
+  armaEmpunhadura:new THREE.BoxGeometry(.09,.2,.11),
+  armaGuarda:new THREE.BoxGeometry(.025,.08,.075),
+  armaMira:new THREE.BoxGeometry(.025,.025,.055),
 };
 const MATS_PELE=skinPolicial.map(c=>new THREE.MeshStandardMaterial({color:c,roughness:.55}));
 
@@ -293,7 +312,7 @@ function criarPolicial(indice,tipo='rapel'){
   blocoP(GEO_POL.bone,boneMat,0,1.7,0,g);
   const pernas=[-.14,.14].map(lx=>blocoP(GEO_POL.perna,uniformeMat,lx,.29,0,g));
   const bracos=[-.37,.37].map(lx=>blocoP(GEO_POL.braco,skinMat,lx,.9,0,g));
-  const arma=blocoP(GEO_POL.arma,armaMat,.37,.68,.18,g);
+  const arma=construirArmaPolicial();arma.position.set(.37,.68,.18);g.add(arma);
   g.scale.setScalar(ESCALA_POLICIAL);
   scene.add(g);
   const pol={
@@ -303,7 +322,7 @@ function criarPolicial(indice,tipo='rapel'){
     pos:new THREE.Vector3(),proximoTiro:0,caminhando:0,
     // Estado da trocação (ver Combate.js): relógio da mira, papel na equipe e cobertura escolhida.
     viuDesde:0,viuPor:0,prontoEm:0,tiros:0,hpAnterior:POLICIAL_HP,papel:null,papelAte:0,ladoFlanco:1,
-    cobertura:null,proximaCobertura:0,faseCobertura:0,pressionadoAte:0,ultimoEspalhamento:0,
+    cobertura:null,proximaCobertura:0,faseCobertura:0,pressionadoAte:0,tiroVisualAte:0,ultimoEspalhamento:0,
     // Percepção: `proximaVisao` defasa a checagem entre policiais (ver comentário do custo por frame);
     // `viu` é o resultado da última avaliação, reaproveitado pelos frames intermediários.
     proximaVisao:indice*VISAO_DEFASAGEM,viu:false,olharY:0,
@@ -356,7 +375,7 @@ const policia={estado:'rondando',alvoPlanta:null,pontoAlvo:{x:0,z:0},tempoEstado
   // Quando o próximo reforço pode sair pela porta, e até quando ainda conta como confronto quente.
   reposicaoEm:0,calmariaAte:0,
   // Quando o confisco em curso termina (a polícia PRECISA estar em cima da planta pra ele correr).
-  confiscoAte:0};
+  confiscoAte:0,desembarqueFeitos:0,proximoDesembarque:0,heliPousado:false};
 // ===== O QUE CHAMA ATENÇÃO DA POLÍCIA =====
 // Antes bastava EXISTIR: a abordagem à plantação já elevava a ficha por si só, e a partir daí o
 // jogador era caçado pra sempre sem ter feito nada além de plantar. Agora a polícia só se interessa
@@ -417,10 +436,10 @@ let proximoTiroJogador=0;
 const alertaEl=document.getElementById('alertaPolicia'),
   atencaoEl=document.getElementById('atencaoPolicia'),
   refugioEl=document.getElementById('refugioIndicador'),miraCombateEl=document.getElementById('miraCombate'),
-  fireBtn=document.getElementById('fireBtn'),danoFlash=document.getElementById('danoFlash'),
+  fireBtn=document.getElementById('fireBtn'),fireSecondary=document.getElementById('fireSecondary'),danoFlash=document.getElementById('danoFlash'),
   avisoPolicia=document.getElementById('avisoPolicia'),municaoEl=document.getElementById('municaoHud'),
   armaBtn=document.getElementById('armaBtn'),armaIconeEl=document.getElementById('armaIcone'),
-  armaMunicaoEl=document.getElementById('armaMunicao'),miraBtn=document.getElementById('miraBtn');
+  armaMunicaoEl=document.getElementById('armaMunicao'),miraBtn=document.getElementById('miraBtn'),aimBase=document.getElementById('aimBase');
 function atualizarHudSaude(){renderizarVidaJogador(saudeJogador,JOGADOR_HP_MAX,armaduraJogador,JOGADOR_ARMADURA_MAX)}
 // A munição também muda por COMPRA (na Economy, que não conhece este módulo). Em vez de acoplar os dois,
 // o HUD observa o valor e só redesenha quando ele muda de fato — nada de escrever no DOM por frame.
@@ -512,14 +531,16 @@ function renderJogador(){
   // rendição deixaria a placa no corpo depois do respawn sem o jogador ter pagado por ela.
   // A carga vai junto: ser rendido apreende os pacotes. Deixar a mochila cheia depois da prisão
   // faria o flagrante recomeçar no mesmo instante do respawn.
-  armaduraJogador=0;inventario.colete=0;inventario.pacote=0;atualizarStatusEconomia();
+  armaduraJogador=0;inventario.colete=0;inventario.pacote=0;definirColeteVisivel(false);atualizarStatusEconomia();
   mostrarAviso('Você foi rendido pela polícia — plantação perdida e multa aplicada.',3400);
   if(policia.alvoPlanta&&!policia.alvoPlanta.colhida)confiscarPlanta(policia.alvoPlanta);
   // A penalidade é proporcional ao saldo atual: morrer custa 25%, mas não apaga quase todo o dinheiro.
   aplicarMulta(Math.round(obterDinheiro()*PENALIDADE_MORTE));
   setTimeout(()=>{
-    player.position.set(SPAWN_X,obterElevacao(SPAWN_X,SPAWN_Z),SPAWN_Z);
+    const pontoHospital=obterPontoNascimento();
+    player.position.set(pontoHospital.x,pontoHospital.y,pontoHospital.z);
     saudeJogador=JOGADOR_HP_MAX;jogadorRendido=false;atualizarHudSaude();
+    mostrarAviso('Você acordou no Hospital — multa aplicada e itens apreendidos.',2800);
   },1400);
 }
 // O colete comprado na loja de armas entra em uso sozinho quando o anterior acaba. É verificado aqui, e
@@ -527,6 +548,7 @@ function renderJogador(){
 function conferirColete(){
   if(armaduraJogador<=0&&inventario.colete>0){
     inventario.colete--;armaduraJogador=JOGADOR_ARMADURA_MAX;
+    definirColeteVisivel(true);
     tocarSomEquiparColete();
     atualizarStatusEconomia();atualizarHudSaude();
     mostrarAviso('Colete equipado — a armadura absorve parte do dano.',2200);
@@ -538,6 +560,7 @@ function conferirColete(){
 function equiparColeteComprado(){
   if(armaduraJogador>0)return false;
   armaduraJogador=JOGADOR_ARMADURA_MAX;
+  definirColeteVisivel(true);
   tocarSomEquiparColete();atualizarStatusEconomia();atualizarHudSaude();
   mostrarAviso('Colete equipado — a armadura absorve parte do dano.',2200);
   return true;
@@ -857,7 +880,7 @@ function tentarAtirar(pol,agora,viu,andando){
   // A linha é medida do CANO ao TRONCO, que é por onde a bala passa. Medir de outro par de alturas
   // deixava o policial atirar na parede achando que tinha caminho.
   if(!temLinhaDeVisao(ox,oy,oz,player.position.x,player.position.y+ALT_TORSO,player.position.z))return false;
-  pol.proximoTiro=agora+cooldownTiro();
+  pol.proximoTiro=agora+cooldownTiro();pol.tiroVisualAte=agora+1.15;
   const espalhamento=espalhamentoDoTiro({
     dist,tempoMirando:agora-pol.viuDesde,policialAndando:andando,procurado:policia.procurado});
   pol.ultimoEspalhamento=espalhamento;
@@ -867,6 +890,7 @@ function tentarAtirar(pol,agora,viu,andando){
   _dir.z+=(Math.random()*2-1)*espalhamento;
   _origem.set(ox,oy,oz);
   dispararBala(_origem,_dir,false);
+  tocarSomTiro('policia',_origem,'policia');
   pol.tiros=(pol.tiros||0)+1;
   return true;
 }
@@ -1010,7 +1034,7 @@ export function atirar(){
   if(restante<arma.gasto){
     // Com o gatilho segurado o dedo fica no botão: sem esta trava o aviso repetiria a cada 0,9 s pra
     // sempre. Volta a false quando o gatilho solta ou quando sai um tiro válido.
-    if(!avisouSemMunicao){avisouSemMunicao=true;mostrarAviso(`Sem munição de ${arma.nome} — compre na Loja de Armas (nordeste do mapa).`,2400)}
+    if(!avisouSemMunicao){avisouSemMunicao=true;mostrarAviso(`Sem munição de ${arma.nome} — compre na Loja de Armas (nordeste do mapa).`,2400);tocarSomSemMunicao()}
     proximoTiroJogador=agora+.9;return;
   }
   avisouSemMunicao=false;
@@ -1025,6 +1049,7 @@ export function atirar(){
   encararDirecao(_dirCamera.x,_dirCamera.z);
   const boca=obterBocaDaArma();
   _dirTiro.copy(visado).sub(boca).normalize();
+  tocarSomTiro(arma.som,player.position,'jogador');aplicarRecuoArma();adicionarTremorCamera(.08,.018);
   // Mirando, o cone fecha pra 30%: é a recompensa concreta de parar pra mirar em vez de sair
   // atirando andando. A escopeta continua espalhando (30% de 5° ainda é 1,5°), só que muito mais
   // fechada — o que a torna utilizável a média distância sem deixar de ser escopeta.
@@ -1142,6 +1167,7 @@ const ESTADOS={
   rondando:{
     aoEntrar(){
       policia.cooldownAte=performance.now()/1000+COOLDOWN_ENTRE_BUSCAS;
+      policia.desembarqueFeitos=0;policia.proximoDesembarque=0;policia.heliPousado=false;
       heliAlvo=sortearWaypointPatrulha();
     },
     aoAtualizar(dt,agora){
@@ -1173,12 +1199,15 @@ const ESTADOS={
       if(d>APROX_RAIO){
         heli.position.x+=dx/d*HELI_VELOCIDADE*dt;heli.position.z+=dz/d*HELI_VELOCIDADE*dt;
         heli.rotation.y=Math.atan2(dx,dz);
+        heli.position.y=THREE.MathUtils.lerp(heli.position.y,HELI_ALTURA_APONTANDO,dt*2);
       }else{
         heli.position.x=THREE.MathUtils.lerp(heli.position.x,alvo.x,1-Math.exp(-4*dt));
         heli.position.z=THREE.MathUtils.lerp(heli.position.z,alvo.z,1-Math.exp(-4*dt));
         heli.rotation.z=THREE.MathUtils.lerp(heli.rotation.z,0,1-Math.exp(-5*dt));
+        const chao=obterElevacao(alvo.x,alvo.z);
+        heli.position.y=THREE.MathUtils.lerp(heli.position.y,chao+HELI_ALTURA_POUSO,1-Math.exp(-2.5*dt));
+        if(Math.abs(heli.position.y-(chao+HELI_ALTURA_POUSO))<.35){policia.heliPousado=true;desembarcarPoliciais(agora)}
       }
-      heli.position.y=THREE.MathUtils.lerp(heli.position.y,HELI_ALTURA_APONTANDO,dt*2);
     }
   },
 };
@@ -1241,6 +1270,14 @@ function sairDaBase(agora,onde){
   pol.esperandoPatrulhaAte=0;
   policiais.push(pol);
   return pol;
+}
+function desembarcarPoliciais(agora){
+  if(policia.desembarqueFeitos>=DESEMBARQUE_QTD||agora<policia.proximoDesembarque)return;
+  const i=policia.desembarqueFeitos++,ang=i?Math.PI:0;
+  const p={x:heli.position.x+Math.cos(ang)*1.8,z:heli.position.z+Math.sin(ang)*1.8};
+  const pol=sairDaBase(agora,p);
+  pol.tipo='desembarque';pol.modo='desembarque';pol.destinoRonda={x:policia.alvoPlanta?.x??p.x,z:policia.alvoPlanta?.z??p.z};
+  policia.proximoDesembarque=agora+DESEMBARQUE_INTERVALO;
 }
 // Quantos DEVEM estar em campo. É a regra do reforço inteira: quatro sempre, mais um por policial que
 // o jogador derrubou, até o teto. Sem baixa, o efetivo não muda — reforço tem que ter causa.
@@ -1508,7 +1545,7 @@ function atualizarPatrulha(dt,agora){
     }else if(destino){
       const alvo=alvoDeMovimento(pol,agora,destino.x,destino.z);
       // Reforço chamado no meio de um confronto vem CORRENDO; ronda é ronda.
-      const vel=velocidadePolicial(RUA_VELOCIDADE*(abordagem.ativa?1.25:1));
+      const vel=velocidadePolicial(RUA_VELOCIDADE*(abordagem.ativa?1.25:1)*(pol.modo==='desembarque'?1.9:1));
       passoPolicial(pol,dt,alvo.x,alvo.z,vel);
       andando=true;
     }
@@ -1550,6 +1587,7 @@ export function curarJogador(pontos){
   atualizarHudSaude();return true;
 }
 export function jogadorPrecisaCurar(){return !jogadorRendido&&saudeJogador<JOGADOR_HP_MAX}
+registrarCuraHospital(curarJogador);
 // Vender na biqueira é venda NA RUA, à vista de todo mundo: sobe uma estrela.
 export function denunciarBoca(){somarProcurado(1);mostrarAviso('Venderam na tua cara. A polícia soube.',2600)}
 // Entrega os ganchos pra Economy no momento em que este módulo é avaliado. É o sentido de
@@ -1582,7 +1620,7 @@ export function aplicarEstadoPoliciaDoSave(s){
     armaduraJogador=Number.isFinite(arm)?Math.min(JOGADOR_ARMADURA_MAX,Math.max(0,Math.floor(arm))):0;
     // Migra saves antigos que acumulavam coletes: se já há armadura equipada, não existe uma segunda
     // unidade escondida no inventário. O jogo trabalha com no máximo um colete total.
-    if(armaduraJogador>0)inventario.colete=0;
+    if(armaduraJogador>0){inventario.colete=0;definirColeteVisivel(true)}else{definirColeteVisivel(false)}
     vigiadoAte=performance.now()/1000+restante;
   }catch(e){policia.procurado=0;vigiadoAte=0}
 }
@@ -1636,7 +1674,7 @@ export function atualizarPolicia(dt){
   separarCorpos();
   // Um quadro de animação por policial VIVO. Morto não anima: ele está tombando por rotação do grupo,
   // e deixar o clipe de andar correndo por cima faria o corpo caído continuar dando passos.
-  for(const pol of policiais)if(pol.vivo&&pol.corpo)atualizarCorpoPolicial(pol.corpo,dt,pol.velocidadeAndando||0);
+  for(const pol of policiais)if(pol.vivo&&pol.corpo)atualizarCorpoPolicial(pol.corpo,dt,pol.velocidadeAndando||0,agora<(pol.tiroVisualAte||0));
 
   montarAlvosDoFrame();
   atualizarBalas(dt,alvosDaBala);
@@ -1733,6 +1771,10 @@ export function atualizarPolicia(dt){
   // existe arma no jogo. Fora do combate ele fica esmaecido, indicando que não há em quem atirar.
   fireBtn.style.display=(emAlerta||temArma)?'flex':'none';
   fireBtn.style.opacity=emCombate&&temArma?'1':'.45';
+  if(fireSecondary)fireSecondary.style.display=(podeMirar&&(emAlerta||temArma)&&matchMedia('(pointer: coarse)').matches)?'flex':'none';
+  // No touch, o joystick direito substitui o botão de tiro e o alternador de mira: o próprio gesto
+  // aponta e mantém o gatilho pressionado, como nos jogos twin-stick.
+  if(aimBase)aimBase.style.display=(podeMirar&&(emAlerta||temArma)&&matchMedia('(pointer: coarse)').matches)?'block':'none';
   // O botão de mira acompanha o de tiro: mirar sem ter em que atirar não faz sentido. Fica DEPOIS de
   // fireBtn.style.display ser escrito, senão copiaria o valor do frame anterior.
   if(miraBtn){
@@ -1756,10 +1798,11 @@ export function atualizarPolicia(dt){
 // obrigatório — sem ele, o dedo deslizando pra fora do botão faz o pointerup cair noutro elemento e o
 // gatilho fica preso ligado, atirando até acabar a munição. Mesmo tratamento que o joystick já usa.
 fireBtn?.addEventListener('pointerdown',e=>{
+  if(e.pointerType!=='mouse')return;
   e.preventDefault();fireBtn.setPointerCapture?.(e.pointerId);
   definirGatilho(true);atirar();// tiro imediato: o primeiro disparo não pode esperar o próximo frame
 });
-for(const ev of['pointerup','pointercancel','pointerleave','lostpointercapture'])fireBtn?.addEventListener(ev,()=>definirGatilho(false));
+for(const ev of['pointerup','pointercancel','lostpointercapture'])fireBtn?.addEventListener(ev,()=>definirGatilho(false));
 addEventListener('blur',()=>definirGatilho(false));// alt-tab com o dedo/tecla presos
 armaBtn?.addEventListener('pointerdown',e=>{e.preventDefault();trocarArma()});
 // Mira no celular é ALTERNADOR, não "segurar": o polegar direito já está ocupado com o gatilho, e

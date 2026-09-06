@@ -5,6 +5,7 @@
 import*as THREE from'three';
 import{scene}from'./core.js';
 import{primeiroImpactoNoSegmento,intersectarSegmentoCaixa}from'./Physics.js';
+import{efeitoImpacto}from'./CombatFX.js';
 
 const VELOCIDADE=95,VIDA_MAX=1.6,RAIO_BALA=.045;
 // A polícia precisa do número pra ANTECIPAR o tiro (mirar onde o alvo vai estar). Exportado daqui, e
@@ -72,7 +73,7 @@ export function atualizarBalas(dt,obterAlvos){
 
     if(melhorT<=1){
       const hx=ax+(bx-ax)*melhorT,hy=ay+(by-ay)*melhorT,hz=az+(bz-az)*melhorT;
-      criarImpacto(hx,hy,hz);
+      criarImpacto(hx,hy,hz);efeitoImpacto(new THREE.Vector3(hx,hy,hz),alvoAtingido?'inimigo':'parede');
       if(alvoAtingido)alvoAtingido.aoAtingir();
       removerBala(i);continue;
     }

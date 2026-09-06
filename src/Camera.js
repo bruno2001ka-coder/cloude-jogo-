@@ -66,6 +66,8 @@ export const miraState={ativo:false,fator:0};
 const FOV_NORMAL=58,FOV_MIRA=38;
 
 const camGoal=new THREE.Vector3(),lookGoal=new THREE.Vector3(),alvoTemp=new THREE.Vector3(),ladoTemp=new THREE.Vector3();
+let tremorTempo=0,tremorDuracao=0,tremorForca=0;
+export function adicionarTremorCamera(duracao=.08,forca=.016){tremorTempo=Math.max(tremorTempo,duracao);tremorDuracao=Math.max(tremorDuracao,duracao);tremorForca=Math.max(tremorForca,forca)}
 export function atualizarCameraSeguidora(dt,playerPos,yaw,pitch,eyeHeight){
   miraState.fator+=((miraState.ativo?1:0)-miraState.fator)*(1-Math.exp(-12*dt));
   const f=miraState.fator;
@@ -108,6 +110,7 @@ export function atualizarCameraSeguidora(dt,playerPos,yaw,pitch,eyeHeight){
   // linha, e o que ela julga é a posição que vai ser DESENHADA.
   const livre=desencravarCamera(alvoTemp,camera.position);
   if(livre!==camera.position)camera.position.copy(livre);
+  if(tremorTempo>0){const intensidade=tremorForca*(tremorTempo/Math.max(.001,tremorDuracao));camera.position.x+=(Math.random()-.5)*intensidade;camera.position.y+=(Math.random()-.5)*intensidade;tremorTempo=Math.max(0,tremorTempo-dt);if(!tremorTempo){tremorDuracao=0;tremorForca=0}}
   lookGoal.lerp(alvoTemp,camSmooth);
   camera.lookAt(lookGoal);
   const fovAlvo=FOV_NORMAL+(FOV_MIRA-FOV_NORMAL)*f;

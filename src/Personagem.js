@@ -21,7 +21,9 @@ export const AJUSTE={
   // Mochila dos pacotes: tamanho e posição em relação ao centro do tronco (z negativo = costas).
   mochila:{escala:1,x:0,y:.02,z:-.12},
   // Posição e giro da ARMA na mão. Ela já nasce alinhada aos eixos do corpo; isto é o ajuste fino.
-  arma:{x:0,y:0,z:0,giroX:0,giroY:0,giroZ:0},
+  // O rig deixa o punho com o cano quase horizontal; 1 radiano no eixo X inclina o cano para baixo
+  // mantendo a empunhadura próxima da mão, sem alterar a direção real das balas.
+  arma:{x:0,y:0,z:0,giroX:1.35,giroY:0,giroZ:0},
   // COLETE: ele é PENDURADO PELOS OMBROS, como um colete de verdade, e a escala é uniforme.
   //  · larguraDoOmbro: largura do colete em relação à distância entre as juntas dos ombros. Passa de
   //    1,00 porque a cinta dá a volta pelos lados do tronco, então o colete é mais largo que os ombros.
@@ -33,7 +35,7 @@ export const AJUSTE={
 
 // Nomes das animações dentro do GLB. Ficam aqui em cima porque são o contrato com o arquivo: trocar o
 // modelo é trocar esta tabela, não caçar string no meio da lógica.
-const ANIM={andar:'Walking',correr:'Running',andarAtirando:'Walk_Forward_While_Shooting'};
+const ANIM={andar:'Walking',correr:'Running',andarAtirando:'Walk_Forward_While_Shooting',atirandoParado:'Shooting_Still'};
 const TRANSICAO=.16;// segundos de mistura entre uma animação e outra
 
 // Velocidade (em unidades de mundo por segundo) a partir da qual o passo vira corrida. O jogador anda a
@@ -44,6 +46,7 @@ const VEL_CORRIDA=5.4;
 const VEL_PARADO=.35;
 
 let mixer=null,acoes=null,atual=null,raiz=null,maoOsso=null,malhaPele=null,troncoOsso=null;
+let acaoAgachado=null;
 let aNormalizar=false,alvoAltura=0,playerRef=null,aoProntoCb=null;
 // Colete 3D: o arquivo e o encaixe no corpo. Chegam em ordem imprevisível (o GLB do colete pode vir
 // antes ou depois do primeiro quadro do boneco), então o encaixe é tentado dos dois lados.
@@ -178,6 +181,12 @@ export function carregarPersonagem(player,alturaMundo,aoCarregar){
       acoes[clipe.name]=a;
       if(clipe.name===ANIM.andar&&clipe.duration>0)velocidadeAndar=1/clipe.duration;
     }
+    // O arquivo separado tem o mesmo esqueleto e nomes de ossos do personagem; usamos só o clipe,
+    // não outra malha. Assim mochila, colete e escala continuam presos ao mesmo corpo.
+    new GLTFLoader().load('assets/agachado.glb',ag=>{
+      const clip=ag.animations.find(c=>c.name==='rigify_clip')||ag.animations[0];
+      if(clip){acaoAgachado=mixer.clipAction(clip);acaoAgachado.enabled=true;acaoAgachado.setLoop(THREE.LoopOnce,1);acaoAgachado.clampWhenFinished=true}
+    },undefined,err=>console.warn('Quintal 3D: animação agachada não carregou.',err));
     // Nasce parado: a animação de andar congelada no primeiro quadro. O GLB não traz um clipe de
     // "parado", e o primeiro quadro do passo é uma pose neutra de pé — serve como repouso.
     trocar(ANIM.andar,0);
@@ -233,15 +242,25 @@ function normalizar(){
 
 // Chamado uma vez por quadro pelo Player. `velocidade` é o módulo da velocidade horizontal em unidades
 // de mundo por segundo; `atirando` vem do gatilho.
-export function atualizarAnimacaoPersonagem(dt,velocidade,atirando){
+export function atualizarAnimacaoPersonagem(dt,velocidade,atirando,agachado=false){
   if(!mixer)return;
   if(aNormalizar)normalizar();
+  if(agachado){
+    if(acaoAgachado){
+      if(atual!==acaoAgachado){
+        if(atual)atual.crossFadeTo(acaoAgachado,TRANSICAO,false);
+        acaoAgachado.reset();acaoAgachado.setEffectiveWeight(1);acaoAgachado.play();atual=acaoAgachado;
+      }
+      acaoAgachado.paused=false;
+    }else if(atual){atual.paused=true}
+    mixer.update(dt);return;
+  }
   const parado=velocidade<VEL_PARADO;
   const correndo=velocidade>=VEL_CORRIDA;
-  const alvo=parado?ANIM.andar:(atirando?ANIM.andarAtirando:(correndo?ANIM.correr:ANIM.andar));
+  const alvo=parado?(atirando?ANIM.atirandoParado:ANIM.andar):(atirando?ANIM.andarAtirando:(correndo?ANIM.correr:ANIM.andar));
   trocar(alvo);
   if(atual){
-    if(parado){
+    if(parado&&!atirando){
       // Congela no primeiro quadro em vez de deixar o passo rodando no lugar.
       atual.paused=true;atual.time=0;
     }else{

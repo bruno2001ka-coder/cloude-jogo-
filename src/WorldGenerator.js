@@ -45,6 +45,67 @@ bairro.add(favela);
 export{casasPos,casasCliente,BECOS,refugios,BAR,BIQUEIRA,sumirCaixa,alternarPortaRefugio,
   refugioEmQueEsta,estaEscondido,atualizarRefugios};
 
+// ===== ÁREA NIVELADA 10 x 8 =====
+// Posição indicada pelo HUD da referência enviada: o platô fica no lado leste do mapa e não depende
+// de uma casa específica. A cota é calculada antes da geometria para o piso ficar plano mesmo no morro.
+const AREA_NIVELADA={x:65.7,z:-1.8,larg:10,prof:8};
+const amostrasArea=[];
+for(let ix=0;ix<=20;ix++)for(let iz=0;iz<=16;iz++){
+  const x=AREA_NIVELADA.x-AREA_NIVELADA.larg/2+ix*AREA_NIVELADA.larg/20;
+  const z=AREA_NIVELADA.z-AREA_NIVELADA.prof/2+iz*AREA_NIVELADA.prof/16;
+  amostrasArea.push({x,z,h:obterElevacao(x,z)});
+}
+const cotaArea=Math.max(...amostrasArea.map(a=>a.h))+.12;
+const materialArea=new THREE.MeshStandardMaterial({color:0x9a9890,roughness:.92,metalness:0});
+// Corpo enterrado: o topo continua nivelado, mas a base desce no terreno para não parecer suspensa.
+const menorCotaArea=Math.min(...amostrasArea.map(a=>a.h));
+const ESPESSURA_NIVELAMENTO=Math.max(1.8,cotaArea-menorCotaArea+.3);
+const platoArea=bloco(new THREE.BoxGeometry(AREA_NIVELADA.larg,ESPESSURA_NIVELAMENTO,AREA_NIVELADA.prof),materialArea,
+  AREA_NIVELADA.x,cotaArea-ESPESSURA_NIVELAMENTO/2,AREA_NIVELADA.z);
+superficiesAndaveis.push(platoArea);
+// Acabamento perimetral baixo: deixa a área nivelada visível contra a terra sem virar uma parede.
+for(const[x,z,w,d]of[[AREA_NIVELADA.x,AREA_NIVELADA.z-AREA_NIVELADA.prof/2,AREA_NIVELADA.larg,.12],
+                      [AREA_NIVELADA.x,AREA_NIVELADA.z+AREA_NIVELADA.prof/2,AREA_NIVELADA.larg,.12],
+                      [AREA_NIVELADA.x-AREA_NIVELADA.larg/2,AREA_NIVELADA.z,.12,AREA_NIVELADA.prof],
+                      [AREA_NIVELADA.x+AREA_NIVELADA.larg/2,AREA_NIVELADA.z,.12,AREA_NIVELADA.prof]])
+  bloco(new THREE.BoxGeometry(w,.08,d),materialArea,x,cotaArea+.04,z);
+
+function mediaBorda(tipo){
+  const borda=amostrasArea.filter(a=>tipo==='norte'?a.z<AREA_NIVELADA.z-AREA_NIVELADA.prof/2+.001:
+    tipo==='sul'?a.z>AREA_NIVELADA.z+AREA_NIVELADA.prof/2-.001:
+    tipo==='oeste'?a.x<AREA_NIVELADA.x-AREA_NIVELADA.larg/2+.001:
+    a.x>AREA_NIVELADA.x+AREA_NIVELADA.larg/2-.001);
+  return borda.reduce((s,a)=>s+a.h,0)/borda.length;
+}
+const bordas=['norte','sul','oeste','leste'];
+const bordaBaixa=bordas.reduce((melhor,tipo)=>mediaBorda(tipo)<mediaBorda(melhor)?tipo:melhor,'norte');
+const cotaBaixa=mediaBorda(bordaBaixa),desnivel=cotaArea-cotaBaixa;
+if(desnivel>.22){
+  // Um degrau extra cria o patamar inferior e faz a escada encostar no chão natural.
+  const degraus=Math.max(3,Math.ceil(desnivel/.18)+5),espelho=desnivel/degraus;
+  const comprimento=bordaBaixa==='norte'||bordaBaixa==='sul'?AREA_NIVELADA.larg:AREA_NIVELADA.prof;
+  // Os quatro degraus novos aumentam o comprimento total; não são apenas uma divisão mais fina.
+  const pisoDegrau=Math.min(.7,4/Math.max(1,degraus-4)),espessuraDegrau=.16;
+  const materialEscada=new THREE.MeshStandardMaterial({color:0x6f6b65,roughness:.95,metalness:0});
+  for(let i=0;i<degraus;i++){
+    // Cada degrau recebe a cota do terreno exatamente sob ele: o corpo desce até o solo e não flutua.
+    const recuo=(degraus-i-.5)*pisoDegrau;
+    let x=AREA_NIVELADA.x,z=AREA_NIVELADA.z;
+    if(bordaBaixa==='norte')z=AREA_NIVELADA.z-AREA_NIVELADA.prof/2-recuo;
+    if(bordaBaixa==='sul')z=AREA_NIVELADA.z+AREA_NIVELADA.prof/2+recuo;
+    if(bordaBaixa==='oeste')x=AREA_NIVELADA.x-AREA_NIVELADA.larg/2-recuo;
+    if(bordaBaixa==='leste')x=AREA_NIVELADA.x+AREA_NIVELADA.larg/2+recuo;
+    const cotaSoloDegrau=obterElevacao(x,z);
+    const topo=Math.max(cotaSoloDegrau+.08,cotaBaixa+espelho*(i+1));
+    const altura=Math.max(.16,topo-cotaSoloDegrau);
+    const geo=bordaBaixa==='norte'||bordaBaixa==='sul'
+      ?new THREE.BoxGeometry(comprimento,altura,pisoDegrau)
+      :new THREE.BoxGeometry(pisoDegrau,altura,comprimento);
+    const degrau=bloco(geo,materialEscada,x,cotaSoloDegrau+altura/2,z);
+    superficiesAndaveis.push(degrau);
+  }
+}
+
 // A árvore ficou aqui: ela é da FAZENDA (o pomar do sítio), não da favela.
 function arvore(x,z,s=1){const g=new THREE.Group();g.position.set(x,obterElevacao(x,z),z);bairro.add(g);
   bloco(new THREE.CylinderGeometry(.16*s,.22*s,1.5*s,6),posteMat,0,.75*s,0,g);

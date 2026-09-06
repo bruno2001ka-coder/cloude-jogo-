@@ -1,11 +1,12 @@
 // Teclado, joystick virtual e olhar por arraste/Pointer Lock. PULAR (tecla ou botão) sobe o drone quando ele está ativo.
 import*as THREE from'three';
-import{pularJogador}from'./Player.js';
+import{pularJogador,alternarAgachado}from'./Player.js';
 import{droneState,subirDrone,miraState}from'./Camera.js';
 import{alternarDebug}from'./UI.js';
 import{trocarArma,definirGatilho,definirMira}from'./Police.js';
 import{acaoPrimaria,alternarInventario}from'./Economy.js';
 import{ORDEM_ARMAS}from'./Weapons.js';
+import{desbloquearAudio}from'./Audio.js';
 
 // ===== SENSIBILIDADE (mexa AQUI pra deixar a câmera mais rápida/lenta) =====
 // Positivo = comportamento NORMAL (não invertido). rad por pixel de movimento do mouse.
@@ -13,18 +14,20 @@ export const SENSIBILIDADE_MOUSE=.0035;      // giro horizontal (yaw) com pointe
 export const SENSIBILIDADE_MOUSE_VERTICAL=.0025;// giro vertical (pitch) com pointer lock
 export const SENSIBILIDADE_TOQUE=.009,SENSIBILIDADE_TOQUE_VERTICAL=.006;// arraste de dedo/mouse sem lock
 
-export const inputState={yaw:0,targetYaw:0,pitch:.28,targetPitch:.28,joyX:0,joyY:0,joyActive:false,joyId:null,joyForca:0,correndo:false};
+export const inputState={yaw:0,targetYaw:0,pitch:.28,targetPitch:.28,joyX:0,joyY:0,joyActive:false,joyId:null,joyForca:0,
+  aimX:0,aimY:0,aimActive:false,aimId:null,correndo:false};
 export const keys=Object.create(null);
 const keyMap={w:'KeyW',a:'KeyA',s:'KeyS',d:'KeyD',ArrowUp:'KeyW',ArrowLeft:'KeyA',ArrowDown:'KeyS',ArrowRight:'KeyD'};
 // Solta o gatilho junto com as teclas: trocar de aba com F pressionado deixaria o tiro preso ligado.
 // Solta também a corrida: se o Shift ficar "preso" ao trocar de aba, o jogador voltaria correndo sozinho.
-const clearKeys=()=>{for(const k in keys)keys[k]=false;inputState.correndo=false;inputState.joyForca=0;definirGatilho(false);if(document.pointerLockElement)definirMira(false)};
+const clearKeys=()=>{for(const k in keys)keys[k]=false;inputState.correndo=false;inputState.joyX=0;inputState.joyY=0;inputState.joyForca=0;inputState.joyActive=false;inputState.joyId=null;inputState.aimX=0;inputState.aimY=0;inputState.aimActive=false;inputState.aimId=null;stickBase?.classList.remove('correndo');if(stick)stick.style.transform='translate(0,0)';if(aimStick)aimStick.style.transform='translate(0,0)';definirGatilho(false);if(document.pointerLockElement)definirMira(false)};
 
 function pularOuSubir(){if(droneState.ativo){subirDrone()}else{pularJogador()}}
 
 addEventListener('keydown',e=>{
   if(e.repeat&&(e.code==='KeyE'||e.code==='KeyQ'||e.code==='KeyX'||e.code==='Tab'))return;// autorrepeat abriria/fecharia o inventário em loop
   if(e.code==='Space'){pularOuSubir();e.preventDefault();return}
+  if(e.code==='KeyC'&&!e.repeat){alternarAgachado();e.preventDefault();return}
   if(e.code==='KeyV'){alternarDebug();return}
   // E = ação de mundo (colher planta, abrir/fechar porta). Não toca em mira nem gatilho: dá pra agir mirando.
   if(e.code==='KeyE'){acaoPrimaria();e.preventDefault();return}
@@ -47,9 +50,23 @@ addEventListener('keyup',e=>{
 });
 addEventListener('blur',clearKeys);
 document.addEventListener('visibilitychange',()=>{if(document.hidden)clearKeys()});
+addEventListener('hudeditingchange',clearKeys);
 
 const jumpBtn=document.getElementById('jumpBtn');
 jumpBtn.addEventListener('pointerdown',e=>{e.preventDefault();pularOuSubir()});
+
+// ===== GATILHO TOUCH ARRASTÁVEL =====
+// O mesmo dedo que começa o disparo também pode arrastar a câmera. O pointerId é o equivalente
+// seguro ao touch.identifier: o joystick esquerdo e o gatilho direito nunca compartilham estado.
+const fireBtn=document.getElementById('fireBtn'),fireSecondary=document.getElementById('fireSecondary');
+let fireId=null,fireLastX=0,fireLastY=0;
+function moverMiraNoDisparo(e){if(e.pointerId!==fireId)return;const dx=e.clientX-fireLastX,dy=e.clientY-fireLastY;fireLastX=e.clientX;fireLastY=e.clientY;inputState.targetYaw-=dx*AIM_SENS_X;inputState.targetPitch=limitarPitch(inputState.targetPitch+dy*AIM_SENS_Y)}
+function iniciarDisparoTouch(e){if(e.pointerType==='mouse'||fireId!==null)return;e.preventDefault();desbloquearAudio();fireId=e.pointerId;fireLastX=e.clientX;fireLastY=e.clientY;e.currentTarget.setPointerCapture?.(e.pointerId);definirGatilho(true)}
+function terminarDisparoTouch(e){if(e.pointerId!==fireId)return;e.preventDefault();fireId=null;definirGatilho(false)}
+fireBtn?.addEventListener('pointerdown',iniciarDisparoTouch);fireBtn?.addEventListener('pointermove',moverMiraNoDisparo);
+for(const ev of['pointerup','pointercancel','lostpointercapture'])fireBtn?.addEventListener(ev,terminarDisparoTouch);
+fireSecondary?.addEventListener('pointerdown',e=>{if(e.pointerType==='mouse')return;e.preventDefault();desbloquearAudio();e.currentTarget.setPointerCapture?.(e.pointerId);definirGatilho(true)});
+for(const ev of['pointerup','pointercancel','pointerleave','lostpointercapture'])fireSecondary?.addEventListener(ev,()=>definirGatilho(false));
 
 // ===== CORRER É EMPURRAR O JOYSTICK ATÉ O BATENTE =====
 // Foi um BOTÃO por uma versão, e o Bruno pediu o jeito de jogo de tiro: "pra correr rápido tem que
@@ -77,6 +94,24 @@ stickBase.addEventListener('pointerdown',e=>{e.preventDefault();inputState.joyAc
 stickBase.addEventListener('pointermove',e=>{if(inputState.joyActive&&e.pointerId===inputState.joyId)updateJoy(e)});
 stickBase.addEventListener('pointerup',releaseJoy);
 stickBase.addEventListener('pointercancel',releaseJoy);
+
+// ===== ÁREA DIREITA: ARRASTAR PARA MIRAR, ESTILO FREE FIRE =====
+// Não é um segundo analógico: o lado direito é uma área livre de arraste. O dedo move a câmera pela
+// diferença entre quadros, enquanto o botão de tiro continua separado, como nos jogos de tiro mobile.
+const aimBase=document.getElementById('aimBase'),aimStick=document.getElementById('aimStick');
+const AIM_SENS_X=.0065,AIM_SENS_Y=.0042;
+let aimLastX=0,aimLastY=0;
+function updateAim(e){
+  if(!inputState.aimActive)return;
+  const dx=e.clientX-aimLastX,dy=e.clientY-aimLastY;
+  inputState.targetYaw-=dx*AIM_SENS_X;
+  inputState.targetPitch=limitarPitch(inputState.targetPitch+dy*AIM_SENS_Y);
+  aimLastX=e.clientX;aimLastY=e.clientY;
+}
+function releaseAim(e){if(inputState.aimId!==null&&e.pointerId!==inputState.aimId)return;inputState.aimX=0;inputState.aimY=0;inputState.aimActive=false;inputState.aimId=null;aimStick.style.transform='translate(0,0)'}
+aimBase?.addEventListener('pointerdown',e=>{e.preventDefault();inputState.aimActive=true;inputState.aimId=e.pointerId;aimLastX=e.clientX;aimLastY=e.clientY;aimBase.setPointerCapture?.(e.pointerId);updateAim(e)});
+aimBase?.addEventListener('pointermove',e=>{if(inputState.aimActive&&e.pointerId===inputState.aimId)updateAim(e)});
+aimBase?.addEventListener('pointerup',releaseAim);aimBase?.addEventListener('pointercancel',releaseAim);
 
 // Mouse (desktop): Pointer Lock dá o giro livre estilo GTA SA, sem precisar segurar o botão depois do 1º clique (exigência do navegador).
 // Touch (celular): mantém o arrastar-pra-olhar de sempre, sem mudança nenhuma.
