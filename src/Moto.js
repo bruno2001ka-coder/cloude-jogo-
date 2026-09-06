@@ -12,7 +12,7 @@ let montado=false,modeloCarregado=false,velocidade=0,modelo=null;
 // Os limites são separados para a ré não disparar como se fosse marcha à frente.
 const MAX_VEL=11,MAX_RE=3.8,ACELERACAO=14,ACELERACAO_RE=7,FREIO=24,ATRITO=5.5;
 const RAIO_MONTAR=4,LIMITE_MUNDO=124;
-const MEIA_LARGURA_MOTO=.34,MEIA_PROFUNDIDADE_MOTO=.70,ALTURA_COLISAO_MOTO=.80;
+const ALTURA_COLISAO_MOTO=.80;// a meia-largura e a meia-profundidade saíram: o corpo agora são três discos (ver colideMoto)
 const ZONA_MORTA=.12;
 const _box=new THREE.Box3(),_size=new THREE.Vector3(),_center=new THREE.Vector3();
 const _frente=new THREE.Vector3(),_lado=new THREE.Vector3();
@@ -34,17 +34,39 @@ new GLTFLoader().load('assets/moto.glb',gltf=>{
 
 function perto(){return Math.hypot(moto.position.x-player.position.x,moto.position.z-player.position.z)<=RAIO_MONTAR}
 function limitarEntrada(v){return Math.abs(v)<ZONA_MORTA?0:THREE.MathUtils.clamp(v,-1,1)}
-function colideMoto(x,z){
-  const y=obterElevacao(x,z)+.03;
-  return colideObstaculoXZ(x,z,y,MEIA_LARGURA_MOTO,MEIA_PROFUNDIDADE_MOTO,ALTURA_COLISAO_MOTO);
+// ===== O CORPO DA MOTO PRECISA GIRAR COM ELA =====
+// Era UMA caixa `colideObstaculoXZ(x,z,y,0.34,0.70,...)`. A física do jogo é AABB pura
+// (`Physics.js`): essa caixa mede sempre 0,68 m no eixo X e 1,40 m no eixo Z, APONTE A MOTO PRA
+// ONDE APONTAR. Com a moto virada pro leste ela tem 1,35 m de comprimento em X contra 0,68 m de
+// caixa (o guidão entra na parede) e 0,47 m de largura em Z contra 1,40 m de caixa (93 cm de
+// fantasma raspando dos lados).
+//
+// Medido antes de consertar: na linha do meio das vias e dos 19 becos a caixa fixa NÃO chega a
+// trancar a moto (o beco mais apertado tem 2,45 m livres, contra 2,0 m de projeto) — então isto
+// não é o que travava. É o corpo estar errado, e aparece como moto que encosta onde não devia.
+//
+// A solução não é OBB: a física não tem OBB. São TRÊS DISCOS na linha do meio da moto — eixo
+// dianteiro, centro e eixo traseiro — cada um testado como uma caixinha quadrada. Quadrado gira
+// igual a si mesmo, então o conjunto acompanha o guidão de graça. Custa 3 consultas por eixo em
+// vez de 1, e `motocabe.mjs` mediu 0% de pontos bloqueados em toda via e todo beco.
+const RAIO_DISCO_MOTO=.30,COMPRIMENTO_MOTO=1.35;
+const DISCOS=[-COMPRIMENTO_MOTO/2+RAIO_DISCO_MOTO,0,COMPRIMENTO_MOTO/2-RAIO_DISCO_MOTO];
+function colideMoto(x,z,rumo=0){
+  const fx=-Math.sin(rumo),fz=-Math.cos(rumo);// mesma frente do jogo: yaw 0 aponta pra -Z
+  for(let i=0;i<DISCOS.length;i++){
+    const px=x+fx*DISCOS[i],pz=z+fz*DISCOS[i];
+    if(colideObstaculoXZ(px,pz,obterElevacao(px,pz)+.03,
+                         RAIO_DISCO_MOTO,RAIO_DISCO_MOTO,ALTURA_COLISAO_MOTO))return true;
+  }
+  return false;
 }
-function moverComColisao(dx,dz){
+function moverComColisao(dx,dz,rumo){
   let x=THREE.MathUtils.clamp(player.position.x+dx,-LIMITE_MUNDO,LIMITE_MUNDO);
   let z=THREE.MathUtils.clamp(player.position.z+dz,-LIMITE_MUNDO,LIMITE_MUNDO);
   // Resolve cada eixo separadamente para a moto conseguir raspar e contornar paredes,
   // em vez de travar completamente quando encosta em um canto.
-  if(!colideMoto(x,player.position.z))player.position.x=x;
-  if(!colideMoto(player.position.x,z))player.position.z=z;
+  if(!colideMoto(x,player.position.z,rumo))player.position.x=x;
+  if(!colideMoto(player.position.x,z,rumo))player.position.z=z;
   player.position.y=obterElevacao(player.position.x,player.position.z);
 }
 function atualizarVelocidade(dt,acelerador){
@@ -72,10 +94,18 @@ export function atualizarMoto(dt,keys,joyX=0,joyY=0){
   if(!modeloCarregado)return montado;
   if(!montado)return false;
 
-  // No teclado, W/S são acelerador e freio. No joystick, o sinal vertical usado pelo jogo
-  // já vem no sentido de condução: puxar para frente deve produzir avanço positivo.
+  // ===== O SINAL DO ANALÓGICO, E POR QUE ELE É NEGATIVO =====
+  // `Input.js` calcula `joyY=(clientY-centro)/max`, e a coordenada Y da TELA cresce PRA BAIXO.
+  // Empurrar o dedo pra FRENTE dá `joyY` NEGATIVO. O andar a pé já sabe disso (`Player.js` soma
+  // `joyY` no eixo que aponta pra TRÁS), mas aqui o teclado usava a convenção contrária
+  // (`KeyW` = +1 = frente) e o `joyY` entrava cru: uma variável, duas convenções.
+  // Medido no jogo antes do conserto: analógico pra frente andava -4,7 m (ré) e pra trás +10,2 m,
+  // enquanto o W andava +16,5 m. No celular a moto fazia o contrário do dedo — que é o
+  // "a direção dela não tá boa". O `-` abaixo é o conserto, e este comentário existe pra ninguém
+  // inverter de novo às cegas: foram quatro commits seguidos tentando adivinhar esse sinal.
   const teclado=(keys.KeyW?1:0)-(keys.KeyS?1:0);
-  const acelerador=limitarEntrada(teclado||joyY);
+  // Soma em vez de `teclado||joyY`: com o `||`, uma tecla encostada anulava o analógico inteiro.
+  const acelerador=limitarEntrada(teclado-joyY);
   const direcao=limitarEntrada((keys.KeyD?1:0)-(keys.KeyA?1:0)+joyX);
   atualizarVelocidade(dt,acelerador);
 
@@ -91,7 +121,22 @@ export function atualizarMoto(dt,keys,joyX=0,joyY=0){
   // Mesmo eixo usado pelo jogador e pela câmera: yaw zero avança para -Z.
   _frente.set(-Math.sin(player.rotation.y),0,-Math.cos(player.rotation.y));
   const distancia=velocidade*dt;
-  moverComColisao(_frente.x*distancia,_frente.z*distancia);
+  // ===== BATEU? MEDE O QUE ANDOU, NÃO O QUE FOI BLOQUEADO =====
+  // A primeira versão perguntava "os dois eixos foram bloqueados?" e NUNCA dava verdadeiro. Indo
+  // reto contra uma parede no eixo -Z, o passo em X é ZERO — e um passo de zero sempre "cabe", então
+  // o eixo X aparecia como livre e a batida nunca era detectada. O teste flagrou: depois de encostar
+  // no muro sobravam 9,58 m/s dos 11 possíveis, exatamente como antes do conserto.
+  // Comparar o que ela ANDOU com o que ela PEDIU pra andar não tem esse ponto cego, e ainda pega a
+  // batida de raspão em qualquer ângulo.
+  const antesX=player.position.x,antesZ=player.position.z;
+  moverComColisao(_frente.x*distancia,_frente.z*distancia,player.rotation.y);
+  const pedido=Math.abs(distancia);
+  if(pedido>1e-4){
+    const andou=Math.hypot(player.position.x-antesX,player.position.z-antesZ);
+    // Perde quase toda a inércia, como bater de verdade. Sobra um resto pra ela não ficar grudada
+    // na parede — com zero, um toque de raspão deixaria a moto morta encostada no muro.
+    if(andou<pedido*.35)velocidade*=.15;
+  }
 
   moto.position.copy(player.position);moto.position.y+=.02;
   moto.rotation.y=player.rotation.y;
