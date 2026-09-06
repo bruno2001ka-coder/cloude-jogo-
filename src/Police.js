@@ -516,6 +516,12 @@ function marcarPlantacaoBatida(agora){
 // Exposto pro teste: contar batidas repetidas no mesmo canteiro é a única forma de provar o conserto.
 export function __plantacoesBatidas(){return plantacoesBatidas.map(q=>({x:q.x,z:q.z}))}
 
+// A OCORRÊNCIA ABERTA, PRO RESTO DO JOGO
+// O canteiro que a polícia está batendo agora, ou null. Quem lê é a viatura: quando tem ocorrência
+// ela larga a ronda e vem. É um acessor e não o `policia` inteiro exportado de propósito — o de fora
+// só precisa saber ONDE é a treta, não mexer na máquina de estados.
+export function ocorrenciaAtual(){return policia.alvoPlantacao}
+
 // Próximo ponto da patrulha. Com PATRULHA_VIES de chance cai num disco de PATRULHA_RAIO_VIES em volta
 // de uma muda madura sorteada — o heli "está batendo aquela região", não indo na coordenada exata dela.
 // Nunca devolve o ponto da planta: é sempre um ponto do disco, e o disco é maior que o raio de detecção.
