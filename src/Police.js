@@ -1199,6 +1199,7 @@ const ESTADOS={
       if(d>APROX_RAIO){
         heli.position.x+=dx/d*HELI_VELOCIDADE*dt;heli.position.z+=dz/d*HELI_VELOCIDADE*dt;
         heli.rotation.y=Math.atan2(dx,dz);
+        heli.position.y=THREE.MathUtils.lerp(heli.position.y,HELI_ALTURA_APONTANDO,dt*2);
       }else{
         heli.position.x=THREE.MathUtils.lerp(heli.position.x,alvo.x,1-Math.exp(-4*dt));
         heli.position.z=THREE.MathUtils.lerp(heli.position.z,alvo.z,1-Math.exp(-4*dt));
@@ -1207,7 +1208,6 @@ const ESTADOS={
         heli.position.y=THREE.MathUtils.lerp(heli.position.y,chao+HELI_ALTURA_POUSO,1-Math.exp(-2.5*dt));
         if(Math.abs(heli.position.y-(chao+HELI_ALTURA_POUSO))<.35){policia.heliPousado=true;desembarcarPoliciais(agora)}
       }
-      if(!policia.heliPousado)heli.position.y=THREE.MathUtils.lerp(heli.position.y,HELI_ALTURA_APONTANDO,dt*2);
     }
   },
 };
@@ -1276,7 +1276,7 @@ function desembarcarPoliciais(agora){
   const i=policia.desembarqueFeitos++,ang=i?Math.PI:0;
   const p={x:heli.position.x+Math.cos(ang)*1.8,z:heli.position.z+Math.sin(ang)*1.8};
   const pol=sairDaBase(agora,p);
-  pol.tipo='desembarque';pol.modo='ronda';pol.destinoRonda={x:policia.alvoPlanta?.x??p.x,z:policia.alvoPlanta?.z??p.z};
+  pol.tipo='desembarque';pol.modo='desembarque';pol.destinoRonda={x:policia.alvoPlanta?.x??p.x,z:policia.alvoPlanta?.z??p.z};
   policia.proximoDesembarque=agora+DESEMBARQUE_INTERVALO;
 }
 // Quantos DEVEM estar em campo. É a regra do reforço inteira: quatro sempre, mais um por policial que
@@ -1545,7 +1545,7 @@ function atualizarPatrulha(dt,agora){
     }else if(destino){
       const alvo=alvoDeMovimento(pol,agora,destino.x,destino.z);
       // Reforço chamado no meio de um confronto vem CORRENDO; ronda é ronda.
-      const vel=velocidadePolicial(RUA_VELOCIDADE*(abordagem.ativa?1.25:1));
+      const vel=velocidadePolicial(RUA_VELOCIDADE*(abordagem.ativa?1.25:1)*(pol.modo==='desembarque'?1.9:1));
       passoPolicial(pol,dt,alvo.x,alvo.z,vel);
       andando=true;
     }
