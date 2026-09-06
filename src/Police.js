@@ -58,7 +58,8 @@ import{adicionarTremorCamera}from'./Camera.js';
 import{obterPontoNascimento,registrarCuraHospital}from'./Hospital.js';
 
 
-const HELI_ALTURA=38,HELI_VELOCIDADE=12,MAPA_LIMITE=95;
+// O terreno mede 260x260 (aprox. -130 a 130). O limite antigo de 95 deixava uma faixa grande sem patrulha.
+const HELI_ALTURA=38,HELI_VELOCIDADE=14,MAPA_LIMITE=124;
 const SALDO_RESPAWN=300;
 // Raio de detecção dimensionado pra funcionar em SOBREVOO, agora que o heli não vai mais direto na
 // coordenada da muda: mapa de 190x190 = 36.100 m², heli a 12 m/s, faixa varrida = 2R x v.
