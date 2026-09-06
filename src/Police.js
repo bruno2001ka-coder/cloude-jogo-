@@ -101,7 +101,8 @@ const ESCONDIDO_PARA_SUMIR=3,ESCONDIDO_POR_NIVEL=5,CACA_ATRASO=4;
 // O que sobrou é o que ele faz bem: ele é o OLHO. Voa alto, acha plantação madura por sobrevoo e
 // avisa pelo rádio. Quem vem é a polícia de pé, saindo da delegacia e ANDANDO até lá — e essa
 // caminhada é jogo: dá tempo de correr e colher antes de eles chegarem.
-const HELI_ALTURA_RONDA=52,HELI_ALTURA_APONTANDO=30;
+const HELI_ALTURA_RONDA=52,HELI_ALTURA_APONTANDO=30,HELI_ALTURA_POUSO=6;
+const DESEMBARQUE_QTD=2,DESEMBARQUE_INTERVALO=.65;
 // ===== VISÃO (cone + linha de visão) =====
 // Meia-abertura do cone em radianos: 0,95 rad ≈ 54°, cone total ≈ 109° — perto do campo útil humano.
 // Sobe 0,07 rad por estrela (na ficha 5 vai a 1,30 rad ≈ 74°, cone de ~149°): com ficha alta eles estão
@@ -373,7 +374,7 @@ const policia={estado:'rondando',alvoPlanta:null,pontoAlvo:{x:0,z:0},tempoEstado
   // Quando o próximo reforço pode sair pela porta, e até quando ainda conta como confronto quente.
   reposicaoEm:0,calmariaAte:0,
   // Quando o confisco em curso termina (a polícia PRECISA estar em cima da planta pra ele correr).
-  confiscoAte:0};
+  confiscoAte:0,desembarqueFeitos:0,proximoDesembarque:0,heliPousado:false};
 // ===== O QUE CHAMA ATENÇÃO DA POLÍCIA =====
 // Antes bastava EXISTIR: a abordagem à plantação já elevava a ficha por si só, e a partir daí o
 // jogador era caçado pra sempre sem ter feito nada além de plantar. Agora a polícia só se interessa
@@ -1165,6 +1166,7 @@ const ESTADOS={
   rondando:{
     aoEntrar(){
       policia.cooldownAte=performance.now()/1000+COOLDOWN_ENTRE_BUSCAS;
+      policia.desembarqueFeitos=0;policia.proximoDesembarque=0;policia.heliPousado=false;
       heliAlvo=sortearWaypointPatrulha();
     },
     aoAtualizar(dt,agora){
@@ -1200,8 +1202,11 @@ const ESTADOS={
         heli.position.x=THREE.MathUtils.lerp(heli.position.x,alvo.x,1-Math.exp(-4*dt));
         heli.position.z=THREE.MathUtils.lerp(heli.position.z,alvo.z,1-Math.exp(-4*dt));
         heli.rotation.z=THREE.MathUtils.lerp(heli.rotation.z,0,1-Math.exp(-5*dt));
+        const chao=obterElevacao(alvo.x,alvo.z);
+        heli.position.y=THREE.MathUtils.lerp(heli.position.y,chao+HELI_ALTURA_POUSO,1-Math.exp(-2.5*dt));
+        if(Math.abs(heli.position.y-(chao+HELI_ALTURA_POUSO))<.35){policia.heliPousado=true;desembarcarPoliciais(agora)}
       }
-      heli.position.y=THREE.MathUtils.lerp(heli.position.y,HELI_ALTURA_APONTANDO,dt*2);
+      if(!policia.heliPousado)heli.position.y=THREE.MathUtils.lerp(heli.position.y,HELI_ALTURA_APONTANDO,dt*2);
     }
   },
 };
@@ -1264,6 +1269,14 @@ function sairDaBase(agora,onde){
   pol.esperandoPatrulhaAte=0;
   policiais.push(pol);
   return pol;
+}
+function desembarcarPoliciais(agora){
+  if(policia.desembarqueFeitos>=DESEMBARQUE_QTD||agora<policia.proximoDesembarque)return;
+  const i=policia.desembarqueFeitos++,ang=i?Math.PI:0;
+  const p={x:heli.position.x+Math.cos(ang)*1.8,z:heli.position.z+Math.sin(ang)*1.8};
+  const pol=sairDaBase(agora,p);
+  pol.tipo='desembarque';pol.modo='ronda';pol.destinoRonda={x:policia.alvoPlanta?.x??p.x,z:policia.alvoPlanta?.z??p.z};
+  policia.proximoDesembarque=agora+DESEMBARQUE_INTERVALO;
 }
 // Quantos DEVEM estar em campo. É a regra do reforço inteira: quatro sempre, mais um por policial que
 // o jogador derrubou, até o teto. Sem baixa, o efetivo não muda — reforço tem que ter causa.
