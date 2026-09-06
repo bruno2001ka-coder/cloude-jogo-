@@ -1,6 +1,7 @@
 // ===== POLÍCIA =====
 // Dois motivos pra a polícia descer, e a máquina de estados é a mesma pros dois:
-//   BATIDA  — o helicóptero avista uma muda FLORIDA em sobrevoo e vai confiscar (alvoPlanta ≠ null).
+//   BATIDA  — o helicóptero avista uma muda FLORIDA em sobrevoo e vai confiscar A PLANTAÇÃO INTEIRA
+//             em volta dela (`alvoPlantacao` ≠ null; `alvoPlanta` é só o pé da vez dentro dela).
 //   CAÇADA  — o jogador está com ficha suja (procurado > 0) e o alvo é ELE (alvoPlanta = null,
 //             então não há o que confiscar e o desfecho é sempre o confronto).
 // `pontoAlvo` é o destino do helicóptero nos dois casos; quem os distingue é `alvoPlanta`.
@@ -185,6 +186,18 @@ const TEMPO_TROCA=.35;
 // favela a pé, e essa caminhada é a chance real de chegar antes e colher.
 const CONFISCO_DURACAO=9;
 const COOLDOWN_ENTRE_BUSCAS=22,PENALIDADE_MORTE=.25;
+// ===== O HELICÓPTERO PASSA A ENXERGAR PLANTAÇÃO, E NÃO PÉ =====
+// Como era: ele achava UMA muda, pousava, largava dois policiais, e a batida terminava no instante em
+// que AQUELE pé saía do chão. Com 30 pés no mesmo canteiro isso virava 30 batidas — o Bruno colhia
+// um, o heli ia embora, achava o pé do lado, voltava e largava mais dois. "Ele não entende que ali é
+// uma plantação."
+// Como fica: ao avistar um pé, ele recolhe TODOS os pés floridos num raio em volta — isso é a
+// plantação — e a batida é uma só, contra o conjunto. Ela acaba quando não sobra pé nenhum ali, seja
+// porque a polícia confiscou, seja porque o jogador colheu tudo debaixo do nariz deles.
+// E o lugar fica MARCADO por um tempo: mesmo que brote coisa nova ali, o heli não vai bater de novo
+// no minuto seguinte, que é o que fazia a sensação de perseguição ao canteiro.
+const RAIO_PLANTACAO=22;        // o que conta como "o mesmo canteiro"
+const COOLDOWN_PLANTACAO=120;   // segundos até a mesma plantação poder ser batida de novo
 const SPAWN_X=0,SPAWN_Z=8;
 // Perseguição: intervalo de recálculo do caminho e distância que o alvo precisa andar pra invalidar a rota.
 const REPLANEJAR_INTERVALO=.7,REPLANEJAR_DESVIO=3,CHEGADA_WAYPOINT=.7;
@@ -367,7 +380,7 @@ function zonasDoPolicial(pol){
 // `pontoAlvo` é pra onde o helicóptero vai: a muda, numa batida de plantação, ou o JOGADOR, numa
 // caçada por ficha suja. `alvoPlanta` fica null na caçada — é o que distingue os dois casos, porque
 // só a batida termina em confisco.
-const policia={estado:'rondando',alvoPlanta:null,pontoAlvo:{x:0,z:0},tempoEstado:0,cooldownAte:0,
+const policia={estado:'rondando',alvoPlanta:null,alvoPlantacao:null,pontoAlvo:{x:0,z:0},tempoEstado:0,cooldownAte:0,
   tempoEscondido:0,tempoNivel:0,retomarCacaEm:0,procurado:0,
   // Policiais que o jogador abateu e ainda não foram "esquecidos". É o ÚNICO motivo de o efetivo
   // crescer — reforço sem causa é o que ele chamou de "aumentar a polícia do nada".
@@ -466,6 +479,43 @@ function jogadorEscondido(){return estaEscondido(player.position)}
 function plantaDetectavel(p){return !p.colhida&&p.estagio>=PLANTA_DETECTAVEL_ESTAGIO}
 function mudasMaduras(){return plantas.filter(plantaDetectavel)}
 
+// ===== A PLANTAÇÃO: O CANTEIRO INTEIRO, NÃO O PÉ =====
+// Agrupamento por raio simples, e não por vizinhança em cadeia. Cadeia (dois pés juntos puxam um
+// terceiro, e assim por diante) uniria o mapa todo numa plantação só quando o jogador plantasse uma
+// trilha de mudas; raio fixo dá um pedaço previsível de terreno, que é o que o piloto de um
+// helicóptero enxergaria de cima de uma vez.
+function plantacaoEmVolta(planta){
+  const dentro=[];
+  for(const p of plantas)if(plantaDetectavel(p)&&distXZ(p,planta)<RAIO_PLANTACAO)dentro.push(p);
+  let sx=0,sz=0;
+  for(const p of dentro){sx+=p.x;sz+=p.z}
+  return{x:sx/dentro.length,z:sz/dentro.length,pes:dentro.length};
+}
+// Os pés que ainda estão de pé nesta plantação. É o que decide se a batida acabou.
+function pesVivosDaPlantacao(){
+  const pl=policia.alvoPlantacao;
+  if(!pl)return[];
+  return plantas.filter(p=>plantaDetectavel(p)&&distXZ(p,pl)<RAIO_PLANTACAO);
+}
+// ===== MEMÓRIA DAS PLANTAÇÕES JÁ BATIDAS =====
+// Sem ela, colher o último pé devolvia o heli pra ronda e o primeiro broto novo no mesmo canteiro
+// começava tudo de novo. O lugar fica queimado por um tempo — a polícia já veio aqui.
+const plantacoesBatidas=[];
+function plantacaoQueimada(x,z,agora){
+  for(let i=plantacoesBatidas.length-1;i>=0;i--){
+    const q=plantacoesBatidas[i];
+    if(agora>q.ate){plantacoesBatidas.splice(i,1);continue}
+    if(Math.hypot(q.x-x,q.z-z)<RAIO_PLANTACAO)return true;
+  }
+  return false;
+}
+function marcarPlantacaoBatida(agora){
+  const pl=policia.alvoPlantacao;
+  if(pl)plantacoesBatidas.push({x:pl.x,z:pl.z,ate:agora+COOLDOWN_PLANTACAO});
+}
+// Exposto pro teste: contar batidas repetidas no mesmo canteiro é a única forma de provar o conserto.
+export function __plantacoesBatidas(){return plantacoesBatidas.map(q=>({x:q.x,z:q.z}))}
+
 // Próximo ponto da patrulha. Com PATRULHA_VIES de chance cai num disco de PATRULHA_RAIO_VIES em volta
 // de uma muda madura sorteada — o heli "está batendo aquela região", não indo na coordenada exata dela.
 // Nunca devolve o ponto da planta: é sempre um ponto do disco, e o disco é maior que o raio de detecção.
@@ -533,7 +583,11 @@ function renderJogador(){
   // faria o flagrante recomeçar no mesmo instante do respawn.
   armaduraJogador=0;inventario.colete=0;inventario.pacote=0;definirColeteVisivel(false);atualizarStatusEconomia();
   mostrarAviso('Você foi rendido pela polícia — plantação perdida e multa aplicada.',3400);
+  // O aviso acima diz "plantação perdida", e agora ele fala a verdade: ser rendido durante uma batida
+  // custa o CANTEIRO inteiro, não o pé que o policial estava confiscando naquele instante.
+  for(const pe of pesVivosDaPlantacao())confiscarPlanta(pe);
   if(policia.alvoPlanta&&!policia.alvoPlanta.colhida)confiscarPlanta(policia.alvoPlanta);
+  policia.alvoPlantacao=null;policia.alvoPlanta=null;
   // A penalidade é proporcional ao saldo atual: morrer custa 25%, mas não apaga quase todo o dinheiro.
   aplicarMulta(Math.round(obterDinheiro()*PENALIDADE_MORTE));
   setTimeout(()=>{
@@ -1179,21 +1233,41 @@ const ESTADOS={
       }
       heli.position.y=THREE.MathUtils.lerp(heli.position.y,HELI_ALTURA_RONDA,dt*2);
       if(agora<policia.cooldownAte)return;
-      // BATIDA: só enxerga muda FLORIDA, e só passando por cima dela.
+      // BATIDA: só enxerga muda FLORIDA, e só passando por cima dela. O que ele avista é UM pé; o que
+      // ele passa a perseguir é o CANTEIRO em volta dele.
       for(const pl of plantas){
-        if(plantaDetectavel(pl)&&distXZ(heli.position,pl)<DETECCAO_RAIO){
-          policia.alvoPlanta=pl;policia.confiscoAte=0;
-          transitar('apontando');
-          mostrarAviso('🚁 O helicóptero achou sua plantação e chamou a polícia. Eles vêm a pé — corre!',3800);
-          return;
-        }
+        if(!plantaDetectavel(pl)||distXZ(heli.position,pl)>=DETECCAO_RAIO)continue;
+        // Canteiro que já levou batida há pouco não vale outra: era daqui que vinha a enxurrada de
+        // policiais, um lote por pé colhido.
+        if(plantacaoQueimada(pl.x,pl.z,agora))continue;
+        policia.alvoPlantacao=plantacaoEmVolta(pl);
+        policia.alvoPlanta=pl;policia.confiscoAte=0;
+        transitar('apontando');
+        const n=policia.alvoPlantacao.pes;
+        mostrarAviso(n>1
+          ?`🚁 O helicóptero achou sua plantação de ${n} pés e chamou a polícia. Eles vêm a pé — corre!`
+          :'🚁 O helicóptero achou sua plantação e chamou a polícia. Eles vêm a pé — corre!',3800);
+        return;
       }
     }
   },
   apontando:{
     aoAtualizar(dt,agora){
-      const alvo=policia.alvoPlanta;
-      if(!alvo||alvo.colhida){policia.alvoPlanta=null;policia.confiscoAte=0;transitar('rondando');return}
+      // ===== A BATIDA ACABA QUANDO O CANTEIRO ACABA =====
+      // Era `if(alvo.colhida) volta pra ronda`: colher UM pé encerrava a batida e soltava o heli pra
+      // achar o pé do lado meio minuto depois. Agora ele só larga quando não sobra pé florido ali.
+      const vivos=pesVivosDaPlantacao();
+      if(!policia.alvoPlantacao||!vivos.length){
+        marcarPlantacaoBatida(agora);
+        policia.alvoPlanta=null;policia.alvoPlantacao=null;policia.confiscoAte=0;
+        transitar('rondando');return;
+      }
+      // O pé da vez é sempre um que ainda está em pé: colher o alvo troca o alvo, não desfaz a batida.
+      if(!policia.alvoPlanta||policia.alvoPlanta.colhida||!plantaDetectavel(policia.alvoPlanta)){
+        policia.alvoPlanta=vivos[0];policia.confiscoAte=0;
+      }
+      // O heli paira no MEIO do canteiro, que é o que ele veio bater.
+      const alvo=policia.alvoPlantacao;
       policia.pontoAlvo.x=alvo.x;policia.pontoAlvo.z=alvo.z;
       const dx=alvo.x-heli.position.x,dz=alvo.z-heli.position.z,d=Math.hypot(dx,dz);
       if(d>APROX_RAIO){
@@ -1276,7 +1350,9 @@ function desembarcarPoliciais(agora){
   const i=policia.desembarqueFeitos++,ang=i?Math.PI:0;
   const p={x:heli.position.x+Math.cos(ang)*1.8,z:heli.position.z+Math.sin(ang)*1.8};
   const pol=sairDaBase(agora,p);
-  pol.tipo='desembarque';pol.modo='desembarque';pol.destinoRonda={x:policia.alvoPlanta?.x??p.x,z:policia.alvoPlanta?.z??p.z};
+  // Vão pro MEIO do canteiro, não pro pé sorteado: é o canteiro que eles vieram bater.
+  const centro=policia.alvoPlantacao??policia.alvoPlanta;
+  pol.tipo='desembarque';pol.modo='desembarque';pol.destinoRonda={x:centro?.x??p.x,z:centro?.z??p.z};
   policia.proximoDesembarque=agora+DESEMBARQUE_INTERVALO;
 }
 // Quantos DEVEM estar em campo. É a regra do reforço inteira: quatro sempre, mais um por policial que
@@ -1512,8 +1588,14 @@ function atualizarPatrulha(dt,agora){
         encarar=destino;
         if(!policia.confiscoAte)policia.confiscoAte=agora+CONFISCO_DURACAO;
         else if(agora>=policia.confiscoAte){
-          confiscarPlanta(pl);policia.alvoPlanta=null;policia.confiscoAte=0;
-          mostrarAviso('A polícia confiscou sua plantação.',2600);
+          // Confisca ESTE pé e parte pro próximo do mesmo canteiro. Antes, o primeiro confisco
+          // zerava o alvo e acabava a batida — a polícia levava 1 pé de 30 e ia embora.
+          confiscarPlanta(pl);policia.confiscoAte=0;
+          const restam=pesVivosDaPlantacao();
+          policia.alvoPlanta=restam[0]||null;
+          mostrarAviso(restam.length
+            ?`A polícia confiscou um pé — faltam ${restam.length} no canteiro.`
+            :'A polícia confiscou sua plantação.',2600);
         }
       }
     }else if(rastroValido(agora))destino={x:rastro.x,z:rastro.z};
