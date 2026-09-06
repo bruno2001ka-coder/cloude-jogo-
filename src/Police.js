@@ -57,6 +57,7 @@ import{hasWeaponEquipped}from'./Weapons.js';
 import{tocarSomEquiparColete,tocarSomTiro,tocarSomSemMunicao}from'./Audio.js';
 import{adicionarTremorCamera}from'./Camera.js';
 import{obterPontoNascimento,registrarCuraHospital}from'./Hospital.js';
+import{jogadorEmVeiculo}from'./Veiculo.js';
 
 
 // O terreno mede 260x260 (aprox. -130 a 130). O limite antigo de 95 deixava uma faixa grande sem patrulha.
@@ -1157,7 +1158,15 @@ function montarAlvosDoFrame(){
       alvosJogador.push({caixa:zona.caixa,aoAtingir:()=>atingirPolicial(pol,armaEquipada().dano*zona.multiplicador)});
     }
   }
-  if(!jogadorRendido){
+  // ===== DENTRO DO VEÍCULO, A LATARIA SEGURA =====
+  // "eles tá conseguindo atirar em mim dentro do carro". Estava mesmo: as caixas de acerto do jogador
+  // seguem a posição dele, e a posição dele, dirigindo, é a do carro. Então a bala achava o boneco
+  // ATRAVÉS da lataria — e no carro ele nem aparece (`motoristaVisivel:false`), então do lado de fora
+  // era levar tiro de uma coisa que não está na tela.
+  // Sem as caixas na lista, a bala simplesmente passa: o policial continua mirando e atirando no
+  // carro, que é o que ele faria, e não acerta quem está dentro. Vale pra moto também — é o preço de
+  // ter escolhido dirigir em vez de ficar a pé, e a pé continua tudo como era.
+  if(!jogadorRendido&&!jogadorEmVeiculo()){
     for(const zona of zonasDeAcertoJogador()){
       alvosPolicia.push({caixa:zona.caixa,aoAtingir:()=>receberDanoJogador((POLICIAL_DANO_MIN+Math.random()*(POLICIAL_DANO_MAX-POLICIAL_DANO_MIN))*zona.multiplicador)});
     }
@@ -1228,7 +1237,10 @@ const ESTADOS={
     aoEntrar(){
       policia.cooldownAte=performance.now()/1000+COOLDOWN_ENTRE_BUSCAS;
       policia.desembarqueFeitos=0;policia.proximoDesembarque=0;policia.heliPousado=false;
+      // Zera o crachá da guarnição da viatura junto: a próxima ocorrência é outra, e merece outra
+      // dupla. A lista em si só é esvaziada quando os que sobraram já saíram de campo.
       policia.equipeViatura=0;
+      equipeDaViatura=equipeDaViatura.filter(p=>p.vivo&&policiais.includes(p));
       heliAlvo=sortearWaypointPatrulha();
     },
     aoAtualizar(dt,agora){
@@ -1266,6 +1278,9 @@ const ESTADOS={
       const vivos=pesVivosDaPlantacao();
       if(!policia.alvoPlantacao||!vivos.length){
         marcarPlantacaoBatida(agora);
+        // SERVIÇO CONCLUÍDO: é aqui, e só aqui, que a guarnição da viatura é chamada de volta pro
+        // carro. Antes deste ponto ela está trabalhando o canteiro, e a viatura espera.
+        recolherEquipeDaViatura();
         policia.alvoPlanta=null;policia.alvoPlantacao=null;policia.confiscoAte=0;
         transitar('rondando');return;
       }
@@ -1376,10 +1391,16 @@ function desembarcarPoliciais(agora){
 // sobraram voltarem pra base A PÉ — ninguém evapora, e não vira a enxurrada de policiais que ele já
 // reclamou uma vez.
 const VIATURA_EQUIPE=2;
+// Quem saiu da viatura nesta ocorrência, e onde ela ficou. É este par que faz a guarnição VOLTAR PRO
+// CARRO em vez de ir andando pra base: "a guarnição tem que voltar pra viatura, senão vai ficar
+// multiplicando policiais". Voltar pra base também tirava eles do mapa, mas pela porta errada — e a
+// viatura ficava órfã, com a dupla dela sumindo do outro lado da favela.
+let equipeDaViatura=[],pontoDaViatura=null;
 export function desembarcarDaViatura(ponto){
   const centro=policia.alvoPlantacao??policia.alvoPlanta;
   if(!ponto||!centro)return 0;
   let saiu=0;
+  pontoDaViatura={x:ponto.x,z:ponto.z};
   for(let i=policia.equipeViatura;i<VIATURA_EQUIPE;i++){
     // Um de cada lado do carro, e não os dois no mesmo pixel.
     const ang=i?Math.PI:0;
@@ -1387,11 +1408,39 @@ export function desembarcarDaViatura(ponto){
       {x:ponto.x+Math.cos(ang)*1.6,z:ponto.z+Math.sin(ang)*1.6});
     pol.tipo='desembarque';pol.modo='desembarque';
     pol.destinoRonda={x:centro.x,z:centro.z};
+    equipeDaViatura.push(pol);
     saiu++;
   }
   policia.equipeViatura=VIATURA_EQUIPE;
   if(saiu)mostrarAviso('🚓 A viatura parou na rua e a guarnição está subindo a pé.',3200);
   return saiu;
+}
+// Ainda tem alguém da guarnição vivo e em campo? Enquanto tiver, a viatura NÃO sai do lugar.
+function equipeEmCampo(){return equipeDaViatura.some(p=>p.vivo&&policiais.includes(p))}
+// Exposto pro teste seguir a guarnição pelo objeto, e não por id: `criarPolicial` usa o tamanho da
+// lista como id, então id É REAPROVEITADO depois de uma remoção — seguir por id faz dois policiais
+// diferentes virarem "o mesmo" e a medição perde o sentido. Foi o que aconteceu na primeira rodada.
+export function __equipeDaViaturaParaTeste(){
+  return{ponto:pontoDaViatura,
+    equipe:equipeDaViatura.map(p=>({x:+p.pos.x.toFixed(1),z:+p.pos.z.toFixed(1),
+      vivo:p.vivo,modo:p.modo,emCampo:policiais.includes(p),
+      volta:p.pontoDeVolta?{x:+p.pontoDeVolta.x.toFixed(1),z:+p.pontoDeVolta.z.toFixed(1)}:null}))};
+}
+// ===== A VIATURA ESPERA O SERVIÇO ACABAR =====
+// "ela deve ficar parada até concluir o serviço ou os polícias morreren". As duas condições, na
+// ordem em que ele disse: enquanto tem canteiro sendo batido, ela espera; acabada a batida, ela ainda
+// espera a dupla voltar e embarcar. Se os dois morrem, `equipeEmCampo` vira falso e ela vai embora
+// sozinha — que é o segundo caso dele.
+export function viaturaEsperando(){return !!policia.alvoPlantacao||equipeEmCampo()}
+// Serviço concluído: manda a dupla de volta pro carro. Não é a base — é a porta da viatura, no ponto
+// exato onde ela parou e onde ela continua parada esperando.
+function recolherEquipeDaViatura(){
+  if(!pontoDaViatura)return;
+  for(const pol of equipeDaViatura){
+    if(!pol.vivo||!policiais.includes(pol))continue;
+    pol.modo='voltando';pol.pontoDeVolta=pontoDaViatura;
+    pol.rota=null;pol.destinoRota=null;
+  }
 }
 
 // Quantos DEVEM estar em campo. É a regra do reforço inteira: quatro sempre, mais um por policial que
@@ -1583,7 +1632,13 @@ function atualizarEfetivo(dt,agora){
   // Sobrando gente: um de cada vez volta pra base A PÉ e some lá dentro. Ninguém evapora na frente
   // dele — evaporar é a mesma quebra de ilusão que aparecer do nada.
   if(vivos>alvo){
-    const extra=policiais.find(pl=>pl.vivo&&pl.modo!=='voltando');
+    // A GUARNIÇÃO DA VIATURA NÃO ENTRA NESTE SORTEIO. Ela é excedente por definição — é justamente
+    // por isso que ela está em campo — e este trecho pegava ela e mandava andando pra delegacia no
+    // meio do serviço. Medido: os dois sumiam a 1,6 m da porta da base e a 67,1 m da viatura que
+    // deveria estar esperando por eles. A viatura ficava parada guardando um carro vazio, e o par
+    // "desce do carro / sobe no carro" nunca fechava. Quem chama eles de volta é o fim da batida,
+    // pelo `recolherEquipeDaViatura`, e o destino é a porta do carro.
+    const extra=policiais.find(pl=>pl.vivo&&pl.modo!=='voltando'&&!equipeDaViatura.includes(pl));
     if(extra){extra.modo='voltando';extra.rota=null;extra.destinoRota=null}
   }
 }
@@ -1612,8 +1667,12 @@ function atualizarPatrulha(dt,agora){
 
     let destino=null,encarar=null;
     if(pol.modo==='voltando'){
-      if(distXZ(pol.pos,PORTA_BASE)<RUA_CHEGADA){removerPolicial(i);continue}
-      destino=PORTA_BASE;
+      // `pontoDeVolta` é a porta da VIATURA, pra guarnição que saiu dela; quem não tem volta pra base,
+      // como sempre foi. Some ao chegar nos dois casos — entrar no carro e entrar no portão da base
+      // são a mesma coisa daqui de fora: ninguém evapora na frente do jogador.
+      const casa=pol.pontoDeVolta||PORTA_BASE;
+      if(distXZ(pol.pos,casa)<RUA_CHEGADA){removerPolicial(i);continue}
+      destino=casa;
     }else if(abordagem.ativa){
       // Vêm no rumo dele andando, sem atirar. Parar a `stoppingDistance` é o que faz a abordagem ler
       // como abordagem — chegar colado seria empurrão.

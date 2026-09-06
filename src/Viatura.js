@@ -59,10 +59,6 @@ const ALTURA_ASSENTO=-.02;// mesmo motivo dos outros veículos: o chão desenhad
 // A que distância da ocorrência ela considera que chegou. Não é zero: ela para NA RUA, no ponto mais
 // perto da plantação, e daí os policiais seguem a pé — que é o desenho todo.
 const CHEGOU=2.0;
-// Quanto tempo ela fica parada depois de a guarnição saltar, antes de voltar pro giro. 4 s é o
-// suficiente pra o jogador VER a cena acontecer — sair correndo no quadro seguinte ao desembarque
-// contaria a história rápido demais pra alguém que estava olhando pro outro lado.
-const ESPERA_NA_OCORRENCIA=4;
 
 // ===== O ANEL =====
 // Montado a partir das ruas que já existem, e não desenhado à mão: amostro as duas vias de 4 em 4
@@ -190,6 +186,13 @@ const tetoEm=(perfil,u)=>perfil[Math.min(N_PERFIL-1,Math.floor(((u%1)+1)%1*N_PER
 // deixa a rua com cara de rua e sobra espaço do outro lado. 1,0 m numa via de 5,2 m com um carro de
 // 0,86 m ainda deixa mais de um metro até o meio-fio — e o teste confere isso quina por quina.
 const MAO=1.0;
+// ===== E DESVIA DA QUE ESTÁ PARADA =====
+// Agora que a viatura fica parada na ocorrência até o serviço acabar (podem ser minutos), a outra
+// passa por cima dela a cada volta — 283 m de anel a ~8 m/s dá uma passagem a cada meia dúzia de
+// dezenas de segundos, e duas viaturas ocupando o mesmo pedaço de rua é pior que qualquer bug de
+// rota. Chegando perto, quem está passando muda de faixa: -0,6 contra +1,0 são 1,6 m entre os
+// centros, e com 0,86 m de largura cada uma sobra 0,74 m de vão. Volta pra mão dela depois.
+const MAO_DESVIANDO=-.6,PERTO_PRA_DESVIAR=9,TROCA_DE_FAIXA=2.5;
 
 const viaturas=[];
 let modelo=null;
@@ -213,7 +216,7 @@ function criarViatura(u0){
   const luzes=[lampada(0x3366ff,-.18),lampada(0xff3322,.18)];
   const caixa=new THREE.Box3(new THREE.Vector3(0,-9999,0),new THREE.Vector3(.01,-9998.99,.01));
   marcarObstaculoMovel(registrarCaixa(caixa,'viatura'));
-  return{grupo,u:u0,luzes,caixa,piscaT:0,vel:0,atendendo:false,desembarcou:false};
+  return{grupo,u:u0,luzes,caixa,piscaT:0,vel:0,mao:MAO,atendendo:false,desembarcou:false};
 }
 
 // Onde no anel fica o ponto mais perto de um alvo. 300 amostras em ~283 m dá 0,9 m de resolução, e o
@@ -233,9 +236,9 @@ function assentar(v){
   // A frente do jogo é (-sen, -cos) do yaw. Igualando à tangente do anel sai o yaw direto — e como o
   // `u` só ANDA PRA FRENTE, o nariz nunca fica ao contrário. Era daí que vinha o "volta de ré".
   const rumo=Math.atan2(-t.x,-t.z);
-  // Sai do eixo pra mão dela. A perpendicular da tangente, sempre pro mesmo lado do anel inteiro —
-  // duas viaturas no mesmo sentido ficam na mesma mão, como carro de verdade.
-  const p={x:eixo.x-t.z*MAO,z:eixo.z+t.x*MAO};
+  // Sai do eixo pra faixa em que ela está agora. A perpendicular da tangente, sempre pro mesmo lado
+  // do anel inteiro — duas viaturas no mesmo sentido ficam na mesma mão, como carro de verdade.
+  const p={x:eixo.x-t.z*v.mao,z:eixo.z+t.x*v.mao};
   const fx=t.x,fz=t.z;
   const yF=obterElevacao(p.x+fx*ENTRE_EIXOS,p.z+fz*ENTRE_EIXOS);
   const yT=obterElevacao(p.x-fx*ENTRE_EIXOS,p.z-fz*ENTRE_EIXOS);
@@ -285,10 +288,11 @@ function faltaAte(de,ate){let d=ate-de;if(d<0)d+=1;return d*COMPRIMENTO_DA_ROTA}
 // DEVOLVE o ponto onde uma viatura acabou de estacionar numa ocorrência (uma vez só, no quadro da
 // chegada) ou null. Quem faz alguma coisa com isso é o `main`: é ele que sabe da polícia. Foi assim
 // que o alvo entrou, e é assim que a resposta sai — este módulo continua só dirigindo.
-let despachada=null,ocorrenciaAtendida=false,relogio=0;
-export function atualizarViaturas(dt,alvo){
+let despachada=null,ocorrenciaAtendida=false;
+// `segurar` vem do main: é a polícia dizendo "ainda tem serviço" — tem canteiro sendo batido, ou a
+// guarnição ainda está em campo voltando pro carro. Enquanto for true a despachada NÃO sai do lugar.
+export function atualizarViaturas(dt,alvo,segurar){
   if(!modelo)return null;
-  relogio+=dt;
   let desembarque=null;
   // ===== QUEM ATENDE É A MAIS PERTO, SÓ ELA, E SÓ UMA VEZ =====
   // Três regras, e cada uma tapou um buraco que o teste mostrou:
@@ -300,11 +304,13 @@ export function atualizarViaturas(dt,alvo){
   //    outra ia se aproximando na ronda, em algum momento ficava mais perto QUE a parada, virava a
   //    despachada, e a primeira era solta. Medido: duas guarnições desembarcadas na mesma batida,
   //    aos 9,9 s e aos 32,8 s.
-  //  · DEPOIS DE ENTREGAR, VOLTA A RODAR. Ela não fica plantada na rua até a batida acabar. É o que
-  //    a viatura faz de verdade (quem trabalha o canteiro é a guarnição a pé) e ainda evita o
-  //    problema chato de ter um carro parado no meio da mão da outra, volta após volta.
-  if(!alvo){despachada=null;ocorrenciaAtendida=false}
-  else if(!despachada&&!ocorrenciaAtendida){
+  //  · FICA ATÉ O SERVIÇO ACABAR. Ela larga o ponto quando a batida termina E a guarnição já
+  //    embarcou (ou morreu) — os dois casos que o Bruno pediu, nas palavras dele: "ela deve ficar
+  //    parada até concluir o serviço ou os polícias morreren". Quem sabe isso é a polícia, e chega
+  //    aqui pelo `segurar`. (A versão anterior esperava 4 s e caía fora; ficava a viatura rodando
+  //    tranquila enquanto a dupla dela trabalhava sozinha do outro lado do morro.)
+  if(!alvo&&!segurar){despachada=null;ocorrenciaAtendida=false}
+  else if(alvo&&!despachada&&!ocorrenciaAtendida){
     const destino=uMaisPerto(alvo);
     let melhor=Infinity;
     for(const v of viaturas){
@@ -336,6 +342,18 @@ export function atualizarViaturas(dt,alvo){
     const anda=Math.min(v.vel*dt,atendendo?Math.max(0,falta-CHEGOU):Infinity);
     v.u=(v.u+anda/COMPRIMENTO_DA_ROTA)%1;
 
+    // ===== DESVIA DE QUEM ESTÁ PARADO NA RUA =====
+    // A que está parada mantém a mão dela; a que está passando muda de faixa, e volta depois. Suave,
+    // porque pular de faixa num quadro é teletransporte lateral — a viatura tem que sair e voltar
+    // como carro sai e volta.
+    let maoAlvo=MAO;
+    if(!atendendo)for(const outra of viaturas){
+      if(outra===v||outra.vel>.3)continue;// só quem está de fato parada atrapalha
+      const d=Math.min(faltaAte(v.u,outra.u),faltaAte(outra.u,v.u));
+      if(d<PERTO_PRA_DESVIAR){maoAlvo=MAO_DESVIANDO;break}
+    }
+    v.mao+=Math.max(-TROCA_DE_FAIXA*dt,Math.min(TROCA_DE_FAIXA*dt,maoAlvo-v.mao));
+
     if(atendendo){
       // Giroflex piscando: alterna a cada 0,25 s.
       v.piscaT+=dt;
@@ -346,11 +364,8 @@ export function atualizarViaturas(dt,alvo){
       // não "encostou no raio" — policial pulando de carro andando é pior que não ter carro.
       if(!v.desembarcou&&falta-CHEGOU<=.05&&v.vel<.3){
         v.desembarcou=true;
-        v.saiEm=relogio+ESPERA_NA_OCORRENCIA;
         desembarque={x:v.grupo.position.x,z:v.grupo.position.z};
       }
-      // Parada com a porta aberta o tempo de a dupla descer, e depois cai fora e volta pro giro.
-      if(v.desembarcou&&relogio>=v.saiEm){despachada=null;ocorrenciaAtendida=true}
     }else{
       v.piscaT=0;
       for(const l of v.luzes)l.material.emissiveIntensity=.2;
@@ -366,7 +381,7 @@ export function atualizarViaturas(dt,alvo){
 export function __viaturas(){
   return viaturas.map(v=>({x:+v.grupo.position.x.toFixed(2),z:+v.grupo.position.z.toFixed(2),
     rumo:+v.grupo.rotation.y.toFixed(3),u:+v.u.toFixed(4),
-    vel:+v.vel.toFixed(2),atendendo:v.atendendo,
+    vel:+v.vel.toFixed(2),atendendo:v.atendendo,mao:+v.mao.toFixed(2),
     piscando:v.luzes[0].material.emissiveIntensity>1||v.luzes[1].material.emissiveIntensity>1,
     caixa:{minX:v.caixa.min.x,minY:v.caixa.min.y,minZ:v.caixa.min.z,
            maxX:v.caixa.max.x,maxY:v.caixa.max.y,maxZ:v.caixa.max.z}}));

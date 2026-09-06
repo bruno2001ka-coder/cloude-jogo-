@@ -26,6 +26,9 @@ const LIMITE_MUNDO=124,ZONA_MORTA=.12;
 // direção que não é de nenhum dos dois. A trava é do módulo, e não de cada veículo, porque a pergunta
 // é sobre o conjunto — um veículo sozinho não tem como saber do outro.
 let emUso=null;
+// A mesma trava responde uma segunda pergunta, e é de graça: O JOGADOR ESTÁ DENTRO DE ALGUM VEÍCULO?
+// Quem quer saber é a polícia — ver o comentário do `montarAlvosDoFrame` no Police.js.
+export function jogadorEmVeiculo(){return emUso!==null}
 const _box=new THREE.Box3(),_size=new THREE.Vector3(),_center=new THREE.Vector3();
 const _frente=new THREE.Vector3();
 
