@@ -380,7 +380,7 @@ function zonasDoPolicial(pol){
 // `pontoAlvo` é pra onde o helicóptero vai: a muda, numa batida de plantação, ou o JOGADOR, numa
 // caçada por ficha suja. `alvoPlanta` fica null na caçada — é o que distingue os dois casos, porque
 // só a batida termina em confisco.
-const policia={estado:'rondando',alvoPlanta:null,alvoPlantacao:null,pontoAlvo:{x:0,z:0},tempoEstado:0,cooldownAte:0,
+const policia={estado:'rondando',alvoPlanta:null,alvoPlantacao:null,equipeViatura:0,pontoAlvo:{x:0,z:0},tempoEstado:0,cooldownAte:0,
   tempoEscondido:0,tempoNivel:0,retomarCacaEm:0,procurado:0,
   // Policiais que o jogador abateu e ainda não foram "esquecidos". É o ÚNICO motivo de o efetivo
   // crescer — reforço sem causa é o que ele chamou de "aumentar a polícia do nada".
@@ -1228,6 +1228,7 @@ const ESTADOS={
     aoEntrar(){
       policia.cooldownAte=performance.now()/1000+COOLDOWN_ENTRE_BUSCAS;
       policia.desembarqueFeitos=0;policia.proximoDesembarque=0;policia.heliPousado=false;
+      policia.equipeViatura=0;
       heliAlvo=sortearWaypointPatrulha();
     },
     aoAtualizar(dt,agora){
@@ -1361,6 +1362,38 @@ function desembarcarPoliciais(agora){
   pol.tipo='desembarque';pol.modo='desembarque';pol.destinoRonda={x:centro?.x??p.x,z:centro?.z??p.z};
   policia.proximoDesembarque=agora+DESEMBARQUE_INTERVALO;
 }
+// ===== A GUARNIÇÃO QUE SALTA DA VIATURA =====
+// A queixa era "elas não tá indo nas plantação". Medido, o rádio funcionava: com o canteiro colado na
+// rua, a batida abre em 4,7 s e a viatura encosta a 3,9 m. O problema é o resto do caminho — plantação
+// boa é longe de rua, e a viatura PARA na rua (é o desenho todo: carro não sobe viela). Do lado de
+// fora, uma viatura que estaciona longe e não faz nada é indistinguível de uma que não veio.
+//
+// Então ela passa a fazer o que uma viatura faz: para, e a guarnição desce e sobe a pé. É isso que
+// liga o carro ao canteiro, e é o que ele vai ver.
+//
+// Dois, e só dois por ocorrência (o contador zera junto com o do heli, quando o heli volta pra ronda).
+// Eles entram no efetivo normal, então quando a batida acaba o `atualizarEfetivo` manda os que
+// sobraram voltarem pra base A PÉ — ninguém evapora, e não vira a enxurrada de policiais que ele já
+// reclamou uma vez.
+const VIATURA_EQUIPE=2;
+export function desembarcarDaViatura(ponto){
+  const centro=policia.alvoPlantacao??policia.alvoPlanta;
+  if(!ponto||!centro)return 0;
+  let saiu=0;
+  for(let i=policia.equipeViatura;i<VIATURA_EQUIPE;i++){
+    // Um de cada lado do carro, e não os dois no mesmo pixel.
+    const ang=i?Math.PI:0;
+    const pol=sairDaBase(performance.now()/1000,
+      {x:ponto.x+Math.cos(ang)*1.6,z:ponto.z+Math.sin(ang)*1.6});
+    pol.tipo='desembarque';pol.modo='desembarque';
+    pol.destinoRonda={x:centro.x,z:centro.z};
+    saiu++;
+  }
+  policia.equipeViatura=VIATURA_EQUIPE;
+  if(saiu)mostrarAviso('🚓 A viatura parou na rua e a guarnição está subindo a pé.',3200);
+  return saiu;
+}
+
 // Quantos DEVEM estar em campo. É a regra do reforço inteira: quatro sempre, mais um por policial que
 // o jogador derrubou, até o teto. Sem baixa, o efetivo não muda — reforço tem que ter causa.
 function efetivoDesejado(){return Math.min(POLICIAIS_MAX,EFETIVO_BASE+policia.baixas);}

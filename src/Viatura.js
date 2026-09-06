@@ -54,12 +54,15 @@ import{viaPrincipal,viaBaixa}from'./Favela.js';
 import{registrarCaixa,marcarObstaculoMovel}from'./Physics.js';
 
 const COMPRIMENTO=1.90,LARGURA=.86,ALTURA_COLISAO=.85;
-const VEL_RONDA=5.5,VEL_ATENDENDO=10;// atendendo ocorrência ela acelera, e dá pra ouvir chegando
 const ENTRE_EIXOS=.70;
 const ALTURA_ASSENTO=-.02;// mesmo motivo dos outros veículos: o chão desenhado fica abaixo da curva
 // A que distância da ocorrência ela considera que chegou. Não é zero: ela para NA RUA, no ponto mais
 // perto da plantação, e daí os policiais seguem a pé — que é o desenho todo.
 const CHEGOU=2.0;
+// Quanto tempo ela fica parada depois de a guarnição saltar, antes de voltar pro giro. 4 s é o
+// suficiente pra o jogador VER a cena acontecer — sair correndo no quadro seguinte ao desembarque
+// contaria a história rápido demais pra alguém que estava olhando pro outro lado.
+const ESPERA_NA_OCORRENCIA=4;
 
 // ===== O ANEL =====
 // Montado a partir das ruas que já existem, e não desenhado à mão: amostro as duas vias de 4 em 4
@@ -137,6 +140,57 @@ const COMPRIMENTO_DA_ROTA=ROTA.getLength();
 // Exposto pro teste medir o anel por fora, e pro modo debug poder desenhá-lo um dia.
 export function __rota(){return ROTA}
 
+// ===== COMO UM CARRO ANDA (e não como um trenzinho) =====
+// A primeira versão empurrava a viatura pelo anel a 5,5 m/s FIXOS. Anel liso ou curva fechada, chuva
+// ou sol, era sempre a mesma velocidade — e é isso que faz parecer peça de carrossel em vez de carro.
+// O Bruno: "estuda melhor sobre ia de veículos, quero mais real possível a ronda deles".
+//
+// O jeito que se faz isso de verdade (é o mesmo cálculo de linha de corrida) tem duas partes:
+//
+//  1. TETO POR CURVA. Numa curva de raio R, o carro só segura até v = raiz(aceleração_lateral × R).
+//     Passou disso, derrapa. Então cada pedacinho do anel ganha um teto vindo da SUA curvatura: reta
+//     longa do oeste = cruzeiro; cruzamento das ruas (raio 2,5 m) = bem devagar.
+//  2. FREAR ANTES, NÃO EM CIMA. Só respeitar o teto no ponto da curva não adianta: ela chegaria a 8
+//     m/s na boca e teria que sumir com 5 m/s instantaneamente. Então o perfil leva uma passada DE
+//     TRÁS PRA FRENTE, onde cada ponto também obedece "dá pra frear daqui até o próximo":
+//         v[i] = min(v[i], raiz(v[i+1]² + 2 × freio × distância))
+//     Duas passadas porque o anel é fechado e a última influencia a primeira.
+//
+// O resultado é o que se vê da janela: ela acelera na reta do oeste, alivia entrando na favela e
+// passa devagar no cruzamento. Nada disso é animação — sai da geometria da rua.
+const N_PERFIL=600,PASSO_PERFIL=COMPRIMENTO_DA_ROTA/N_PERFIL;
+const VEL_CRUZEIRO=9,ACEL=3.2,FREIO=5.5;
+// Quanto ela "segura" de lado. 4,5 m/s² é carro de patrulha andando com cuidado; 8 é ele com pressa,
+// que é o que a gente usa quando tem ocorrência. É esta constante, e não a velocidade, que define o
+// quanto ela corre — velocidade sozinha faria ela cortar a esquina.
+const LATERAL_RONDA=4.5,LATERAL_ATENDENDO=8;
+const VEL_ATENDENDO=14;
+function montarPerfil(latMax,vMax){
+  const v=new Float32Array(N_PERFIL);
+  for(let i=0;i<N_PERFIL;i++){
+    const u=i/N_PERFIL;
+    const a=ROTA.getTangentAt(u),b=ROTA.getTangentAt((u+2/N_PERFIL)%1);
+    const ang=Math.abs(Math.atan2(a.x*b.z-a.z*b.x,a.x*b.x+a.z*b.z));
+    const raio=ang>1e-6?(2*PASSO_PERFIL)/ang:1e9;
+    v[i]=Math.min(vMax,Math.sqrt(latMax*raio));
+  }
+  for(let passada=0;passada<2;passada++)
+    for(let k=N_PERFIL-1;k>=0;k--){
+      const prox=v[(k+1)%N_PERFIL];
+      v[k]=Math.min(v[k],Math.sqrt(prox*prox+2*FREIO*PASSO_PERFIL));
+    }
+  return v;
+}
+const PERFIL_RONDA=montarPerfil(LATERAL_RONDA,VEL_CRUZEIRO);
+const PERFIL_ATENDENDO=montarPerfil(LATERAL_ATENDENDO,VEL_ATENDENDO);
+const tetoEm=(perfil,u)=>perfil[Math.min(N_PERFIL-1,Math.floor(((u%1)+1)%1*N_PERFIL))];
+
+// ===== ELA ANDA NA MÃO DELA =====
+// O anel é o EIXO da rua; carro de verdade não anda em cima da faixa central. Deslocar pra direita
+// deixa a rua com cara de rua e sobra espaço do outro lado. 1,0 m numa via de 5,2 m com um carro de
+// 0,86 m ainda deixa mais de um metro até o meio-fio — e o teste confere isso quina por quina.
+const MAO=1.0;
+
 const viaturas=[];
 let modelo=null;
 
@@ -159,10 +213,10 @@ function criarViatura(u0){
   const luzes=[lampada(0x3366ff,-.18),lampada(0xff3322,.18)];
   const caixa=new THREE.Box3(new THREE.Vector3(0,-9999,0),new THREE.Vector3(.01,-9998.99,.01));
   marcarObstaculoMovel(registrarCaixa(caixa,'viatura'));
-  return{grupo,u:u0,luzes,caixa,piscaT:0};
+  return{grupo,u:u0,luzes,caixa,piscaT:0,vel:0,atendendo:false,desembarcou:false};
 }
 
-// Onde no anel fica o ponto mais perto de um alvo. 300 amostras em ~378 m dá 1,3 m de resolução, e o
+// Onde no anel fica o ponto mais perto de um alvo. 300 amostras em ~283 m dá 0,9 m de resolução, e o
 // que se quer aqui é "em que altura da rua eu paro", não precisão de milímetro. Devolve `u` de 0 a 1.
 function uMaisPerto(alvo){
   let melhor=0,dist=Infinity;
@@ -175,10 +229,13 @@ function uMaisPerto(alvo){
 }
 
 function assentar(v){
-  const p=ROTA.getPointAt(v.u),t=ROTA.getTangentAt(v.u);
+  const eixo=ROTA.getPointAt(v.u),t=ROTA.getTangentAt(v.u);
   // A frente do jogo é (-sen, -cos) do yaw. Igualando à tangente do anel sai o yaw direto — e como o
   // `u` só ANDA PRA FRENTE, o nariz nunca fica ao contrário. Era daí que vinha o "volta de ré".
   const rumo=Math.atan2(-t.x,-t.z);
+  // Sai do eixo pra mão dela. A perpendicular da tangente, sempre pro mesmo lado do anel inteiro —
+  // duas viaturas no mesmo sentido ficam na mesma mão, como carro de verdade.
+  const p={x:eixo.x-t.z*MAO,z:eixo.z+t.x*MAO};
   const fx=t.x,fz=t.z;
   const yF=obterElevacao(p.x+fx*ENTRE_EIXOS,p.z+fz*ENTRE_EIXOS);
   const yT=obterElevacao(p.x-fx*ENTRE_EIXOS,p.z-fz*ENTRE_EIXOS);
@@ -220,38 +277,87 @@ new GLTFLoader().load('assets/viatura.glb',gltf=>{
 // anel de distância — e passam uma pela outra no cruzamento de vez em quando, que é bonito de ver.
 viaturas.push(criarViatura(0),criarViatura(.5));
 
+// Quanto do anel falta, indo PRA FRENTE, entre `de` e `ate`. Sempre positivo: o anel é de mão única.
+function faltaAte(de,ate){let d=ate-de;if(d<0)d+=1;return d*COMPRIMENTO_DA_ROTA}
+
 // `alvo` é o centro da plantação sendo batida, ou null. Vem do `main` pra este módulo não precisar
 // conhecer a polícia — quem já sabe dos dois é o laço do jogo.
+// DEVOLVE o ponto onde uma viatura acabou de estacionar numa ocorrência (uma vez só, no quadro da
+// chegada) ou null. Quem faz alguma coisa com isso é o `main`: é ele que sabe da polícia. Foi assim
+// que o alvo entrou, e é assim que a resposta sai — este módulo continua só dirigindo.
+let despachada=null,ocorrenciaAtendida=false,relogio=0;
 export function atualizarViaturas(dt,alvo){
-  if(!modelo)return;
+  if(!modelo)return null;
+  relogio+=dt;
+  let desembarque=null;
+  // ===== QUEM ATENDE É A MAIS PERTO, SÓ ELA, E SÓ UMA VEZ =====
+  // Três regras, e cada uma tapou um buraco que o teste mostrou:
+  //
+  //  · SÓ UMA VAI. As duas largarem a ronda pelo mesmo canteiro é o que polícia nenhuma faz — some
+  //    viatura da rua inteira por causa de uma ocorrência. Vai a que chega primeiro (menor distância
+  //    PELA FRENTE, a única que ela pode andar) e a outra segue rondando o lado oposto do anel.
+  //  · UMA VEZ ESCOLHIDA, É ELA. Sem travar, dava rodízio: a despachada parava a 2 m do destino, a
+  //    outra ia se aproximando na ronda, em algum momento ficava mais perto QUE a parada, virava a
+  //    despachada, e a primeira era solta. Medido: duas guarnições desembarcadas na mesma batida,
+  //    aos 9,9 s e aos 32,8 s.
+  //  · DEPOIS DE ENTREGAR, VOLTA A RODAR. Ela não fica plantada na rua até a batida acabar. É o que
+  //    a viatura faz de verdade (quem trabalha o canteiro é a guarnição a pé) e ainda evita o
+  //    problema chato de ter um carro parado no meio da mão da outra, volta após volta.
+  if(!alvo){despachada=null;ocorrenciaAtendida=false}
+  else if(!despachada&&!ocorrenciaAtendida){
+    const destino=uMaisPerto(alvo);
+    let melhor=Infinity;
+    for(const v of viaturas){
+      const d=faltaAte(v.u,destino);
+      if(d<melhor){melhor=d;despachada=v}
+    }
+    if(despachada){despachada.destino=destino;despachada.desembarcou=false}
+  }
   for(const v of viaturas){
-    if(alvo){
-      // ATENDENDO: acelera até o ponto do anel mais perto da plantação e PARA ali. Não sai da rua em
-      // momento nenhum — quem entra no beco é o policial a pé.
-      //
-      // SEMPRE PELA FRENTE, mesmo quando dar ré seria mais curto. É essa regra que faz a promessa de
-      // "nunca anda de ré" valer sempre, e não só na ronda. O preço é dar quase uma volta no pior
-      // caso: 378 m a 10 m/s = 38 s. Mas as duas estão a meia volta uma da outra, então SEMPRE tem
-      // uma a 19 s ou menos — e é ela que chega primeiro, que é o que o jogador sente.
-      const destino=uMaisPerto(alvo);
-      let d=destino-v.u;if(d<0)d+=1;// distância pela frente, dando a volta se precisar
-      const passo=VEL_ATENDENDO*dt/COMPRIMENTO_DA_ROTA;
-      // `Math.min(passo,d)` trava no destino em vez de passar dele: passar faria `d` virar quase 1 no
-      // quadro seguinte, e ela sairia pra mais uma volta inteira atrás de um ponto que estava ali.
-      if(d*COMPRIMENTO_DA_ROTA>CHEGOU)v.u=(v.u+Math.min(passo,d))%1;
+    const atendendo=v===despachada;
+    v.atendendo=atendendo;
+
+    // ===== O TETO DE VELOCIDADE DESTE PEDAÇO DE RUA =====
+    let teto=tetoEm(atendendo?PERFIL_ATENDENDO:PERFIL_RONDA,v.u);
+    let falta=Infinity;
+    if(atendendo){
+      falta=faltaAte(v.u,v.destino);
+      // PARAR DIREITO. `v² = 2·freio·distância` é o quanto ela pode estar correndo pra ainda caber a
+      // frenagem até o ponto de parada. Sem isto ela chegaria a 14 m/s e viraria estátua num quadro,
+      // que é o que a versão anterior fazia — e é exatamente a cara de coisa que não é carro.
+      teto=Math.min(teto,Math.sqrt(Math.max(0,2*FREIO*Math.max(0,falta-CHEGOU))));
+    }
+    // Acelera ou freia até o teto, respeitando o que o motor e o freio dão. É daqui que sai a
+    // sensação de peso: ela não muda de velocidade de um quadro pro outro.
+    const limite=teto>v.vel?ACEL*dt:FREIO*dt;
+    v.vel+=Math.max(-limite,Math.min(limite,teto-v.vel));
+    if(v.vel<0)v.vel=0;
+    // Anda, sem nunca passar do ponto de parada.
+    const anda=Math.min(v.vel*dt,atendendo?Math.max(0,falta-CHEGOU):Infinity);
+    v.u=(v.u+anda/COMPRIMENTO_DA_ROTA)%1;
+
+    if(atendendo){
       // Giroflex piscando: alterna a cada 0,25 s.
       v.piscaT+=dt;
       const liga=Math.floor(v.piscaT*4)%2;
       v.luzes[0].material.emissiveIntensity=liga?2.4:.15;
       v.luzes[1].material.emissiveIntensity=liga?.15:2.4;
+      // CHEGOU E PAROU: é a hora de a guarnição saltar. Parada de verdade (velocidade quase zero),
+      // não "encostou no raio" — policial pulando de carro andando é pior que não ter carro.
+      if(!v.desembarcou&&falta-CHEGOU<=.05&&v.vel<.3){
+        v.desembarcou=true;
+        v.saiEm=relogio+ESPERA_NA_OCORRENCIA;
+        desembarque={x:v.grupo.position.x,z:v.grupo.position.z};
+      }
+      // Parada com a porta aberta o tempo de a dupla descer, e depois cai fora e volta pro giro.
+      if(v.desembarcou&&relogio>=v.saiEm){despachada=null;ocorrenciaAtendida=true}
     }else{
-      // RONDA: roda o anel pra sempre, sempre no mesmo sentido. Sem ponta, sem inversão, sem manobra.
-      v.u=(v.u+VEL_RONDA*dt/COMPRIMENTO_DA_ROTA)%1;
       v.piscaT=0;
       for(const l of v.luzes)l.material.emissiveIntensity=.2;
     }
     assentar(v);
   }
+  return desembarque;
 }
 // Exposto pro teste: posição, rumo, estado do giroflex e o COLISOR de cada viatura, sem precisar
 // cavar na cena. O colisor vem daqui e não da lista da física de propósito: depois da fusão,
@@ -260,6 +366,7 @@ export function atualizarViaturas(dt,alvo){
 export function __viaturas(){
   return viaturas.map(v=>({x:+v.grupo.position.x.toFixed(2),z:+v.grupo.position.z.toFixed(2),
     rumo:+v.grupo.rotation.y.toFixed(3),u:+v.u.toFixed(4),
+    vel:+v.vel.toFixed(2),atendendo:v.atendendo,
     piscando:v.luzes[0].material.emissiveIntensity>1||v.luzes[1].material.emissiveIntensity>1,
     caixa:{minX:v.caixa.min.x,minY:v.caixa.min.y,minZ:v.caixa.min.z,
            maxX:v.caixa.max.x,maxY:v.caixa.max.y,maxZ:v.caixa.max.z}}));
