@@ -76,7 +76,9 @@ export function atualizarMoto(dt,keys,joyX=0,joyY=0){
   // por isso o eixo vertical é invertido apenas na leitura, não na apresentação do stick.
   const teclado=(keys.KeyW?1:0)-(keys.KeyS?1:0);
   const acelerador=limitarEntrada(teclado||-joyY);
-  const direcao=limitarEntrada((keys.KeyD?1:0)-(keys.KeyA?1:0)+joyX);
+  // O eixo de rotação do modelo alinhado faz o sinal geométrico parecer invertido;
+  // D/joystick direito precisa produzir curva visual para a direita.
+  const direcao=-limitarEntrada((keys.KeyD?1:0)-(keys.KeyA?1:0)+joyX);
   atualizarVelocidade(dt,acelerador);
 
   const rapidez=Math.min(1,Math.abs(velocidade)/MAX_VEL);
