@@ -46,6 +46,7 @@ const VEL_CORRIDA=5.4;
 const VEL_PARADO=.35;
 
 let mixer=null,acoes=null,atual=null,raiz=null,maoOsso=null,malhaPele=null,troncoOsso=null;
+const ossos={},repouso={};
 let acaoAgachado=null;
 let aNormalizar=false,alvoAltura=0,playerRef=null,aoProntoCb=null;
 // Colete 3D: o arquivo e o encaixe no corpo. Chegam em ordem imprevisível (o GLB do colete pode vir
@@ -166,6 +167,15 @@ export function carregarPersonagem(player,alturaMundo,aoCarregar){
     });
     modelo.traverse(o=>{
       if(!o.isBone)return;
+      ossos[o.name]=o;// a pose de moto precisa alcançar qualquer osso pelo nome
+      // ===== O REPOUSO TEM QUE SER GUARDADO AGORA =====
+      // 23 dos 26 ossos deste rig têm rotação de repouso, e algumas são enormes (o braço direito
+      // vem com o quaternion [0.505,-0.548,-0.370,0.556]). Escrever `osso.rotation.set(...)` APAGA
+      // essa rotação, e foi o que embolou a primeira versão da pose: o pé subia acima da cabeça.
+      // Guardado aqui, o ângulo da pose vira um GIRO A PARTIR da pose T, que é o que se espera de
+      // "dobre o joelho 70 graus". Tem que ser neste ponto: o `normalizar` do primeiro quadro já
+      // roda `mixer.update`, e aí os ossos deixam de estar em repouso.
+      repouso[o.name]=o.quaternion.clone();
       if(o.name==='RightHand')maoOsso=o;
       // Peito: Spine02 é o mais alto da coluna neste rig; os outros ficam como reserva caso o modelo
       // seja trocado por um com menos ossos de coluna.
@@ -234,10 +244,69 @@ function normalizar(){
     raiz.position.y+=(playerRef.position.y+AJUSTE.alturaPes-alturaDaMalha(malhaPele).pes)/escalaPlayer.y;
     raiz.updateMatrixWorld(true);
   }
+  // Guarda a altura de "de pé no chão". Sentar na moto é subir a partir daqui, e descer é voltar
+  // exatamente pra cá — sem este valor, montar e desmontar algumas vezes iria empilhando o desvio.
+  baseYRaiz=raiz.position.y;
+  escalaRaiz=escalaPlayer.y||1;
   raiz.visible=true;
   aoProntoCb?.(raiz);aoProntoCb=null;
   tentarVestirColete();// o arquivo do colete pode já ter chegado antes deste primeiro quadro
   tentarPendurarMochilas();// a mochila não depende de arquivo, só da medida do tronco
+}
+
+// ===== POSE DE PILOTO =====
+// O boneco SUMIA em cima da moto (`player.visible=false`), e a pergunta do Bruno foi se precisava
+// baixar uma animação de pilotar. Não precisa, e o motivo é medida: um clipe de moto do Mixamo é
+// feito pra uma moto genérica, e as mãos dele não caem no guidão DESTA — ia sobrar ajuste no escuro
+// do mesmo jeito. Aqui os ossos são postos direto nos pontos medidos no `moto.glb`:
+//     guidão 0,73 m · selim 0,59 m · pedaleira 0,26 m   (personagem em pé: 0,90 m)
+// E de brinde o piloto tomba junto com a moto na curva, porque ele é filho do mesmo grupo.
+//
+// MEXA AQUI. Ângulos em radianos, no espaço LOCAL de cada osso. O rig é o Mixamo de 24 ossos, em
+// pose T: o eixo +Y local de cada osso corre AO LONGO do membro, então girar em X dobra pra frente
+// e pra trás, que é o que uma perna e um braço fazem.
+export const POSE_MOTO={
+  // TRONCO: inclina pra frente como quem pilota, e o pescoço devolve a cabeça pro horizonte —
+  // sem ele o piloto desce a rua olhando pro tanque.
+  Spine:      [ .10, 0, 0],
+  Spine01:    [ .08, 0, 0],
+  Spine02:    [ .06, 0, 0],
+  neck:       [-.12, 0, 0],
+  Head:       [-.08, 0, 0],
+  // PERNAS: resolvidas contra a pedaleira, com alvo LATERAL também — e esse foi o conserto que a
+  // foto cobrou. A primeira versão acertava a altura (0,26 m) mas deixava o pé a só 0,10 m do eixo,
+  // dentro da carenagem de uma moto que tem 0,47 m de largura: na imagem o piloto aparecia SEM
+  // PERNAS, engolido pelo motor. Agora o pé fica em 0,259 / 0,001 / 0,170 (erro de 2 mm) e o joelho
+  // sai 0,148 m pro lado, passando por fora do tanque como numa moto de verdade.
+  RightUpLeg: [ .679, 0,  .354],
+  LeftUpLeg:  [ .679, 0, -.354],
+  RightLeg:   [-1.464, 0, 0],
+  LeftLeg:    [-1.464, 0, 0],
+  // BRAÇOS: resolvidos contra a MANOPLA, que foi medida no `moto.glb` em 0,73 m de altura, 0,16 m à
+  // frente do centro e 0,235 m pro lado. A mão ficou em 0,736 / 0,127 / 0,219 — 3,7 cm de erro.
+  // A primeira busca tinha dado 1 mm, mas rodou com o tronco RETO; quando a inclinação do tronco
+  // entrou, o ombro andou junto e levou a mão 9 cm acima do guidão. Estes números saíram de uma
+  // busca feita com a pose inteira já no lugar, que é a única que vale.
+  // O Z é o que ESPALHA as mãos pra largura do guidão; sem ele as duas ficavam juntas no meio.
+  RightArm:   [ .80, 0, .45],
+  LeftArm:    [ .80, 0,-.45],
+  RightForeArm:[ .30, 0, 0],
+  LeftForeArm: [ .30, 0, 0],
+};
+// Quanto o boneco sobe do chão pro selim, em metros de jogo. O quadril de pé fica em torno de 0,48 m
+// e o selim está em 0,59: a diferença é isto, e ela é ajustada pela foto.
+export const ALTURA_SELIM=.09;
+let poseMoto=false,baseYRaiz=null,escalaRaiz=1;
+export function definirPoseMoto(v){poseMoto=!!v}
+export function pilotando(){return poseMoto}
+const _eP=new THREE.Euler(),_qP=new THREE.Quaternion();
+function aplicarPoseMoto(){
+  for(const nome in POSE_MOTO){
+    const o=ossos[nome],r=repouso[nome];if(!o||!r)continue;
+    const a=POSE_MOTO[nome];
+    // repouso × giro: o ângulo é um DESVIO da pose T, no espaço do próprio osso.
+    o.quaternion.copy(r).multiply(_qP.setFromEuler(_eP.set(a[0],a[1],a[2])));
+  }
 }
 
 // Chamado uma vez por quadro pelo Player. `velocidade` é o módulo da velocidade horizontal em unidades
@@ -271,6 +340,15 @@ export function atualizarAnimacaoPersonagem(dt,velocidade,atirando,agachado=fals
     }
   }
   mixer.update(dt);
+  // A POSE VEM DEPOIS DO MIXER, e tem que ser todo quadro: o mixer reescreve os ossos a cada
+  // atualização, então pousar a pose uma vez só duraria um quadro. Os ossos que a pose não cita
+  // ficam no quadro congelado da caminhada, que é uma pose neutra de pé — serve de base.
+  if(poseMoto){
+    aplicarPoseMoto();
+    if(baseYRaiz!==null)raiz.position.y=baseYRaiz+ALTURA_SELIM/escalaRaiz;
+  }else if(baseYRaiz!==null&&raiz.position.y!==baseYRaiz){
+    raiz.position.y=baseYRaiz;
+  }
 }
 
 // Some com o boneco de caixas quando o modelo chega. Recebe a lista porque quem sabe quais malhas

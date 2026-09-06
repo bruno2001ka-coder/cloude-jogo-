@@ -1,6 +1,7 @@
 import*as THREE from'three';
 import{GLTFLoader}from'three/addons/loaders/GLTFLoader.js';
 import{player}from'./Player.js';
+import{definirPoseMoto,personagemCarregado,atualizarAnimacaoPersonagem}from'./Personagem.js';
 import{scene}from'./core.js';
 import{obterElevacao}from'./Terrain.js';
 import{colideObstaculoXZ,registrarCaixa,marcarObstaculoMovel,buscarPosicaoLivre}from'./Physics.js';
@@ -164,6 +165,8 @@ export function alternarMoto(){
     // como quem desce de moto de verdade; se aquele lado estiver contra um muro, `buscarPosicaoLivre`
     // acha o ponto livre mais próximo (é a mesma rede de segurança que desencrava jogador e polícia).
     montado=false;velocidade=0;player.visible=true;
+    definirPoseMoto(false);
+    player.rotation.x=0;player.rotation.z=0;// desfaz o tombo que ele pegou da moto
     const lx=Math.cos(player.rotation.y),lz=-Math.sin(player.rotation.y);
     let px=player.position.x-lx*1.35,pz=player.position.z-lz*1.35;
     const corpo=(x,z)=>colideObstaculoXZ(x,z,obterElevacao(x,z)+.1,.35,.35,1.6);
@@ -174,7 +177,11 @@ export function alternarMoto(){
     moto.visible=true;atualizarBotao();aviso('Você desceu da moto.');return
   }
   if(!perto()){aviso('Chegue perto da moto para montar.');return}
-  montado=true;velocidade=0;player.visible=false;moto.visible=true;player.rotation.y=moto.rotation.y;aviso('Moto montada — W acelera, S freia e A/D viram.');atualizarBotao()
+  // O PILOTO NÃO SOME MAIS. Antes era `player.visible=false` e a moto descia a rua sozinha; agora ele
+  // fica visível e entra na pose de pilotar (ver POSE_MOTO em Personagem.js).
+  montado=true;velocidade=0;player.visible=true;moto.visible=true;player.rotation.y=moto.rotation.y;
+  definirPoseMoto(true);
+  aviso('Moto montada — W acelera, S freia e A/D viram.');atualizarBotao()
 }
 function atualizarBotao(){const b=document.getElementById('motoBtn');if(b)b.textContent=montado?'DESCER':'MOTO'}
 export function atualizarMoto(dt,keys,joyX=0,joyY=0){
@@ -241,6 +248,19 @@ export function atualizarMoto(dt,keys,joyX=0,joyY=0){
   const inclinacao=direcao*rapidez*.22;
   moto.rotation.z=THREE.MathUtils.lerp(moto.rotation.z,rolamentoDoChao-inclinacao,1-Math.exp(-10*dt));
   sumirCaixaMoto();// montado, a moto é o jogador: colisor aqui seria ela batendo em si mesma
+
+  // ===== O PILOTO ANDA JUNTO =====
+  // O grupo `player` (que carrega o boneco 3D) copia a pose da moto — inclinação do terreno e tombo
+  // de curva incluídos. Sem isto ele ficaria de pé e nivelado enquanto a moto empina no barranco.
+  // Ordem 'YXZ' pelo mesmo motivo da moto: em 'XYZ' a inclinação seria aplicada nos eixos do mundo
+  // antes do giro, e o piloto tombaria pro lado ao invés de acompanhar a subida.
+  player.rotation.order='YXZ';
+  player.rotation.x=moto.rotation.x;
+  player.rotation.z=moto.rotation.z;
+  // E a animação PRECISA ser chamada aqui: quem chamava era `atualizarMovimentoJogador`, e o main
+  // pula ela justamente quando se está na moto. Sem esta linha a pose de piloto nunca seria
+  // aplicada — o mixer reescreve os ossos todo quadro, então a pose tem que ser reposta todo quadro.
+  if(personagemCarregado())atualizarAnimacaoPersonagem(dt,0,false,false);
   return true;
 }
 const btn=document.getElementById('motoBtn');btn?.addEventListener('pointerdown',e=>{e.preventDefault();alternarMoto()});
