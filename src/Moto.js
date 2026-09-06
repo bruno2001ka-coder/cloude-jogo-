@@ -12,7 +12,7 @@ let montado=false,modeloCarregado=false,velocidade=0,modelo=null;
 // Os limites são separados para a ré não disparar como se fosse marcha à frente.
 const MAX_VEL=11,MAX_RE=3.8,ACELERACAO=14,ACELERACAO_RE=7,FREIO=24,ATRITO=5.5;
 const RAIO_MONTAR=4,LIMITE_MUNDO=124;
-const MEIA_LARGURA_MOTO=.42,MEIA_PROFUNDIDADE_MOTO=.85,ALTURA_COLISAO_MOTO=.95;
+const MEIA_LARGURA_MOTO=.34,MEIA_PROFUNDIDADE_MOTO=.70,ALTURA_COLISAO_MOTO=.80;
 const ZONA_MORTA=.12;
 const _box=new THREE.Box3(),_size=new THREE.Vector3(),_center=new THREE.Vector3();
 const _frente=new THREE.Vector3(),_lado=new THREE.Vector3();
@@ -20,12 +20,12 @@ const _frente=new THREE.Vector3(),_lado=new THREE.Vector3();
 function aviso(txt){const el=document.getElementById('avisoPolicia');if(!el)return;el.textContent=txt;el.style.display='block';el.style.opacity='1';clearTimeout(el._motoT);el._motoT=setTimeout(()=>{el.style.opacity='0';setTimeout(()=>{el.style.display='none'},300)},1800)}
 function ajustarModelo(root){
   root.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true}});
-  _box.setFromObject(root);_box.getSize(_size);const maior=Math.max(_size.x,_size.y,_size.z)||1, TamanhoAlvo=1.65;root.scale.setScalar(TamanhoAlvo/maior);
+  _box.setFromObject(root);_box.getSize(_size);const maior=Math.max(_size.x,_size.y,_size.z)||1, TamanhoAlvo=1.35;root.scale.setScalar(TamanhoAlvo/maior);
   _box.setFromObject(root);_box.getCenter(_center);root.position.sub(_center);root.position.y+=_size.y*.5/maior*TamanhoAlvo;
   // O GLB foi exportado longitudinalmente no eixo X, com a frente apontando para +X.
-  // A física da moto usa +Z como frente quando a rotação é zero; -90° transforma
+  // A física da moto usa +Z como frente quando a rotação é zero; +90° transforma
   // o eixo frontal do modelo em +Z sem alterar a física do veículo.
-  root.rotation.y=-Math.PI/2;
+  root.rotation.y=Math.PI/2;
 }
 new GLTFLoader().load('assets/moto.glb',gltf=>{
   modelo=gltf.scene;ajustarModelo(modelo);moto.add(modelo);modeloCarregado=true;
