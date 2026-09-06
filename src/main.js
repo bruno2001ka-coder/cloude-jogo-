@@ -19,6 +19,7 @@ import{atualizarEfeitos}from'./CombatFX.js';
 import{atualizarRecuoArmas}from'./Weapons.js';
 import{isHUDEditando}from'./HUDEditor.js';
 import{definirPosicaoAudio}from'./Audio.js';
+import{atualizarMoto}from'./Moto.js';
 
 camera.position.set(0,EYE_HEIGHT,16);
 initDragLook(renderer.domElement);
@@ -121,7 +122,8 @@ function quadro(){
   }else{
     // Correr (Shift) e mirar (botão direito) são os dois multiplicadores de velocidade, e quem sabe
     // o estado das duas teclas é o Input — por isso o fator vem de lá pronto.
-    atualizarMovimentoJogador(dt,keys,inputState.joyX,inputState.joyY,inputState.yaw,fatorVelocidadeDesejado());
+    const dirigindoMoto=atualizarMoto(dt,keys,inputState.joyX,inputState.joyY);
+    if(!dirigindoMoto)atualizarMovimentoJogador(dt,keys,inputState.joyX,inputState.joyY,inputState.yaw,fatorVelocidadeDesejado());
     // rede de segurança: só conta como "travado" se ele estiver de fato tentando andar
     const querendoAndar=!!(keys.KeyW||keys.KeyA||keys.KeyS||keys.KeyD)||Math.hypot(inputState.joyX,inputState.joyY)>.2;
     vigiarTravamento(dt,querendoAndar);
