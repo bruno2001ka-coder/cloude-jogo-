@@ -22,10 +22,21 @@ function ajustarModelo(root){
   root.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true}});
   _box.setFromObject(root);_box.getSize(_size);const maior=Math.max(_size.x,_size.y,_size.z)||1, TamanhoAlvo=1.35;root.scale.setScalar(TamanhoAlvo/maior);
   _box.setFromObject(root);_box.getCenter(_center);root.position.sub(_center);root.position.y+=_size.y*.5/maior*TamanhoAlvo;
-  // O GLB foi exportado longitudinalmente no eixo X, com a frente apontando para +X.
-  // A física da moto usa +Z como frente quando a rotação é zero; +90° transforma
-  // o eixo frontal do modelo em +Z sem alterar a física do veículo.
-  root.rotation.y=Math.PI/2;
+  // ===== DE QUE LADO É A FRENTE DA MOTO (medido, não suposto) =====
+  // O comentário que estava aqui dizia "a frente aponta para +X" e girava +90°. As duas coisas
+  // estavam erradas, e o efeito era a moto andar DE RABO — o Bruno fotografou.
+  //
+  // Medido nos vértices do `moto.glb`, por dois caminhos independentes:
+  //   · os 10% mais ALTOS da malha (o guidão é o ponto mais alto de uma moto de trilha, e fica na
+  //     frente) têm X médio -0,216, contra um centro em +0,003;
+  //   · a altura máxima da metade -X é 1,100 e a da metade +X é 0,875.
+  // Os dois dizem a mesma coisa: A FRENTE APONTA PARA -X.
+  //
+  // E a frente DO JOGO é -Z (é a mesma de `_frente` mais abaixo e do resto do Player). Girando Y por
+  // θ, o ponto (-1,0,0) vai para (-cos θ · 1, 0, sen θ · 1):
+  //   θ = +90°  ->  (0,0,+1) = +Z  = de costas pro rumo. Era isto que estava no arquivo.
+  //   θ = -90°  ->  (0,0,-1) = -Z  = certo.
+  root.rotation.y=-Math.PI/2;
 }
 new GLTFLoader().load('assets/moto.glb',gltf=>{
   modelo=gltf.scene;ajustarModelo(modelo);moto.add(modelo);modeloCarregado=true;
