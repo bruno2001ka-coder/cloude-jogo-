@@ -25,7 +25,11 @@
 import*as THREE from'three';
 import{GLTFLoader}from'three/addons/loaders/GLTFLoader.js';
 import{clone as clonarComEsqueleto}from'three/addons/utils/SkeletonUtils.js';
-import{PLAYER_HEIGHT}from'./Player.js';
+import{PLAYER_HEIGHT,maoDireita}from'./Player.js';
+// O MESMO ajuste de arma do jogador. Importado, e não copiado: o pedido era "a arma tem que estar
+// na mesma posição que a minha", e cópia de número solto deixa de ser igual no dia em que ele mexer
+// no ajuste dele.
+import{AJUSTE}from'./Personagem.js';
 
 const ANIM_POL={andar:'Walking',correr:'Running',atirandoParado:'01a05f36-abe2-72cf-b71b-cd8f5821a04d'};
 const TRANSICAO=.18;
@@ -174,14 +178,45 @@ function vestir(pedido){
     let mao=null;
     raiz.traverse(o=>{if(o.isBone&&!mao&&/^RightHand$/i.test(o.name||''))mao=o});
     if(mao){
-      const eMao=new THREE.Vector3(),eArma=new THREE.Vector3();
-      mao.getWorldScale(eMao);pedido.arma.getWorldScale(eArma);
+      const eOsso=new THREE.Vector3(),eGrupo=new THREE.Vector3();
+      mao.getWorldScale(eOsso);pedido.grupo.getWorldScale(eGrupo);
       mao.add(pedido.arma);
       pedido.arma.visible=true;
-      if(eMao.x>0)pedido.arma.scale.setScalar(eArma.x/eMao.x);
-      // Encostada na palma e apontando pro rumo do braço: a âncora é o osso, então a arma segue a mão.
-      pedido.arma.position.set(0,0,0);
-      pedido.arma.rotation.set(0,0,0);
+      if(eOsso.x>0)pedido.arma.scale.setScalar(eGrupo.x/eOsso.x);
+      // ===== A ARMA DO POLICIAL COPIA A ÂNCORA DO JOGADOR =====
+      // "a arma tem que estar na mesma posição que a minha."
+      //
+      // O que havia aqui era `rotation.set(0,0,0)`, e esse zero NÃO quer dizer "alinhada com o corpo":
+      // quer dizer "herda os eixos crus do osso do punho", que no rig são girados. Daí a arma
+      // atravessada na frente do peito que ele fotografou.
+      //
+      // Tentei duas vezes RECALCULAR o alinhamento aqui (desfazer o giro do osso contra o grupo, e
+      // depois contra a raiz do modelo). Medido: 28° e 60° de diferença. O motivo é que a âncora é um
+      // offset LOCAL FIXO em relação ao osso, e o osso está numa POSE diferente em cada personagem no
+      // instante em que a conta é feita — o policial já entra animado. Recalcular num instante
+      // qualquer congela a diferença daquele instante.
+      //
+      // Os dois modelos usam o MESMO rig (RightHand, RightForeArm, RightArm, RightShoulder, Spine,
+      // Spine01, Spine02 — conferido no dump das duas cadeias). Então o offset local que funciona pro
+      // jogador funciona pro policial por construção, e é isso que "igual à minha" quer dizer: mesma
+      // relação com o mesmo osso. Copiar mantém os dois juntos pra sempre, inclusive se ele mexer no
+      // `AJUSTE` depois.
+      if(maoDireita.parent&&maoDireita.parent.isBone){
+        pedido.arma.quaternion.copy(maoDireita.quaternion);
+        // A posição é em unidades do OSSO, não em metros, então ela atravessa de um rig pro outro sem
+        // conversão — os dois ossos têm a mesma escala local. Medido: (0,0,0) nos dois.
+        pedido.arma.position.copy(maoDireita.position);
+      }else{
+        // O boneco do jogador ainda não chegou (ordem de carga não é garantida). Cai no alinhamento
+        // calculado, que é melhor que o zero cru de antes, e o próximo policial pega a cópia boa.
+        const qOsso=new THREE.Quaternion(),qCorpo=new THREE.Quaternion();
+        mao.getWorldQuaternion(qOsso);pedido.grupo.getWorldQuaternion(qCorpo);
+        pedido.arma.quaternion.copy(qOsso.invert().multiply(qCorpo));
+        pedido.arma.rotateX(AJUSTE.arma.giroX);
+        pedido.arma.rotateY(AJUSTE.arma.giroY);
+        pedido.arma.rotateZ(AJUSTE.arma.giroZ);
+        pedido.arma.position.set(0,0,0);
+      }
     }
   }
   const estado={mixer,acoes,atual:null,raiz};
