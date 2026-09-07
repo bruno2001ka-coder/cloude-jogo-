@@ -162,16 +162,44 @@ export function criarVeiculo(cfg){
   const perto=()=>Math.hypot(grupo.position.x-player.position.x,grupo.position.z-player.position.z)<=cfg.raioMontar;
   const limitar=v=>Math.abs(v)<ZONA_MORTA?0:THREE.MathUtils.clamp(v,-1,1);
 
+  // ===== O DEDO PEDE VELOCIDADE, NÃO ACELERAÇÃO =====
+  // "coloque velocidade no carro tipo prá mim controlar melhor ele por causa que e favela, carro vai
+  // precisar andar devagar tbm."
+  //
+  // O que havia aqui usava a posição do dedo só como MULTIPLICADOR DA ACELERAÇÃO, e o teto era sempre
+  // `cfg.maxVel`. Medido no jogo antes da mudança, com o dedo sustentado por 6 s: 0,25 de dedo deu
+  // 13,07 m/s, 0,5 deu 14,00 e 0,75 deu 14,00 — ou seja, meio dedo ia EXATAMENTE tão rápido quanto
+  // dedo cheio, só demorava mais pra chegar. Não havia como cruzar devagar, e num beco de 2,45 m
+  // livres o carro chegava aos 50 km/h em 1,6 s.
+  //
+  // O `Input.js` já entrega o analógico inteiro (`joyY` = deslocamento sobre o raio, com corte
+  // circular no aro). A informação de "quanto" sempre existiu; ela é que era descartada aqui.
+  //
+  // Agora o dedo define a velocidade ALVO e a aceleração é só o quanto se corre atrás dela.
+  // A TAXA CONTINUA ESCALADA POR `|acelerador|`, e isso não é sobra do código velho: sem a escala,
+  // meio dedo daria um TRANCO até o cruzeiro baixo. Com ela, o tempo pra chegar no alvo fica
+  // constante (~1,55 s) em qualquer posição do dedo — 0,5 busca 7 m/s a 4,5 m/s², 0,15 busca 2,1 m/s
+  // a 1,35 m/s². O carro responde igual, só que a menos.
+  //
+  // Freio e ré ficaram COMO ESTAVAM, a pedido dele: puxar pra trás freia forte e, passando do zero,
+  // engata a ré. O que mudou de graça é que agora dá pra frear só ALIVIANDO o dedo — cair pra 30%
+  // desce macio até 30% da máxima, em vez de não fazer nada.
   function atualizarVelocidade(dt,acelerador){
-    if(acelerador>0){
-      if(velocidade<0)velocidade=Math.min(0,velocidade+cfg.freio*dt);
-      else velocidade=Math.min(cfg.maxVel,velocidade+acelerador*cfg.aceleracao*dt);
-    }else if(acelerador<0){
-      if(velocidade>0)velocidade=Math.max(0,velocidade+acelerador*cfg.freio*dt);
-      else velocidade=Math.max(-cfg.maxRe,velocidade+acelerador*cfg.aceleracaoRe*dt);
-    }else if(Math.abs(velocidade)>0){
-      const perda=Math.min(Math.abs(velocidade),cfg.atrito*dt);
-      velocidade-=Math.sign(velocidade)*perda;
+    const alvo=acelerador>=0?acelerador*cfg.maxVel:acelerador*cfg.maxRe;
+    if(velocidade<alvo){
+      // Ganhar velocidade pra frente. Vindo da ré isto é FREADA, não aceleração: quem tira o carro de
+      // ré é o freio, e usar `aceleracao` aqui deixaria a inversão de sentido lerda.
+      const taxa=velocidade<0?cfg.freio:cfg.aceleracao*Math.abs(acelerador);
+      velocidade=Math.min(alvo,velocidade+taxa*dt);
+    }else if(velocidade>alvo){
+      // Perder velocidade. Duas coisas bem diferentes moram aqui, e é a distinção que dá o controle:
+      //   · o dedo pedindo o CONTRÁRIO (puxou pra trás) -> freio de verdade;
+      //   · o dedo só ALIVIOU (ainda pra frente, mas menos) -> atrito, o freio-motor. É o gesto de
+      //     quem vai entrar num beco, e tem que ser macio, não uma freada.
+      const taxa=velocidade>0
+        ?(acelerador<0?cfg.freio:cfg.atrito)
+        :cfg.aceleracaoRe*Math.abs(acelerador);// já em ré: acelerando pra trás
+      velocidade=Math.max(alvo,velocidade-taxa*dt);
     }
   }
 
