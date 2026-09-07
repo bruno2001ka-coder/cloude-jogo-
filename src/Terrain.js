@@ -1,8 +1,9 @@
 // Relevo procedural do terreno + a malha de chão (única superfície de chão; vielas ficam expostas entre as casas).
 import*as THREE from'three';
-import{matChao}from'./Materials.js';
+import{matChao,matTerraBatida,uvPorMetro}from'./Materials.js';
 import{scene}from'./core.js';
-import{MAP_SIZE}from'./WorldBounds.js';
+import{MAP_HALF_SIZE,MAP_SIZE}from'./WorldBounds.js';
+import{registrarCaixa}from'./Physics.js';
 
 // ===== O MORRO NÃO É UM CONE =====
 // Já foi UMA gaussiana em (0,-24): matematicamente perfeita e, por isso mesmo, lendo como uma bolha
@@ -82,3 +83,32 @@ groundGeometry.computeVertexNormals();
 groundGeometry.setAttribute('uv1',groundGeometry.attributes.uv);// aoMap lê o 2º canal de UV
 export const ground=new THREE.Mesh(groundGeometry,groundMat);
 ground.rotation.x=-Math.PI/2;ground.castShadow=true;ground.receiveShadow=true;scene.add(ground);
+
+// ===== FECHAMENTO FÍSICO DO MAPA =====
+// O terreno foi ampliado, então não basta limitar a posição do jogador: veículos, NPCs e câmera
+// também precisam encontrar uma fronteira real. Quatro paredes longas substituem centenas de pedras
+// individuais: são 4 meshes, 4 AABBs e nenhum custo de busca adicional além do broadphase existente.
+const BORDA_ESPESSURA=1.2,BORDA_ALTURA=28,BORDA_BASE=-4;
+const BORDA_CENTRO_Y=BORDA_BASE+BORDA_ALTURA/2;
+const materialBorda=matTerraBatida();
+const mapaBordas=[];
+function criarBorda(largura,profundidade,x,z,categoria){
+  const geo=new THREE.BoxGeometry(largura,BORDA_ALTURA,profundidade);
+  uvPorMetro(geo,2);
+  const mesh=new THREE.Mesh(geo,materialBorda);
+  mesh.position.set(x,BORDA_CENTRO_Y,z);
+  // A borda fica sempre fora do campo de visão próximo e não deve duplicar o passe de sombras.
+  mesh.castShadow=false;mesh.receiveShadow=true;
+  scene.add(mesh);
+  registrarCaixa(new THREE.Box3(
+    new THREE.Vector3(x-largura/2,BORDA_BASE,z-profundidade/2),
+    new THREE.Vector3(x+largura/2,BORDA_BASE+BORDA_ALTURA,z+profundidade/2)),categoria);
+  mapaBordas.push(mesh);
+}
+// O centro fica 0,5 m para dentro da linha matemática do terreno: a parede fecha qualquer fresta,
+// mas continua fora da área útil do jogador, que para 0,6 m antes da borda.
+criarBorda(BORDA_ESPESSURA,MAP_SIZE,MAP_HALF_SIZE-.5,0,'borda-leste');
+criarBorda(BORDA_ESPESSURA,MAP_SIZE,-MAP_HALF_SIZE+.5,0,'borda-oeste');
+criarBorda(MAP_SIZE-2*BORDA_ESPESSURA,BORDA_ESPESSURA,0,MAP_HALF_SIZE-.5,'borda-sul');
+criarBorda(MAP_SIZE-2*BORDA_ESPESSURA,BORDA_ESPESSURA,0,-MAP_HALF_SIZE+.5,'borda-norte');
+export{mapaBordas};
