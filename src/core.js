@@ -5,9 +5,12 @@ import{EffectComposer}from'three/addons/postprocessing/EffectComposer.js';
 import{RenderPass}from'three/addons/postprocessing/RenderPass.js';
 import{UnrealBloomPass}from'three/addons/postprocessing/UnrealBloomPass.js';
 import{OutputPass}from'three/addons/postprocessing/OutputPass.js';
+import{MAP_SIZE}from'./WorldBounds.js';
 
 export const scene=new THREE.Scene();
-export const camera=new THREE.PerspectiveCamera(58,innerWidth/innerHeight,.1,260);
+// O far plane acompanha o novo terreno, mas fica pouco acima da diagonal útil para não
+// transformar a expansão em uma busca de profundidade desnecessária.
+export const camera=new THREE.PerspectiveCamera(58,innerWidth/innerHeight,.1,MAP_SIZE*1.1);
 // CELULAR OU NÃO. A conta é grosseira de propósito (ponteiro grosso + tela estreita), mas é o que
 // separa um aparelho com GPU de 5 W de um PC — e é dela que saem o antialias e o tamanho da sombra.
 export const noCelular=matchMedia('(pointer:coarse)').matches&&innerWidth<1100;

@@ -2,6 +2,7 @@
 import*as THREE from'three';
 import{matChao}from'./Materials.js';
 import{scene}from'./core.js';
+import{MAP_SIZE}from'./WorldBounds.js';
 
 // ===== O MORRO NÃO É UM CONE =====
 // Já foi UMA gaussiana em (0,-24): matematicamente perfeita e, por isso mesmo, lendo como uma bolha
@@ -69,11 +70,12 @@ export function obterElevacao(x,z){
 // Chão de terra com PBR: a mesma textura tileável do resto do bairro, repetida a cada 4 m. O normal é
 // o que faz o sol raspante revelar o relevo do chão em vez de deixar uma mancha lisa.
 const groundMat=matChao();
-for(const t of[groundMat.map,groundMat.normalMap,groundMat.roughnessMap])t.repeat.set(260/4,260/4);
-// 84 segmentos em 260 m davam 3,1 m por quadrado — grosso demais pra platô de 2,6 m de passo, que
-// sumia entre dois vértices. 168 resolve o degrau (1,55 m por quadrado) e continua sendo UMA malha,
-// ou seja, um draw call: o custo é de vértices, que é o que GPU móvel tem de sobra.
-const groundGeometry=new THREE.PlaneGeometry(260,260,168,168);
+for(const t of[groundMat.map,groundMat.normalMap,groundMat.roughnessMap])t.repeat.set(MAP_SIZE/4,MAP_SIZE/4);
+// Mantemos aproximadamente 1,55 m por quadrado, a mesma leitura de platôs do mapa anterior.
+// Mesmo com o dobro da área, continua sendo UMA malha e UM draw call; a expansão não duplica
+// materiais, objetos ou sombras.
+const GROUND_SEGMENTS=Math.round(MAP_SIZE/1.55);
+const groundGeometry=new THREE.PlaneGeometry(MAP_SIZE,MAP_SIZE,GROUND_SEGMENTS,GROUND_SEGMENTS);
 const groundPositions=groundGeometry.attributes.position;
 for(let i=0;i<groundPositions.count;i++){const x=groundPositions.getX(i),localY=groundPositions.getY(i),worldZ=-localY;groundPositions.setZ(i,obterElevacao(x,worldZ))}
 groundGeometry.computeVertexNormals();

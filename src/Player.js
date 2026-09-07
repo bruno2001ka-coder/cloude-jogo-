@@ -2,6 +2,7 @@
 import*as THREE from'three';
 import{scene}from'./core.js';
 import{obterElevacao}from'./Terrain.js';
+import{PLAYER_LIMIT}from'./WorldBounds.js';
 import{obstaculos,superficiesAndaveis,caixaColideComObstaculos,buscarPosicaoLivre}from'./Physics.js';
 import{criarSombraContato}from'./Materials.js';
 import{carregarPersonagem,atualizarAnimacaoPersonagem,personagemCarregado,ossoDaMao,esconderBonecoAntigo,carregarColete,pendurarMochila,AJUSTE}from'./Personagem.js';
@@ -248,11 +249,9 @@ const VELOCIDADE=PLAYER_HEIGHT*4.6;
 let walk=0;const velocity=new THREE.Vector3(),desired=new THREE.Vector3();
 let agachado=false;
 const _frente=new THREE.Vector3(),_lado=new THREE.Vector3();
-// O terreno ocupa de -130 a +130 em X/Z. Os limites antigos (-100..92 em X e -100..100 em Z)
-// eram menores que a área renderizada e criavam uma parede invisível antes do fim do mapa.
-// A margem evita que a hitbox atravesse a borda da malha, mas deixa o jogador explorar todo o terreno.
-const LIMITE_TERRENO=130, MARGEM_BORDA=.6;
-const LIMITE_JOGADOR=LIMITE_TERRENO-MARGEM_BORDA;
+// A margem evita que a hitbox atravesse a borda da malha, mas deixa o jogador explorar
+// praticamente todo o terreno ampliado.
+const LIMITE_JOGADOR=PLAYER_LIMIT;
 export function alternarAgachado(){agachado=!agachado;if(agachado)velocity.set(0,0,0);return agachado}
 export function estaAgachado(){return agachado}
 export function atualizarMovimentoJogador(dt,keys,joyX,joyY,yaw,fatorVelocidade=1){

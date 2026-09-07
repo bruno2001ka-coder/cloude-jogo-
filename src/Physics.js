@@ -1,6 +1,7 @@
 // Colisão: obstáculos estáticos (paredes/muretas/postes) e superfícies andáveis (lajes/degraus),
 // mais os testes de sobreposição AABB usados por jogador, câmera e NPCs/animais.
 import*as THREE from'three';
+import{COLLISION_CELL_SIZE,COLLISION_GRID_DIM,COLLISION_GRID_OFFSET}from'./WorldBounds.js';
 
 export const COLLISION_EPSILON=.0001;
 export const obstaculos=[];
@@ -30,7 +31,7 @@ export const obstaculosPedestres=[];
 // As caixas que MUDAM de conteúdo (as 8 portas de esconderijo e a porteira da fazenda alternam entre a
 // caixa fechada e uma caixa enterrada a 10 km) ficam FORA da grade, numa lista varrida linearmente:
 // indexá-las daria uma célula errada no instante em que alguém abrisse uma porta. São 9, é irrelevante.
-const GRADE_CELULA=2,GRADE_DIM=176,GRADE_OFFSET=88;// cobre ±176 m; o mapa vai a ±130
+const GRADE_CELULA=COLLISION_CELL_SIZE,GRADE_DIM=COLLISION_GRID_DIM,GRADE_OFFSET=COLLISION_GRID_OFFSET;// cobre ±276 m; o mapa vai a ±260
 const gradeBaldes=new Array(GRADE_DIM*GRADE_DIM);
 const obstaculosMoveis=[];
 const caixasMoveis=new Set();
