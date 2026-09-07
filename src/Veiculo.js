@@ -18,8 +18,11 @@ import{player}from'./Player.js';
 import{scene}from'./core.js';
 import{obterElevacao}from'./Terrain.js';
 import{colideObstaculoXZ,registrarCaixa,marcarObstaculoMovel,buscarPosicaoLivre}from'./Physics.js';
+import{PLAYER_LIMIT}from'./WorldBounds.js';
 
-const LIMITE_MUNDO=124,ZONA_MORTA=.12;
+// O limite antigo de 124 m fazia carro e moto ignorarem a expansão do mapa, mesmo quando o jogador
+// a pé já conseguia chegar muito mais longe. Todos os modos agora usam a mesma borda jogável.
+const LIMITE_MUNDO=PLAYER_LIMIT,ZONA_MORTA=.12;
 // ===== SÓ SE DIRIGE UM DE CADA VEZ =====
 // Com dois veículos no mapa, nada impedia entrar no carro e depois montar na moto: os dois passariam
 // a mover o `player` no mesmo quadro, cada um com a sua velocidade, e o jogador sairia arrastado numa
