@@ -462,8 +462,11 @@ amostrar(viaPrincipal);amostrar(viaBaixa);becos.forEach(amostrar);
 //     uma malha e uma matriz por cópia.
 // Sem isso a favela anterior chegou a 2.116 malhas na cena com 2.110 geometrias distintas.
 import{mergeGeometries}from'three/addons/utils/BufferGeometryUtils.js';
-import{matRebocoSujo,matTelha,matConcreto,tijolo,concreto,janela,janelaAcesa,molduraJanela,porta,agua,aguaPreta,posteMat,
-  ferroMat,pvcMat,antenaMat,roupaMat,gradeMat,matLaje,
+// `porta` saiu do import: a porta de madeira agora escolhe a tintura dela em `portaDeMadeira`, via
+// `matMadeira(tinta)`, e o material fixo não é mais usado neste arquivo (o WorldGenerator ainda usa).
+import{matRebocoSujo,matTelha,matConcreto,tijolo,concreto,janela,janelaAcesa,molduraJanela,agua,aguaPreta,posteMat,
+  ferroMat,pvcMat,antenaMat,roupaMat,gradeMat,matLaje,matAsfalto,matMeioFio,matTelhaFerrugem,
+  acoMat,chapaMat,venezianaMat,caixilhoMat,matPortao,CORES_PORTAO,
   matMadeira,graffiteMat,bmat,uvPorMetro}from'./Materials.js';
 
 export const favela=new THREE.Group();
@@ -522,8 +525,15 @@ function pintarSujeira(geo,ox=0,oy=0,oz=0){
   }
   geo.setAttribute('color',new THREE.BufferAttribute(cores,3));
 }
-function acumularPronta(material,geo,andavel=false){
-  pintarSujeira(geo);
+// `pintar=false` pra quem JÁ PINTOU a própria cor por vértice e não quer a passada de sujeira por
+// cima. Hoje só a fita da rua usa: ela pinta a emenda com o beco (asfalto -> terra) e é PLANA, então
+// o gradiente de pé sujo não teria onde morder — passaria de raspão em todos os vértices por igual e
+// só escureceria a rua inteira em 33%, de graça. Todo o resto continua entrando pela pintura padrão.
+function acumularPronta(material,geo,andavel=false,pintar=true){
+  // Quem pula a pintura não precisa criar `color` na mão: `normalizarAtributos`, na hora da fusão,
+  // iguala os atributos de toda a pilha (ver o comentário longo lá embaixo — foi um pilarete com
+  // `uv1` apagando os vergalhões de 97 casas que ensinou isso).
+  if(pintar)pintarSujeira(geo);
   const alvo=andavel?pilhasAndaveis:pilhas;
   if(!alvo.has(material))alvo.set(material,[]);
   alvo.get(material).push(geo);
@@ -585,7 +595,14 @@ const CORES_PAREDE=[0xcf8f6d,0x7fa8b4,0x9bb583,0xd8c894,0xc07f76,0xa694b0,0xc2bd
 // oxida por partes — a que está há dois anos no sol tem o cinza puxando pro bege, a de dez anos está
 // marrom de ferrugem. Cinco tons, do zinco novo ao enferrujado, e o sorteio por casa espalha os dois
 // extremos no meio dos intermediários, que é o que dá aquele telhado remendado visto de cima.
-const CORES_TELHA=[0xa9a49a,0xb0a289,0xa2835f,0x8f6b4a,0x9c9086];
+// ===== AS CORES DESCERAM UM TOM QUANDO O METAL PAROU DE COMER A TINTA =====
+// Estas cinco foram calibradas enquanto a chapa tinha metalness efetiva 0,52 — ou seja, enquanto
+// METADE da cor não chegava na tela e o telhado saía escuro de qualquer jeito. Com a metalness
+// corrigida (ver `matTelha` em Materials.js) elas apareceram inteiras pela primeira vez, e o telheiro
+// da porta saiu CREME na foto: cor de chapa nova de loja, o oposto do que se quer.
+// Mesma família, um tom e meio abaixo, e com mais ferro no meio: zinco de morro é escuro e puxado
+// pro marrom, não bege claro.
+const CORES_TELHA=[0x7d7a73,0x847865,0x775f45,0x6a4f38,0x716a60];
 const ESP_MURETA=.14,ALT_MURETA=.5;
 // Laje e mureta são CONCRETO, não telha. Estavam no material `telha` (chapa ondulada) desde sempre —
 // o morro inteiro tinha nervura de zinco na superfície em que o jogador ANDA, que é justo a que ele
@@ -630,6 +647,102 @@ const GEO_GRADE=(()=>{
 })();
 [GEO_JANELA,GEO_MOLDURA].forEach(uvPorMetro);
 
+// ===== NADA PODE SE REPETIR: AS PEÇAS DE VARIANTE =====
+// "não quero todas casa igual, não quero todas as portas iguais, não quero janelas iguais, nada de
+// ficar repetindo."
+//
+// Ele tinha razão e dava pra contar: eram 119 portas saídas da MESMA caixa de 0,95 x 2,05, e UMA
+// janela (vidro + moldura + grade) instanciada em toda fachada do morro. A variação da casa parava
+// na cor da parede e no número de andares.
+//
+// Todas as peças abaixo são de material LISO, e isso não é preguiça — é a única forma de instanciar.
+// InstancedMesh com material PBR texturizado completo sai PRETA neste jogo (medido, ver o comentário
+// da porta em `construirCasa`), então quem precisa de textura vai pela fusão e quem precisa se
+// repetir centenas de vezes tem o relevo na GEOMETRIA e material sem mapa. A ondulação do aço e a
+// ripa da veneziana são geometria por causa disso.
+
+// CHAPA ONDULADA EM PÉ (porta de enrolar): tubos deitados empilhados na vertical. Mesma ideia do
+// telheiro, virada 90° — na porta de enrolar a onda corre na HORIZONTAL, porque é nesse sentido que a
+// lâmina enrola no tambor lá em cima.
+function chapaEnrolar(larg,alt,ondas){
+  const partes=[],raio=alt/ondas/2;
+  for(let i=0;i<ondas;i++){
+    const g=new THREE.CylinderGeometry(raio,raio,larg,5,1,true);
+    g.rotateZ(Math.PI/2);            // eixo do tubo ao longo de X
+    g.scale(1,1,.42);                // achata na profundidade: a lâmina é rasa
+    g.translate(0,(i+.5-ondas/2)*raio*2,0);
+    const uv=g.attributes.uv;
+    for(let v=0;v<uv.count;v++)uv.setXY(v,uv.getX(v)*(larg/2),uv.getY(v)*(2*Math.PI*raio/2));
+    g.setAttribute('uv1',uv);
+    partes.push(g);
+  }
+  const g=mergeGeometries(partes,false);
+  partes.forEach(x=>x.dispose());
+  return g;
+}
+// Três larguras de porta de enrolar: garagem, comércio pequeno e portão de vila. Instanciadas por
+// tamanho, então três chaves e não uma por casa.
+const GEO_ENROLAR=[[2.15,2.35],[1.75,2.30],[1.35,2.20]].map(([w,h])=>chapaEnrolar(w,h,Math.round(h/.115)));
+
+// PORTÃO DE GRADE: barras em pé com travessa em cima e embaixo. É o portão de corredor, o que deixa
+// ver o beco por dentro.
+const GEO_PORTAO=(()=>{
+  const partes=[],barra=(w,h,x,y)=>{
+    const g=new THREE.CylinderGeometry(.018,.018,h||w,4,1,true);
+    if(!h)g.rotateZ(Math.PI/2);
+    g.translate(x,y,0);partes.push(g);
+  };
+  for(let i=0;i<7;i++)barra(0,2.02,(i-3)*.145,0);
+  barra(1.0,0,0,.94);barra(1.0,0,0,-.94);barra(1.0,0,0,.30);
+  const g=mergeGeometries(partes,false);
+  partes.forEach(x=>x.dispose());
+  return g;
+})();
+
+// PORTA DE CHAPA com postigo: placa lisa e uma janelinha gradeada na altura do olho — a porta de
+// ferro que substituiu a de madeira quando deu dinheiro.
+const GEO_CHAPA=(()=>{
+  const partes=[new THREE.BoxGeometry(.98,2.08,.05)];
+  for(let i=0;i<4;i++){const g=new THREE.CylinderGeometry(.011,.011,.26,4,1,true);
+    g.translate((i-1.5)*.10,.72,.035);partes.push(g)}
+  // Duas almofadas rasas: chapa lisa de 1 m² lê como placa de metal, não como porta.
+  for(const sy of[-.30,-.86]){const g=new THREE.BoxGeometry(.72,.44,.012);g.translate(0,sy,.031);partes.push(g)}
+  const g=mergeGeometries(partes,false);
+  partes.forEach(x=>x.dispose());
+  return g;
+})();
+
+// VENEZIANA: folha de ripas horizontais. Seis ripas inclinadas — a inclinação é o que faz a luz pegar
+// cada ripa de um jeito e a folha ler como veneziana em vez de tábua lisa.
+const GEO_VENEZIANA=(()=>{
+  const partes=[];
+  for(let i=0;i<6;i++){
+    const g=new THREE.BoxGeometry(.42,.105,.035);
+    g.rotateX(-.35);
+    g.translate(0,(i-2.5)*.125,0);partes.push(g);
+  }
+  partes.push(new THREE.BoxGeometry(.45,.80,.016));// contramarco atrás das ripas
+  const g=mergeGeometries(partes,false);
+  partes.forEach(x=>x.dispose());
+  return g;
+})();
+
+// CAIXILHO DE FERRO: moldura vazada (quatro perfis), em vez da moldura cheia de madeira.
+const GEO_CAIXILHO=(()=>{
+  const partes=[],perfil=(w,h,x,y)=>{const g=new THREE.BoxGeometry(w,h,.045);g.translate(x,y,0);partes.push(g)};
+  perfil(1.02,.07,0,.44);perfil(1.02,.07,0,-.44);
+  perfil(.07,.95,-.475,0);perfil(.07,.95,.475,0);
+  perfil(.05,.88,0,0);// montante central: é ele que diz "duas folhas"
+  const g=mergeGeometries(partes,false);
+  partes.forEach(x=>x.dispose());
+  return g;
+})();
+
+// Janela pequena (banheiro/basculante) — o vão que não é igual aos outros.
+const GEO_BASCULANTE=new THREE.BoxGeometry(.56,.42,.06);
+const GEO_MOLD_BASC=new THREE.BoxGeometry(.68,.54,.05);
+[GEO_BASCULANTE,GEO_MOLD_BASC].forEach(uvPorMetro);
+
 // ===== TELHEIRO DE ZINCO ONDULADO =====
 // Era uma caixa de 9 cm: chapa perfeitamente lisa, e o telheiro da porta é a peça de telhado que o
 // jogador vê DE PERTO em toda casa do mapa — a que mais denunciava o "tudo quadrado".
@@ -645,15 +758,15 @@ const GEO_GRADE=(()=>{
 // geometrias de uma pilha não tiverem o MESMO conjunto de atributos — sem esta linha, a fusão do
 // telhado inteiro do bairro falharia em silêncio e todas as lajes sumiriam do mapa.
 const TELHEIRO_LARG=1.6,TELHEIRO_PROF=.95,TELHEIRO_ONDAS=9;
-function telheiroOndulado(){
-  const partes=[],raio=TELHEIRO_LARG/TELHEIRO_ONDAS/2;
-  for(let i=0;i<TELHEIRO_ONDAS;i++){
-    const g=new THREE.CylinderGeometry(raio,raio,TELHEIRO_PROF,5,1,true);
+function telheiroOndulado(larg=TELHEIRO_LARG,prof=TELHEIRO_PROF,ondas=TELHEIRO_ONDAS){
+  const partes=[],raio=larg/ondas/2;
+  for(let i=0;i<ondas;i++){
+    const g=new THREE.CylinderGeometry(raio,raio,prof,5,1,true);
     g.rotateX(Math.PI/2);                     // eixo do tubo no sentido da profundidade (a descida)
     g.scale(1,.45,1);                         // achata: onda de telha é rasa, não é cano
-    g.translate((i+.5-TELHEIRO_ONDAS/2)*raio*2,0,0);
+    g.translate((i+.5-ondas/2)*raio*2,0,0);
     const uv=g.attributes.uv;
-    for(let v=0;v<uv.count;v++)uv.setXY(v,uv.getX(v)*(2*Math.PI*raio/2),uv.getY(v)*(TELHEIRO_PROF/2));
+    for(let v=0;v<uv.count;v++)uv.setXY(v,uv.getX(v)*(2*Math.PI*raio/2),uv.getY(v)*(prof/2));
     g.setAttribute('uv1',uv);
     partes.push(g);
   }
@@ -661,6 +774,57 @@ function telheiroOndulado(){
   partes.forEach(x=>x.dispose());
   return g;
 }
+
+// ===== FERRUGEM EM RASTRO VERTICAL NA CHAPA =====
+// Pinta a cor por vértice de uma chapa ondulada: cada FAIXA de vinco (coluna em X) sorteia o quanto
+// enferrujou, e dentro da faixa a ferrugem desce — forte embaixo, fraca em cima. É o desenho que a
+// água faz numa chapa de zinco: ela entra pelo parafuso lá em cima e escorre sempre pelo mesmo sulco.
+//
+// Precisa ser POR FAIXA e não por vértice solto: ferrugem sorteada vértice a vértice vira chuvisco, e
+// chuvisco é a mesma armadilha em que a sujeira do reboco caiu duas vezes neste projeto.
+const ZINCO=new THREE.Color(0x9a958b),FERRUGEM=new THREE.Color(0x6e3717);
+function pintarFerrugem(geo,semente,forcaBase=.55){
+  const pos=geo.getAttribute('position'),n=pos.count;
+  geo.computeBoundingBox();
+  const bb=geo.boundingBox;
+  const largura=Math.max(.001,bb.max.x-bb.min.x),fundo=Math.max(.001,bb.max.z-bb.min.z);
+  const cores=new Float32Array(n*3),c=new THREE.Color();
+  for(let i=0;i<n;i++){
+    // Qual faixa de vinco: ~12 cm por faixa, que é o passo da onda da chapa.
+    const faixa=Math.floor((pos.getX(i)-bb.min.x)/.12);
+    const dado=(hashInt(semente,faixa*7919)%1000)/1000;
+    // Duas de cada três faixas praticamente não enferrujam: ferrugem em TODA faixa vira chapa marrom,
+    // e o que se vê no morro é o rastro sobre o zinco, não o contrário.
+    const intensidade=dado<.62?dado*.18:(dado-.62)/.38;
+    // Desce: 0 na cumeeira, 1 no beiral. É por onde a água corre.
+    const desce=(pos.getZ(i)-bb.min.z)/fundo;
+    const t=Math.min(1,intensidade*forcaBase*(.25+desce*1.15));
+    c.copy(ZINCO).lerp(FERRUGEM,t);
+    cores[i*3]=c.r;cores[i*3+1]=c.g;cores[i*3+2]=c.b;
+  }
+  geo.setAttribute('color',new THREE.BufferAttribute(cores,3));
+  return geo;
+}
+// PORTA DE MADEIRA — a mais comum, e a única que existia. Continua vindo pela FUSÃO e não pela
+// instanciação: ela é o caso documentado de InstancedMesh + material PBR texturizado saindo preta
+// (ver o comentário longo em `construirCasa`). Três tinturas e três larguras, sorteadas: a mesma
+// caixa repetida 119 vezes era metade da queixa de "tudo igual".
+const TINTA_PORTA=[0x6b4a30,0x8a6a3c,0x46331f,0x7a4a3a];
+function portaDeMadeira(l,y,prof){
+  const h=hashInt(l.sem,4441);
+  const larguraFolha=[.95,1.02,.88][h%3];
+  const tinta=TINTA_PORTA[(h>>>5)%TINTA_PORTA.length];
+  const p=noLote(l,0,prof/2+.05);
+  caixa(matMadeira(tinta),larguraFolha,2.05,.09,p.x,y+1.025,p.z,l.giro);
+  // BANDEIRA: o vidrinho acima da porta, em 1 de 3. Serve de respiro e é o detalhe que separa duas
+  // portas de madeira lado a lado.
+  if(((h>>>11)%3)===0){
+    const b=noLote(l,0,prof/2+.06);
+    instanciar('bandeira',GEO_BANDEIRA,janela,matrizEm(b.x,y+2.20,b.z,l.giro));
+  }
+}
+const GEO_BANDEIRA=new THREE.BoxGeometry(.86,.22,.05);
+
 function construirCasa(l){
   const cor=CORES_PAREDE[l.sem%CORES_PAREDE.length];
   // ===== DESLOCAMENTO SEM SINAL, E ISTO É UM CONSERTO, NÃO ESTILO =====
@@ -772,26 +936,81 @@ function construirCasa(l){
       // lugar, com o MESMO material, sai preta pelo caminho instanciado e sai de madeira pelo caminho
       // fundido (54,38,30). Como são ~119 portas idênticas, fundir custa um draw call — o mesmo que
       // instanciar — então não há o que defender do outro lado.
-      const p=noLote(l,0,prof/2+.05);
-      caixa(porta,.95,2.05,.09,p.x,y+1.025,p.z,l.giro);
-      // Telheiro de zinco sobre a porta, inclinado pra frente. É o detalhe que mais aparece na
-      // referência depois do tijolo, e na horizontal não lê como telheiro — lê como prateleira.
-      //
-      // E de perfil ele LIA como prateleira mesmo: 6 cm de chapa saindo da parede sem nada segurando,
-      // visto de lado no barranco, é uma tábua flutuando. Chapa mais grossa e DUAS MÃOS-FRANCESAS
-      // embaixo resolvem — é o que sustenta um telheiro de verdade, e é o que o olho procura.
-      const t=noLote(l,0,prof/2+.47);
-      const gt=telheiroOndulado();
-      gt.rotateX(.2);
-      gt.rotateY(l.giro);gt.translate(t.x,y+2.34,t.z);
-      acumularPronta(telha,gt);
-      const madeira=matMadeira(0x6b4a30);
-      for(const sx of[-.62,.62]){
-        const m=noLote(l,sx,prof/2+.26);
-        const gm=new THREE.BoxGeometry(.07,.07,.62);
-        uvPorMetro(gm);gm.rotateX(-.72);// escora em diagonal, da parede pra ponta do telheiro
-        gm.rotateY(l.giro);gm.translate(m.x,y+2.12,m.z);
-        acumularPronta(madeira,gm);
+      // ===== A PORTA É SORTEADA, NÃO CARIMBADA =====
+      // Eram 119 portas saídas da mesma caixa de 0,95 x 2,05 — a queixa "não quero todas as portas
+      // iguais" era literal, dava pra contar no código. Agora são quatro tipos, e o tipo escolhe
+      // também o que vem em volta: quem tem porta de enrolar é comércio, ganha verga de concreto e
+      // pichação e NÃO ganha telheiro (a lâmina sobe até a verga, não haveria onde pendurar).
+      const dado=(l.sem>>>7)%100;
+      const tipoPorta=dado<34?'madeira':dado<58?'enrolar':dado<80?'chapa':'portao';
+      let temTelheiro=true;
+      if(tipoPorta==='enrolar'){
+        temTelheiro=false;
+        const iv=(l.sem>>>13)%GEO_ENROLAR.length;
+        const larguraVao=[2.15,1.75,1.35][iv],alturaVao=[2.35,2.30,2.20][iv];
+        // A lâmina só cabe se a fachada tiver vão: numa casa estreita ela atravessaria a quina.
+        if(larg>larguraVao+.7){
+          const p=noLote(l,0,prof/2+.06);
+          instanciar('enrolar'+iv,GEO_ENROLAR[iv],acoMat,matrizEm(p.x,y+alturaVao/2,p.z,l.giro));
+          // VERGA de concreto sobre o vão: é a viga que segura a parede acima da porta, e sem ela a
+          // lâmina fica com a alvenaria descendo direto em cima, que não existe em obra nenhuma.
+          const v=noLote(l,0,prof/2+.02);
+          caixa(LAJE,larguraVao+.30,.20,.14,v.x,y+alturaVao+.10,v.z,l.giro);
+          // PICHAÇÃO na lâmina: porta de aço fechada é o suporte preferido do tag, e é o detalhe que
+          // o brief pediu. Colada 3 cm à frente, no material sem tinta do atlas de graffite.
+          if(((l.sem>>>17)%100)<62){
+            const q=noLote(l,0,prof/2+.13);
+            caixa(graffiteMat,larguraVao*.82,alturaVao*.52,.02,q.x,y+alturaVao*.46,q.z,l.giro);
+          }
+        }else{
+          // Fachada estreita demais pra lâmina: cai na porta de madeira, que cabe em qualquer casa.
+          temTelheiro=true;portaDeMadeira(l,y,prof);
+        }
+      }else if(tipoPorta==='chapa'){
+        const p=noLote(l,0,prof/2+.06);
+        instanciar('portaChapa',GEO_CHAPA,chapaMat,matrizEm(p.x,y+1.04,p.z,l.giro));
+      }else if(tipoPorta==='portao'){
+        // O portão é vazado: atrás dele vai uma placa escura, senão dá pra ver a parede do fundo da
+        // casa através das barras e o corredor parece um buraco.
+        // O fundo é o VÃO ESCURO do corredor. Fica rente à face da parede (+1,5 cm) e as barras vêm
+        // 7,5 cm à frente — a folga é o que dá sombra entre as duas coisas e faz a barra ler como
+        // barra em vez de risco pintado.
+        //
+        // Tentei recuar o fundo 12 cm "pra dentro" e ele SUMIU: a parede da casa é maciça, não há
+        // buraco recortado nela, então qualquer coisa atrás da face fica dentro da alvenaria. O
+        // portão virou um punhado de barras coladas na parede, com o azul da casa aparecendo no meio.
+        const f=noLote(l,0,prof/2+.015);
+        caixa(bmat(0x2a231b),1.02,2.02,.03,f.x,y+1.01,f.z,l.giro);
+        const ic=(l.sem>>>19)%CORES_PORTAO.length;
+        const p=noLote(l,0,prof/2+.09);
+        instanciar('portao'+ic,GEO_PORTAO,matPortao(CORES_PORTAO[ic]),matrizEm(p.x,y+1.01,p.z,l.giro));
+      }else portaDeMadeira(l,y,prof);
+
+      // SOLEIRA: degrau de concreto na entrada. Toda porta ganha — é o que impede a folha de nascer
+      // direto do barro e o que dá o pé de apoio que o olho procura numa entrada.
+      {const s=noLote(l,0,prof/2+.24);
+       caixa(LAJE,(tipoPorta==='enrolar'?2.3:1.25),.12,.46,s.x,y+.06,s.z,l.giro);}
+
+      if(temTelheiro){
+        // Telheiro de zinco sobre a porta, inclinado pra frente. É o detalhe que mais aparece na
+        // referência depois do tijolo, e na horizontal não lê como telheiro — lê como prateleira.
+        //
+        // E de perfil ele LIA como prateleira mesmo: 6 cm de chapa saindo da parede sem nada segurando,
+        // visto de lado no barranco, é uma tábua flutuando. Chapa mais grossa e DUAS MÃOS-FRANCESAS
+        // embaixo resolvem — é o que sustenta um telheiro de verdade, e é o que o olho procura.
+        const t=noLote(l,0,prof/2+.47);
+        const gt=telheiroOndulado();
+        gt.rotateX(.2);
+        gt.rotateY(l.giro);gt.translate(t.x,y+2.34,t.z);
+        acumularPronta(telha,gt);
+        const madeira=matMadeira(0x6b4a30);
+        for(const sx of[-.62,.62]){
+          const m=noLote(l,sx,prof/2+.26);
+          const gm=new THREE.BoxGeometry(.07,.07,.62);
+          uvPorMetro(gm);gm.rotateX(-.72);// escora em diagonal, da parede pra ponta do telheiro
+          gm.rotateY(l.giro);gm.translate(m.x,y+2.12,m.z);
+          acumularPronta(madeira,gm);
+        }
       }
     }
     // JANELAS: duas na fachada sempre; nas outras faces uma, e só se a parede tiver vão pra ela e o
@@ -800,16 +1019,57 @@ function construirCasa(l){
     for(const f of faces){
       const posicoes=f.rua?[-.28,.28]:(((hashInt(l.sem+andar,Math.round(f.giro*10))%100)<58&&f.vao>2.6)?[0]:[]);
       for(const frac of posicoes){
+        // ===== CADA JANELA SORTEIA O QUE VESTE =====
+        // Era UMA janela — vidro, moldura de madeira e grade — instanciada em toda fachada do morro,
+        // umas 500 vezes, sempre igual. Agora o vão sorteia entre quatro esquadrias, e o sorteio usa
+        // a posição da janela (andar, face, lado) e não só a casa: duas janelas da MESMA fachada saem
+        // diferentes, que é o que quebra a leitura de prédio de escritório.
+        const hj=hashInt(l.sem+andar*97,Math.round(f.giro*10)+(frac>0?1:0));
+        const dv=hj%100;
+        const tipo=dv<38?'grade':dv<62?'veneziana':dv<84?'caixilho':'basculante';
+        const acesa=((hj>>>9)%100)<22;
+        const yJanela=y+alt*(tipo==='basculante'?.72:.62);
+
+        if(tipo==='basculante'){
+          // Janelinha alta de banheiro: sem grade, sem peitoril, e mais pra cima. É o vão que não
+          // combina com nenhum outro, e é ele que tira o alinhamento de fileira da fachada.
+          const p=pontoDaFace(f,frac*f.vao,.025);
+          instanciar('moldBasc',GEO_MOLD_BASC,molduraJanela,matrizEm(p.x,yJanela,p.z,f.giro));
+          const v=pontoDaFace(f,frac*f.vao,.035);
+          instanciar(acesa?'basculanteAcesa':'basculante',GEO_BASCULANTE,acesa?janelaAcesa:janela,
+            matrizEm(v.x,yJanela,v.z,f.giro));
+          continue;
+        }
+
+        // Esquadria: moldura de madeira, ou caixilho de ferro vazado.
         const p=pontoDaFace(f,frac*f.vao,.025);
-        const acesa=((hashInt(l.sem+andar,Math.round(f.giro*10)+(frac>0?1:0)))%100)<22;
-        instanciar('moldura',GEO_MOLDURA,molduraJanela,matrizEm(p.x,y+alt*.62,p.z,f.giro));
+        if(tipo==='caixilho')instanciar('caixilho',GEO_CAIXILHO,caixilhoMat,matrizEm(p.x,yJanela,p.z,f.giro));
+        else instanciar('moldura',GEO_MOLDURA,molduraJanela,matrizEm(p.x,yJanela,p.z,f.giro));
+
         const v=pontoDaFace(f,frac*f.vao,.035);
         instanciar(acesa?'janelaAcesa':'janela',GEO_JANELA,acesa?janelaAcesa:janela,
-          matrizEm(v.x,y+alt*.62,v.z,f.giro));
-        // A grade fica 4 cm À FRENTE do vidro: encostada, ela brigaria por profundidade com ele e
-        // apareceria piscando conforme a câmera anda.
-        const gr=pontoDaFace(f,frac*f.vao,.075);
-        instanciar('grade',GEO_GRADE,gradeMat,matrizEm(gr.x,y+alt*.62,gr.z,f.giro));
+          matrizEm(v.x,yJanela,v.z,f.giro));
+
+        if(tipo==='grade'){
+          // A grade fica 4 cm À FRENTE do vidro: encostada, ela brigaria por profundidade com ele e
+          // apareceria piscando conforme a câmera anda.
+          const gr=pontoDaFace(f,frac*f.vao,.075);
+          instanciar('grade',GEO_GRADE,gradeMat,matrizEm(gr.x,y+alt*.62,gr.z,f.giro));
+        }else if(tipo==='veneziana'){
+          // Duas folhas ABERTAS, encostadas na parede dos dois lados do vão — é assim que veneziana
+          // de morro passa o dia. Fechada ela taparia o vidro e a janela sumiria da fachada.
+          for(const sx of[-1,1]){
+            const fo=pontoDaFace(f,frac*f.vao+sx*.70,.06);
+            instanciar('veneziana',GEO_VENEZIANA,venezianaMat,matrizEm(fo.x,yJanela,fo.z,f.giro));
+          }
+        }
+        // PEITORIL de concreto aparente, com pingadeira saindo da parede. Vem em quem tem caixilho de
+        // ferro (sempre) e em parte das outras: é o que dá espessura à parede e o que suja de escorrido
+        // por baixo, e sem ele o vão lê como adesivo colado no reboco.
+        if(tipo==='caixilho'||((hj>>>15)%100)<55){
+          const s=pontoDaFace(f,frac*f.vao,.09);
+          caixa(LAJE,1.16,.07,.20,s.x,yJanela-.50,s.z,f.giro);
+        }
       }
     }
 
@@ -818,6 +1078,35 @@ function construirCasa(l){
     // a do topo que serve de telhado.
     const laje=noLote(l,0,-recuoAcumulado/2);
     caixa(LAJE,larg+.14,.12,prof+.14,laje.x,y+.06,laje.z,l.giro,true);
+
+    // ===== A VARANDA DO RECUO =====
+    // O andar de cima já recuava pro fundo e deixava uma faixa de laje sobrando atrás dele — mas a
+    // faixa estava PELADA, e uma sacada de 1 m sem guarda-corpo, a 6 m do chão, lê como erro de
+    // modelagem, não como varanda. É o "empilhamento orgânico" do pedido: o que faz o recuo virar
+    // varanda não é o recuo, é o parapeito.
+    //
+    // Metade em ripa de madeira, metade em ferro — as duas coisas que se vê no morro, e alternar por
+    // casa é o que impede a fileira de sacadas iguais.
+    if(andar<l.andares-1){
+      const ripaDeMadeira=((l.sem>>>(andar*3+21))%2)===0;
+      const mat=ripaDeMadeira?matMadeira(0x5c4028):gradeMat;
+      const H=.92,yG=y+.12;                       // em cima da laje que acabou de ser feita
+      const fundo=-prof/2-recuoAcumulado/2;       // beira de trás da laje deste andar
+      const vaoUtil=larg+.10;
+      // Travessa de cima e de baixo.
+      for(const hy of[H-.05,.18]){
+        const p=noLote(l,0,fundo+.07);
+        caixa(mat,vaoUtil,.075,.07,p.x,yG+hy,p.z,l.giro);
+      }
+      // Ripas em pé, a cada ~16 cm. Teto de 14: numa casa larga isso já é denso o bastante pra ler
+      // como grade, e cada ripa a mais é geometria em 60 casas.
+      const n=Math.max(3,Math.min(14,Math.round(vaoUtil/.16)));
+      for(let i=0;i<n;i++){
+        const u=(i/(n-1)-.5)*vaoUtil;
+        const p=noLote(l,u,fundo+.07);
+        caixa(mat,.045,H,.045,p.x,yG+H/2,p.z,l.giro);
+      }
+    }
 
     // Encolhe pro próximo andar.
     if(andar<l.andares-1){larg=Math.max(2.6,larg-.5);prof=Math.max(2.8,prof-RECUO_ANDAR);recuoAcumulado+=RECUO_ANDAR}
@@ -907,22 +1196,118 @@ let loteBar=null,loteBiqueira=null;
 }
 
 // ===== O CHÃO DA RUA =====
-// Fita de concreto colada no relevo. Não é superfície andável: ela nasce 5 cm acima do terreno e o
-// jogador anda no terreno. É acabamento — o que separa "rua" de "morro pelado" aos olhos.
-function fitaDaVia(curva,largura){
-  const total=curva.getLength(),n=Math.max(4,Math.round(total/2));
-  const pos=[],nor=[],uv=[],idx=[];
+// Fita colada no relevo. Não é superfície andável: ela nasce 5 cm acima do terreno e o jogador anda
+// no terreno. É acabamento — o que separa "rua" de "morro pelado" aos olhos.
+//
+// ===== A EMENDA NÃO PODE SER UM CORTE RETO =====
+// A fita tinha DUAS colunas de vértices (esquerda e direita) e terminava no polígono: asfalto até
+// aqui, terra a partir daqui, numa linha de tesoura que atravessa o morro inteiro. Numa rua de
+// verdade o asfalto não acaba — ele some debaixo da terra que o pneu joga pra beira, e a sarjeta
+// acumula cascalho.
+//
+// Agora são QUATRO colunas: as duas de dentro são a pista, e cada uma das de fora abre uma sanga de
+// `SANGA` metros com o vértice pintado de cor de terra. Como o material lê cor por vértice, o
+// asfalto desbota pro barro ao longo dessa sanga em vez de parar num degrau — e isso custa zero
+// draw call, zero textura nova, e só 2 vértices por anel.
+//
+// `terra` desligado devolve a fita antiga (branco em todo vértice), que é o que os becos usam: beco
+// é chão de terra inteiro, não tem emenda pra disfarçar.
+const SANGA=.75;
+const COR_TERRA=new THREE.Color(0x9a8259);
+// ===== A FITA PRECISA DE VÉRTICE NO MEIO, E ISTO É UM CONSERTO ANTIGO =====
+// A fita tinha DOIS vértices por anel, um em cada beira, cobrindo 5,2 m de rua num quadrilátero só —
+// ou seja, uma corda reta atravessando a largura inteira. O terreno embaixo não é reto: medido ao
+// longo da via principal, ele sobe até 24 cm ACIMA dessa corda, e a fita nasce só 5 cm acima do
+// relevo. Resultado: o morro FURAVA o asfalto pelo meio e a rua aparecia como uma faixa de terra com
+// duas tiras de asfalto nas beiras.
+//
+// O defeito é anterior a esta mudança — sempre foi assim —, mas ele É a queixa: a "rampa cinza" que
+// ele viu era metade terra por cima da fita. Textura nova nenhuma consertaria isso.
+//
+// A cada ~90 cm de largura entra uma coluna, e a amostragem ao longo da curva apertou de 2 m pra 1 m.
+// A fita passa a acompanhar o relevo em vez de cortar por dentro dele. Custo: a rua inteira sai de
+// ~900 pra ~7.000 triângulos, e são DUAS malhas no mapa todo.
+const PASSO_LARGURA=.9;
+function fitaDaVia(curva,largura,terra=false){
+  const total=curva.getLength(),n=Math.max(4,Math.round(total/1));
+  const pos=[],nor=[],uv=[],cor=[],idx=[];
+  // Meia-largura de cada coluna, de uma beira à outra, e o quanto cada uma puxa pra cor de terra.
+  const nInternas=Math.max(2,Math.round(largura/PASSO_LARGURA)+1);
+  const colunas=[];
+  if(terra)colunas.push({m:-largura/2-SANGA,t:1});
+  for(let i=0;i<nInternas;i++)colunas.push({m:-largura/2+largura*i/(nInternas-1),t:0});
+  if(terra)colunas.push({m:largura/2+SANGA,t:1});
+  const nc=colunas.length;
   for(let i=0;i<=n;i++){
     const u=i/n,p=curva.getPointAt(u),t=curva.getTangentAt(u);
     const nx=-t.z,nz=t.x;
-    for(const s of[-1,1]){
-      const x=p.x+nx*s*largura/2,z=p.z+nz*s*largura/2;
-      pos.push(x,obterElevacao(x,z)+.05,z);nor.push(0,1,0);uv.push(s>0?largura/2:0,u*total/2);
+    for(const c of colunas){
+      const x=p.x+nx*c.m,z=p.z+nz*c.m;
+      // A sanga desce 4 cm: a beira do asfalto é mais baixa que o miolo (é por ali que a água corre),
+      // e sem isso a emenda pintada continuaria plana e leria como decalque.
+      pos.push(x,obterElevacao(x,z)+.05-c.t*.04,z);
+      nor.push(0,1,0);
+      uv.push((c.m+largura/2)/2,u*total/2);
+      const k=1-c.t*.85;// 1 = asfalto puro; na ponta da sanga sobra 15% dele sob a terra
+      cor.push(1*k+COR_TERRA.r*(1-k),1*k+COR_TERRA.g*(1-k),1*k+COR_TERRA.b*(1-k));
     }
   }
   // Enrolamento anti-horário visto de cima: com a ordem trocada a rua some (backface culling) e o
   // sintoma é um buraco no chão que não aparece em nenhum log.
-  for(let i=0;i<n;i++){const a=i*2;idx.push(a,a+1,a+2, a+1,a+3,a+2)}
+  for(let i=0;i<n;i++)for(let c=0;c<nc-1;c++){
+    const a=i*nc+c,b=a+nc;
+    idx.push(a,a+1,b, a+1,b+1,b);
+  }
+  const g=new THREE.BufferGeometry();
+  g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
+  g.setAttribute('normal',new THREE.Float32BufferAttribute(nor,3));
+  g.setAttribute('color',new THREE.Float32BufferAttribute(cor,3));
+  const auv=new THREE.Float32BufferAttribute(uv,2);
+  g.setAttribute('uv',auv);g.setAttribute('uv1',auv);
+  g.setIndex(idx);
+  return g;
+}
+
+// ===== MEIO-FIO =====
+// Concreto pré-moldado dos dois lados da via, delimitando onde a rua acaba e a casa começa. Sobe
+// `ALTURA` acima do asfalto e mostra duas faces: o topo (que pega o sol) e a testa virada pra rua
+// (que fica na sombra). Só essas duas — a face de trás encosta no barranco e nunca é vista, e a
+// oclusão entre elas é o que dá a leitura de degrau.
+//
+// NÃO É COLISOR. O meio-fio entra pela mesma pilha de fusão do resto do acabamento, e a física do
+// jogo lê `Physics.js`, não isto: a viatura sobe a guia sem bater numa parede invisível de 14 cm, e
+// o jogador atravessa andando, como se atravessa um meio-fio de verdade.
+const MEIOFIO_ALT=.14,MEIOFIO_LARG=.22;
+function meioFioDaVia(curva,largura){
+  const total=curva.getLength(),n=Math.max(4,Math.round(total/1.5));
+  const pos=[],nor=[],uv=[],idx=[];
+  const emp=(x,y,z,nx,ny,nz,u,v)=>{pos.push(x,y,z);nor.push(nx,ny,nz);uv.push(u,v);return pos.length/3-1};
+  for(const lado of[-1,1]){
+    const base=pos.length/3;
+    for(let i=0;i<=n;i++){
+      const u=i/n,p=curva.getPointAt(u),t=curva.getTangentAt(u);
+      const nx=-t.z,nz=t.x;
+      const dentro=largura/2,fora=largura/2+MEIOFIO_LARG;
+      const xi=p.x+nx*lado*dentro,zi=p.z+nz*lado*dentro;
+      const xo=p.x+nx*lado*fora,zo=p.z+nz*lado*fora;
+      // O topo é NIVELADO pelo ponto de dentro: um meio-fio de verdade é uma peça reta assentada, não
+      // uma fita que copia cada ondulação do barranco. Amostrar a altura nas duas beiras deixava a
+      // guia torcida onde o terreno cai de lado.
+      const yTopo=obterElevacao(xi,zi)+.05+MEIOFIO_ALT;
+      const v=u*total/2;
+      emp(xi,yTopo-MEIOFIO_ALT,zi,nx*lado,0,nz*lado,0,v);   // pé da testa, no asfalto
+      emp(xi,yTopo,zi,          nx*lado,0,nz*lado,1,v);     // topo da testa
+      emp(xi,yTopo,zi,          0,1,0,                0,v); // mesma quina, agora olhando pra cima
+      emp(xo,yTopo,zo,          0,1,0,                1,v); // beira de fora do topo
+    }
+    for(let i=0;i<n;i++){
+      const a=base+i*4,b=a+4;
+      // Testa (vertical) e topo (horizontal). O lado do enrolamento acompanha `lado`, senão uma das
+      // guias sai virada pra dentro do barranco e some no culling.
+      if(lado>0){idx.push(a,b,a+1, a+1,b,b+1, a+2,b+2,a+3, a+3,b+2,b+3)}
+      else      {idx.push(a,a+1,b, a+1,b+1,b, a+2,a+3,b+2, a+3,b+3,b+2)}
+    }
+  }
   const g=new THREE.BufferGeometry();
   g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
   g.setAttribute('normal',new THREE.Float32BufferAttribute(nor,3));
@@ -1130,7 +1515,10 @@ function construirCasaOca(l){
   const basePorta=y0-afundar,alturaFolha=PORTA_ALTURA+afundar-.05;
   const dobra=P(-VAO_PORTA/2,prof/2);
   const pivo=new THREE.Group();pivo.position.set(dobra.x,basePorta,dobra.z);pivo.rotation.y=l.giro;g.add(pivo);
-  const folha=pecaSolta(new THREE.BoxGeometry(VAO_PORTA-.06,alturaFolha,.07),porta,
+  // A folha do refúgio/cliente é a MESMA madeira das portas da rua, agora vinda de `matMadeira`: o
+  // material `porta` fixo saiu do arquivo quando a porta virou sorteio de tintura, e uma tintura
+  // qualquer aqui faria a porta que o jogador ABRE destoar de todas as outras.
+  const folha=pecaSolta(new THREE.BoxGeometry(VAO_PORTA-.06,alturaFolha,.07),matMadeira(0x6b4a30),
     (VAO_PORTA-.06)/2,alturaFolha/2,0,0,pivo);
 
   // A CASCA VAI PRA FÍSICA SEM FUSÃO. A fusão de colisores (Physics.otimizarObstaculos) junta caixas
@@ -1557,6 +1945,67 @@ function enfeitarLaje(l){
 
   // CANO: 55% das casas.
   if(((s>>>22)%100)<55)canoDePVC(l,lajeY,larg,prof,recuo,hashInt(s,13));
+
+  // COBERTURA DE ZINCO: 48% das casas.
+  if(((s>>>24)%100)<48)coberturaDeZinco(l,lajeY,larg,prof,recuo);
+}
+
+// ===== A COBERTURA DE ZINCO SOBRE A LAJE =====
+// O pedido era "cobertura inclinada de uma ou duas águas com telha ondulada" no lugar dos blocos
+// cinzas lisos do topo. Só que o topo NÃO É enfeite neste jogo: a laje é superfície andável, e o
+// número de andares de cada casa é escolhido pra que o degrau até a laje da vizinha caiba no pulo do
+// jogador (`PULO_ALCANCE`, 1,40 m — ver o laço que escolhe `l.andares`). Fugir de laje em laje pela
+// polícia é mecânica, não decoração. Um telhado inclinado POR CIMA da laje mataria isso em silêncio:
+// o jogador escorregaria, ou pior, a superfície de pouso viraria uma rampa.
+//
+// A saída é a que a favela de verdade usa, e é melhor que a alternativa: a chapa vai SOBRE PILARETES,
+// cobrindo parte da laje. Fica área de serviço coberta — que é justamente pra que serve uma laje —, o
+// jogador anda POR BAIXO, a laje continua plana e pulável, e a silhueta do morro visto de longe ganha
+// o telhado inclinado que faltava. Zero risco pra física: nada disto é colisor.
+const COBERTURA_ALT_ALTA=2.05,COBERTURA_ALT_BAIXA=1.62,COBERTURA_PILAR=.075;
+function coberturaDeZinco(l,lajeY,larg,prof,recuo){
+  // Casa pequena não recebe: uma cobertura de 2 m numa laje de 2,6 m ocuparia a laje inteira e o
+  // jogador cairia dentro dela ao pousar.
+  if(larg<3.6||prof<3.4)return;
+  const s=l.sem;
+  const duasAguas=((s>>>26)%100)<38;
+  // Cobre um pedaço da laje, encostado numa das beiras — nunca o meio, que é onde se pousa.
+  const cw=Math.min(larg*.66,3.4),cp=Math.min(prof*.52,2.6);
+  const ladoZ=((s>>>28)%2)?1:-1;
+  const cz=ladoZ*(prof/2-cp/2-.20)-recuo/2;
+  const cx=(((s>>>30)%100)/100-.5)*Math.max(0,larg-cw)*.7;
+
+  // A ÁGUA (o pano inclinado). Uma ou duas, e a inclinação é de verdade: a chapa desce
+  // COBERTURA_ALT_ALTA -> COBERTURA_ALT_BAIXA ao longo da profundidade.
+  const queda=COBERTURA_ALT_ALTA-COBERTURA_ALT_BAIXA;
+  const panos=duasAguas
+    ?[{prof:cp/2,z:-cp/4,giroX:Math.atan2(queda,cp/2),yMeio:(COBERTURA_ALT_ALTA+COBERTURA_ALT_BAIXA)/2},
+      {prof:cp/2,z: cp/4,giroX:-Math.atan2(queda,cp/2),yMeio:(COBERTURA_ALT_ALTA+COBERTURA_ALT_BAIXA)/2}]
+    :[{prof:cp,z:0,giroX:Math.atan2(queda,cp),yMeio:(COBERTURA_ALT_ALTA+COBERTURA_ALT_BAIXA)/2}];
+  panos.forEach((pano,i)=>{
+    const g=telheiroOndulado(cw,pano.prof/Math.cos(pano.giroX),Math.max(6,Math.round(cw/.12)));
+    pintarFerrugem(g,hashInt(s,i*331+11));
+    g.rotateX(pano.giroX);
+    g.rotateY(l.giro);
+    const p=noLote(l,cx,cz+pano.z);
+    g.translate(p.x,lajeY+pano.yMeio,p.z);
+    // `pintar=false`: a ferrugem que acabei de pintar É a cor deste vértice. Deixar a passada de
+    // sujeira rodar por cima sobrescreveria o rastro inteiro por um cinza — e como a chapa fica a 2 m
+    // acima da laje, o gradiente de pé sujo não teria nada pra dizer ali de qualquer jeito.
+    acumularPronta(matTelhaFerrugem(),g,false,false);
+  });
+
+  // PILARETES: quatro, nas quinas da cobertura. Vão até a chapa; sem eles ela flutua, que é
+  // exatamente o defeito que o telheiro da porta teve antes de ganhar as mãos-francesas.
+  for(const sx of[-1,1])for(const sz of[-1,1]){
+    const px=cx+sx*(cw/2-.14),pz=cz+sz*(cp/2-.12);
+    // O pé do pilar acompanha a inclinação: o do lado alto é mais comprido que o do lado baixo.
+    const alturaAqui=duasAguas
+      ?COBERTURA_ALT_BAIXA
+      :COBERTURA_ALT_ALTA-(sz*ladoZ>0?0:queda);
+    const p=noLote(l,px,pz);
+    caixa(ferroMat,COBERTURA_PILAR,alturaAqui,COBERTURA_PILAR,p.x,lajeY+alturaAqui/2,p.z,l.giro);
+  }
 }
 
 // ===== CONSTRÓI O MORRO =====
@@ -1570,8 +2019,14 @@ for(const l of lotes){
 // A lista de casas de cliente só pode ser montada AQUI: `refugios` recebe os dois papéis durante a
 // construção, e antes deste laço ela está vazia.
 for(const r of refugios)if(r.papel==='cliente')casasCliente.push(r);
-acumularPronta(concreto,fitaDaVia(viaPrincipal,VIA_LARGURA));
-acumularPronta(concreto,fitaDaVia(viaBaixa,VIA_LARGURA));
+// AS VIAS SÃO ASFALTO; OS BECOS, NÃO. Era tudo `concreto`, o mesmo material, e por isso a rua
+// principal lia como uma rampa cinza-clara lisa atravessando o morro. Agora a via tem massa de
+// asfalto, emenda desbotada pro barro (`terra=true`) e meio-fio dos dois lados; o beco continua
+// sendo a fita simples de chão batido, que é o que ele é.
+acumularPronta(matAsfalto(),fitaDaVia(viaPrincipal,VIA_LARGURA,true),false,false);
+acumularPronta(matAsfalto(),fitaDaVia(viaBaixa,VIA_LARGURA,true),false,false);
+acumularPronta(matMeioFio(),meioFioDaVia(viaPrincipal,VIA_LARGURA));
+acumularPronta(matMeioFio(),meioFioDaVia(viaBaixa,VIA_LARGURA));
 for(const b of becos)acumularPronta(concreto,fitaDaVia(b,BECO_MIN+.4));
 for(const e of escadoes)construirEscadao(e);
 postesDaVia(viaPrincipal,15);
@@ -1585,9 +2040,39 @@ puxarGatos();
 // A favela anterior tinha 2.116 malhas e 2.110 geometrias distintas na cena. O número final está no
 // console no boot, porque "otimizei" sem número medido é a forma mais fácil de mentir pra si mesmo.
 export const malhasFundidas=[];
+
+// ===== A PILHA PRECISA SER HOMOGÊNEA, E ISTO JÁ CUSTOU UMA PILHA INTEIRA =====
+// `mergeGeometries` exige que TODAS as peças de uma pilha tenham exatamente o mesmo conjunto de
+// atributos, e quando não têm ele devolve `null` — sem lançar erro. O efeito é a pilha INTEIRA
+// desaparecer do mapa em silêncio, e o console só diz um índice.
+//
+// Aconteceu de novo agora, e a forma é sempre a mesma: a pilha do `ferroMat` tinha 1.200 peças, 1.116
+// delas vergalhões nascidos de cilindro cru (sem `uv1`). Bastou eu acrescentar quatro pilaretes por
+// casa pela função `caixa` — que passa por `uvPorMetro` e por isso ganha `uv1` — pra que a pilha
+// virasse mista e TODO O FERRO DO MORRO sumisse. Um pilarete apagando os vergalhões de 97 casas.
+//
+// Consertar caso a caso é enxugar gelo: qualquer peça nova numa pilha antiga reabre o buraco. Então a
+// fusão passa a NORMALIZAR a pilha antes de fundir — quem tem um atributo que os outros não têm
+// empresta o formato, e quem não tem recebe um preenchimento neutro. `uv1` é aliás do `uv` (custo
+// zero de memória, é o que o aoMap espera), `color` neutro é branco, e `uv` que falta vira zero.
+function normalizarAtributos(lista){
+  const tem={uv:false,uv1:false,color:false};
+  for(const g of lista)for(const k of Object.keys(tem))if(g.getAttribute(k))tem[k]=true;
+  for(const g of lista){
+    const n=g.getAttribute('position').count;
+    if(tem.uv&&!g.getAttribute('uv'))
+      g.setAttribute('uv',new THREE.BufferAttribute(new Float32Array(n*2),2));
+    // `uv1` depois do `uv`: quando os dois faltam, o aliás abaixo precisa do `uv` já criado.
+    if(tem.uv1&&!g.getAttribute('uv1'))g.setAttribute('uv1',g.getAttribute('uv'));
+    if(tem.color&&!g.getAttribute('color'))
+      g.setAttribute('color',new THREE.BufferAttribute(new Float32Array(n*3).fill(1),3));
+  }
+}
+
 function fundirPilha(mapa,andavel){
   for(const[material,lista]of mapa){
     if(!lista.length)continue;
+    normalizarAtributos(lista);
     const geo=mergeGeometries(lista,false);
     if(!geo)continue;// materiais com atributos incompatíveis: melhor perder a peça que travar o boot
     lista.forEach(g=>g.dispose());
@@ -1603,6 +2088,10 @@ fundirPilha(pilhas,false);
 fundirPilha(pilhasAndaveis,true);
 for(const[chave,{geo,material,ms}]of instancias){
   const im=new THREE.InstancedMesh(geo,material,ms.length);
+  // O nome é a CHAVE da peça ('grade', 'veneziana', 'enrolar0'...). Sem ele o bairro vira uma pilha
+  // de malhas anônimas: não dá pra saber de qual peça é um custo no perfilador, nem pra contar
+  // quantas portas de cada tipo o morro tem sem reconstruir tudo por fora.
+  im.name=chave;
   for(let i=0;i<ms.length;i++)im.setMatrixAt(i,ms[i]);
   im.instanceMatrix.needsUpdate=true;
   im.receiveShadow=true;

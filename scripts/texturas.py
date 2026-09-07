@@ -359,7 +359,101 @@ def graffite():
     saida = np.dstack([rgb, np.clip(a * 1.15, 0, 1)])
     Image.fromarray((saida * 255).astype(np.uint8)).save(f"{SAIDA}/graffite.png")
 
-for f in (reboco, tijolo, telha, chao, madeira, graffite):
+# ============================ ASFALTO DA VIA PRINCIPAL ============================
+# A via principal usava o MESMO material dos becos de terra (`concreto`), então a rua do morro era uma
+# fita cinza-clara lisa — foi o "rampa cinza/branca" da queixa. Asfalto tem três coisas que concreto
+# não tem, e é a soma das três que faz o olho ler "rua" em vez de "piso":
+#
+#  · BRITA. Asfalto é pedra britada colada com betume, e o que se vê de perto é a pedra: grão de
+#    3 a 8 mm, mais claro que o betume em volta, com o topo polido pelo pneu.
+#  · MANCHA DE ÓLEO. Onde carro para, pinga. A mancha não é mais escura por pigmento — é mais escura
+#    porque o óleo ENCHARCA o poro e derruba a rugosidade. Então ela vive quase toda no ORM, não no
+#    albedo: é por isso que ela só aparece quando o sol bate de raspão, igual na rua de verdade.
+#  · RACHADURA. Fio escuro e FUNDO, que é o que a separa de um risco pintado — ela tem que entrar no
+#    mapa de altura pra luz cair dentro dela.
+#
+# A rachadura é feita com ruído CRISTALINO (`1-|2n-1|`), não com limiar: limiar sobre ruído dá mancha,
+# e o que a crista devolve é a linha fina onde o campo cruza o meio — ramificada e sem ponta solta,
+# que é como asfalto racha de verdade. E como o ruído de base é tileável, a rachadura fecha na borda.
+def asfalto():
+    betume = ruido_tileavel(RES, 4, 5, .55)    # variação larga de tom da massa
+    brita = ruido_tileavel(RES, 55, 3, .5)     # o grão de pedra
+    poro = ruido_tileavel(RES, 110, 2, .5)     # textura fina entre as pedras
+
+    # PEDRA EXPOSTA: o topo do grão, ~34% da superfície. Na primeira calibragem ficou em 22% e a rua
+    # saiu LISA — betume escuro chapado, sem a granulação que faz o olho ler pedra colada.
+    pedra = np.clip((brita - .52) / .26, 0, 1)
+
+    # RACHADURA. Duas escalas: a trinca grande que atravessa a pista e a teia fina que sai dela.
+    def trinca(freq, largura):
+        n = ruido_tileavel(RES, freq, 3, .5)
+        crista = 1.0 - np.abs(2 * n - 1)       # 1 na linha média do campo, 0 longe dela
+        return np.clip((crista - (1 - largura)) / largura, 0, 1)
+    # ===== A RACHADURA PRECISA SER EXCEÇÃO, E ESTA MÁSCARA É O CONSERTO =====
+    # Sem máscara, a crista do ruído devolve a teia INTEIRA do campo: linhas fechadas, do mesmo
+    # tamanho, cobrindo o ladrilho todo por igual. Na primeira geração isso não leu como asfalto
+    # rachado — leu como PADRÃO DE QUEBRA-CABEÇA carimbado na rua, e pelo mesmo motivo que o reboco
+    # em 28% lia como camuflagem: o olho não conta a área, conta a regularidade.
+    # Asfalto racha em MANCHAS — no rastro do pneu, na emenda, onde a base cedeu — e fica inteiro no
+    # resto. A máscara de frequência baixa deixa a trinca aparecer em ~25% do ladrilho e some no
+    # resto, que é o que devolve "rua velha" em vez de "rua ladrilhada".
+    onde = np.clip((ruido_tileavel(RES, 3, 3, .55) - .58) / .20, 0, 1)
+    rachadura = np.clip(trinca(6, .040) + trinca(14, .028) * .7, 0, 1) * onde
+
+    # ÓLEO: manchas largas e esparsas, com borda difusa (mancha de óleo espalha, não tem contorno).
+    # Frequência 7 e borda estreita davam PINGOS espalhados, não manchas — e como a mancha de óleo é a
+    # única parte lisa do asfalto, cada pingo virava um espelhinho refletindo o céu. Na foto a rua
+    # apareceu com confete AZUL. Mancha de óleo é larga (freq 4), rara e de borda longa.
+    oleo = blur(np.clip((ruido_tileavel(RES, 4, 2, .5) - .78) / .16, 0, 1), 6)
+
+    # ===== ALBEDO =====
+    # Cinza-betume escuro. NÃO preto: com tone mapping ACES o preto puro fecha e a rua vira um buraco
+    # sem informação no meio do morro claro — o mesmo motivo de o PVC não ser branco puro.
+    v = .155 + betume * .055 + poro * .02
+    v = v + pedra * .105                        # a brita clareia
+    v = v * (1 - rachadura * .55)               # a rachadura escurece
+    v = v * (1 - oleo * .22)                    # o óleo escurece pouco: o resto do efeito é no ORM
+    albedo = cinza(v)
+
+    # ===== ALTURA =====
+    # A brita sobe, a rachadura AFUNDA. O afundamento é o dobro da subida da pedra: é o que faz a
+    # sombra entrar na trinca e ela ler como fenda em vez de risco.
+    h = betume * .25 + poro * .12 + pedra * .55 - rachadura * 1.0
+    h = (h - h.min()) / (np.ptp(h) or 1)
+
+    # ===== RUGOSIDADE =====
+    # Asfalto é fosco (.92). O topo da brita está polido pelo pneu (desce pra ~.72), e o óleo encharca
+    # o poro e desce mais (~.60).
+    # NÃO desce até .38, que foi a primeira calibragem: a .38 a mancha virou ESPELHO e refletiu o céu
+    # — o asfalto saiu salpicado de azul na foto. Óleo velho encharcado no poro devolve um brilho
+    # surdo, não um reflexo; .60 é o piso que dá sheen sem virar poça.
+    rough = np.full((RES, RES), .92) - pedra * .20 - oleo * .32
+    salvar("asfalto", albedo, h, np.clip(rough, 0, 1), forca_normal=2.6, ao_raio=6)
+
+
+# ============================ MEIO-FIO / SARJETA ============================
+# Concreto pré-moldado desgastado, com a JUNTA entre peças de 1 m — é a junta que dá escala ao
+# meio-fio e o separa de uma barra de concreto contínua. Batido no canto de cima, que é onde o pneu
+# raspa a vida inteira.
+def meiofio():
+    x = np.linspace(0, 2, RES, endpoint=False)[None, :] * np.ones((RES, 1))
+    fx = x - np.floor(x)
+    junta = np.clip(1 - np.abs(fx - .5) / .012, 0, 1)   # duas juntas por ladrilho = 1 m cada peça
+
+    grao = ruido_tileavel(RES, 45, 4, .5)
+    mancha = ruido_tileavel(RES, 6, 4, .55)
+    lasca = np.clip((ruido_tileavel(RES, 20, 3, .5) - .70) / .14, 0, 1)  # canto lascado
+
+    v = .60 + mancha * .13 + grao * .07
+    v = v * (1 - junta * .40) * (1 - lasca * .22)
+    albedo = cinza(v)
+    h = mancha * .2 + grao * .35 - junta * 1.0 - lasca * .5
+    h = (h - h.min()) / (np.ptp(h) or 1)
+    rough = np.full((RES, RES), .88) + lasca * .08 - mancha * .06
+    salvar("meiofio", albedo, h, np.clip(rough, 0, 1), forca_normal=2.2, ao_raio=7)
+
+
+for f in (reboco, tijolo, telha, chao, madeira, graffite, asfalto, meiofio):
     f()
     print("ok:", f.__name__)
 

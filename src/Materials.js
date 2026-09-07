@@ -61,7 +61,30 @@ export const matReboco=c=>{if(!cacheReboco.has(c))cacheReboco.set(c,pbr('reboco'
 // blocos pretos — foi assim que a casca do esconderijo apareceu preta na primeira foto.
 const cacheRebocoSujo=new Map();
 export const matRebocoSujo=c=>{if(!cacheRebocoSujo.has(c))cacheRebocoSujo.set(c,pbr('reboco',c,{vertexColors:true}));return cacheRebocoSujo.get(c)};
-export const matTelha=c=>{if(!cacheTelha.has(c))cacheTelha.set(c,pbr('telha',c));return cacheTelha.get(c)};
+// ===== O ZINCO ERA MEIO ESPELHO, E É POR ISSO QUE O TELHADO SAÍA PRETO =====
+// Medido no mapa: `telha_orm` tem metalness média 0,52 no canal azul, e o `pbr()` deixa o multiplicador
+// em 1 — ou seja, toda chapa do morro é 52% metal. Superfície metálica quase não devolve cor difusa;
+// ela devolve REFLEXO. Como o que há em volta pra refletir é o barranco e o horizonte, e não um céu
+// aberto, o telhado aparecia como um bloco escuro, e a tinta da telha (`CORES_TELHA`) mal chegava na
+// tela — a cor que o código sorteava estava sendo comida pelo metal.
+// Zinco velho de favela é oxidado, e óxido é DIELÉTRICO: reflete pouco e mostra a cor. 0,45 de
+// multiplicador põe a metalness efetiva em ~0,23, que é chapa envelhecida — ainda com brilho de metal
+// na luz raspante, mas com a cor de volta.
+export const matTelha=c=>{if(!cacheTelha.has(c))cacheTelha.set(c,pbr('telha',c,{metalness:.45}));return cacheTelha.get(c)};
+// ===== ZINCO QUE ENFERRUJA EM FAIXA =====
+// A chapa ondulada tinha UMA cor por casa, chapada de ponta a ponta: telhado de loja, nunca de
+// morro. Zinco de verdade oxida em RASTRO VERTICAL — a água desce sempre pelo mesmo vinco, e a
+// ferrugem acompanha ela do parafuso pra baixo.
+//
+// Sem tinta no material (0xffffff) DE PROPÓSITO: aqui a cor inteira vem da COR POR VÉRTICE, e não é
+// preciosismo — pra puxar um cinza-zinco pra marrom-ferrugem por multiplicação eu precisaria de um
+// fator MAIOR que 1 em vermelho, que não existe. Com o material neutro, cada vértice carrega o tom
+// final que quiser, do zinco novo à ferrugem, e o morro inteiro continua num draw call.
+// Metalness ainda MAIS baixa que a da telha limpa (efetiva ~0,16): a faixa enferrujada é óxido puro,
+// e é justamente a cor dela que precisa aparecer. Com o multiplicador em 1 a ferrugem que eu pintava
+// por vértice simplesmente não chegava na tela — o metal comia.
+export const matTelhaFerrugem=()=>pbrTelhaFerrugem;
+const pbrTelhaFerrugem=pbr('telha',0xffffff,{vertexColors:true,metalness:.30});
 export const matConcreto=()=>pbrConcreto;
 // Concreto cinza áspero, não cinza chapado de vetor: `#8a8a86` é o tom de laje curada que o Bruno
 // pediu, e o mapa de reboco por cima dá a granulação.
@@ -128,6 +151,22 @@ export function uvPorMetro(geo,metrosPorLado=2){
 }
 // Materiais dedicados (fora do cache genérico) pra cada objeto reagir à luz do seu jeito: vidro brilha, metal reflete, concreto é fosco.
 export const concreto=pbr('reboco',0xb9b3a1,{aoMapIntensity:1});
+
+// ===== ASFALTO DA VIA PRINCIPAL =====
+// A via principal saía com o material `concreto` acima — o MESMO dos becos —, e por isso a rua do
+// morro era uma fita cinza-clara lisa em vez de asfalto. Conjunto próprio (brita, óleo, rachadura,
+// ver `asfalto()` em scripts/texturas.py), sem tinta: a cor toda vem do mapa, porque asfalto não tem
+// variação de cor por trecho — tem variação de DESGASTE, que é o que o mapa carrega.
+//
+// `vertexColors` ligado, e não é enfeite: é ele que faz a EMENDA com o beco de terra. A fita da rua
+// tem uma sanga de cada lado cujos vértices de fora são pintados de cor de terra, então o asfalto
+// desbota pra terra em vez de terminar num corte reto de polígono. Zero draw call, zero textura.
+export const matAsfalto=()=>pbrAsfalto;
+const pbrAsfalto=pbr('asfalto',0xffffff,{vertexColors:true,aoMapIntensity:1});
+// MEIO-FIO. Concreto pré-moldado com junta de 1 m e canto lascado. Separado do `concreto` porque o
+// que dá escala ao meio-fio é a junta entre as peças, e ela é desenhada na textura.
+export const matMeioFio=()=>pbrMeioFio;
+const pbrMeioFio=pbr('meiofio',0xa8a498,{aoMapIntensity:1});
 // VIDRO SEM CLEARCOAT. Eram MeshPhysicalMaterial com clearcoat — o shader mais caro da cena, um
 // segundo lóbulo especular completo por fragmento — aplicado a 208 retângulos escuros de 1 x 0,85 m.
 // O brilho que o clearcoat dava vem igual de roughness baixa com metalness: num vidro pequeno e
@@ -202,6 +241,32 @@ export const roupaMat=new THREE.MeshStandardMaterial({vertexColors:true,roughnes
 // Caixa d'água preta: a outra que se vê no morro, ao lado da azul (`agua`). Duas cores bastam pro
 // telhado parar de ser uma fileira de cilindros idênticos.
 export const aguaPreta=new THREE.MeshStandardMaterial({color:0x23262b,roughness:.55,metalness:.12});
+
+// ===== PORTA DE AÇO DE ENROLAR =====
+// A do comércio e da garagem. Aço galvanizado encardido: metalness média (é metal, mas velho e
+// empoeirado, e metal limpo aqui viraria espelho no meio de uma fachada fosca). A ONDULAÇÃO vem da
+// GEOMETRIA (tubos empilhados, ver `chapaEnrolar` no Favela.js) e não de mapa — por isso o material é
+// liso, e é isso que permite instanciar a peça sem cair no bug de InstancedMesh + PBR texturizado
+// saindo preta (ver o comentário da porta em `construirCasa`).
+export const acoMat=new THREE.MeshStandardMaterial({color:0x8d9095,roughness:.62,metalness:.34});
+// Porta de chapa pintada: a outra porta de morro, e o tom é tinta esmalte desbotada, nunca preto puro.
+export const chapaMat=new THREE.MeshStandardMaterial({color:0x4a4f52,roughness:.66,metalness:.22});
+// VENEZIANA DE MADEIRA. Material LISO de propósito, pelo mesmo motivo do aço acima: a ripa é
+// geometria, então dá pra instanciar as centenas de folhas do bairro num draw call só. Madeira
+// escura encerada pelo tempo.
+export const venezianaMat=new THREE.MeshStandardMaterial({color:0x4b3524,roughness:.8});
+// ===== O PORTÃO PRECISA SER PINTADO =====
+// A primeira versão usou o material da grade de janela (0x2e332e, quase preto) contra uma placa de
+// fundo 0x14120f, também quase preta. Na foto de perto o portão saiu como um RETÂNGULO PRETO CHAPADO:
+// as barras e o fundo tinham o mesmo valor, então não havia o que separar uma coisa da outra — o
+// mesmo defeito que a janela sem grade tinha antes.
+// Portão de morro é pintado, e a tinta desbota: quatro cores, e cada uma bem mais clara que o vão
+// escuro atrás. É a diferença de valor que faz a barra ler como barra.
+const cachePortao=new Map();
+export const matPortao=c=>{if(!cachePortao.has(c))cachePortao.set(c,new THREE.MeshStandardMaterial({color:c,roughness:.7,metalness:.3}));return cachePortao.get(c)};
+export const CORES_PORTAO=[0x5c6b63,0x6d4a44,0x4a5b6e,0x7a6a4a];
+// Caixilho de ferro enferrujado: a esquadria da janela que nunca foi pintada de novo.
+export const caixilhoMat=new THREE.MeshStandardMaterial({color:0x6d4a33,roughness:.85,metalness:.2});
 
 // GRADE DE JANELA. O ferro chato pintado que toda janela de morro tem — e, no jogo, a peça que tira
 // a janela de "retângulo preto chapado", que era o pedaço mais quadrado que sobrou na fachada.
