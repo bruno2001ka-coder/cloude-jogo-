@@ -319,32 +319,55 @@ export const POSE_MOTO={
 // Estes ângulos foram RESOLVIDOS contra a manopla (busca por descida de coordenada no jogo rodando,
 // `scratchpad/maonamanopla.mjs`), não ajustados no olho. Refazer a busca é obrigatório se a moto,
 // o clipe ou a meia-volta do corpo mudarem — a pose é toda relativa a eles.
-// A BUSCA LEVOU TRÊS RODADAS, E CADA ERRO ENSINOU UMA COISA:
-//  1. Mirando SÓ a distância mão-manopla ela chegou a 2,7 cm e ficou errada: braço contorcido por
-//     dentro do tronco, e na foto o piloto sumiu atrás da moto. Mesmo erro que a busca da PERNA já
-//     tinha documentado ali em cima — destino certo, forma errada. Entrou a forma: cotovelo ATRÁS da
-//     mão, PRA FORA do tronco, não acima do ombro.
-//  2. Aí os braços saíram esticados na horizontal, feito asa. A causa não era o ângulo: o piloto
-//     sentava EM CIMA do guidão (ombro a 5 mm da manopla) e não tinha pra onde esticar. Entrou o
-//     `RECUO_SELIM` na ficha da moto.
-//  3. Recuado, ele não ALCANÇAVA a ponta do guidão: braço de 24,9 cm (medido osso a osso) contra
-//     35,9 cm até a ponta. Guidão é uma BARRA — a mão pousa em qualquer ponto dela. O alvo virou o
-//     segmento, e a mão parou em 0,204 de lado, dentro da barra, que é onde este boneco alcança.
-// Resultado: 52,8 cm -> 1,1 cm de erro médio, 1,2 cm no pior instante da volta (a pose antiga, na
-// moto antiga, dava 5,3 cm). Braço: ombro 0,082 · cotovelo 0,181 · mão 0,204, com o antebraço
-// dobrado em 58°.
-export const POSE_GUIDAO={
-  RightArm:   [-2.040, 0,  .830],
-  LeftArm:    [-2.040, 0, -.830],
-  RightForeArm:[-1.010, 0, 0],
-  LeftForeArm: [-1.010, 0, 0],
+// ===== O QUE VAI POR CIMA DO CLIPE: BRAÇOS NO GUIDÃO, PERNAS NA PEDALEIRA =====
+// O clipe resolve o corpo todo, menos o que depende DESTA moto. Estes oito ossos são resolvidos
+// contra as peças dela (busca por descida de coordenada no jogo rodando,
+// `scratchpad/resolveguidao.mjs`), e não ajustados no olho. Refazer a busca é obrigatório se a moto,
+// o clipe, a altura do selim ou a meia-volta do corpo mudarem — a pose é toda relativa a eles.
+//
+// A BUSCA SÓ FUNCIONA SE COBRAR A FORMA DO MEMBRO, e não só onde a ponta dele para. Isso já custou
+// caro duas vezes, com o mesmo formato de erro nos dois membros:
+//   · na PERNA (moto antiga): sem alvo de joelho, ela achava a perna dobrada PRA TRÁS, com o pé no
+//     destino certo e forma de ajoelhado; sem alvo lateral, o pé caía dentro da carenagem e o piloto
+//     aparecia sem pernas;
+//   · no BRAÇO (moto nova): mirando só a mão, ela deu 2,7 cm de erro e um braço por dentro do
+//     tronco — na foto o piloto sumiu atrás da moto.
+// Por isso a busca cobra também: cotovelo ATRÁS da mão e por fora do tronco, joelho À FRENTE do
+// quadril e por fora do corpo da moto (0,157 de meia-largura).
+//
+// Duas coisas que a busca do braço ensinou e valem pra sempre aqui:
+//   · o piloto não pode sentar EM CIMA do guidão (era ombro a 5 mm da manopla) — quem resolve isso é
+//     o `RECUO_SELIM`, na ficha da moto, não o ângulo do ombro;
+//   · o alvo da mão é a BARRA inteira, não a ponta dela: com 24,9 cm de braço ele não alcança os
+//     35,9 cm até a ponta, e a mão pousa mais pra dentro, onde ele alcança.
+// Refeitos depois de o piloto subir pro selim (o ombro subiu 5,6 cm e recuou 4): erro da mão na
+// barra de 52,2 cm -> 0,7 cm, e 1,2 cm no pior instante da volta. Braço: ombro 0,082 · cotovelo
+// 0,176 · mão 0,229, com o cotovelo por fora e atrás da mão.
+export const POSE_NA_MOTO={
+  RightArm:   [-1.865, 0,  .785],
+  LeftArm:    [-1.865, 0, -.785],
+  RightForeArm:[-.625, 0, 0],
+  LeftForeArm: [-.625, 0, 0],
 };
-// Quanto o boneco sobe do chão pro selim, em metros de jogo. O quadril de pé fica em torno de 0,48 m
-// e o selim está em 0,59: a diferença é isto, e ela é ajustada pela foto.
-// Quanto o boneco sobe do chão pro banco, em metros de jogo. O quadril de pé fica em torno de 0,48 m.
-// Cada veículo passa o seu: a moto tem selim alto (0,59) e o carro tem banco baixo, e usar um número
-// só punha a cabeça do motorista atravessando o teto de um carro de 0,80 m de altura.
-export const ALTURA_SELIM=.09;
+// A PERNA NÃO ENTRA AQUI, e isso foi medido com o quadril já no selim (`scratchpad/diagperna.mjs`),
+// pelo erro do pé até a pedaleira (0,142 de lado · 0,200 de altura · 0,093 atrás):
+//     perna do CLIPE ..............   8,2 cm   pé [0,124 / 0,266 / 0,139], joelho por fora e à frente
+//     perna do POSE_MOTO ..........  51,1 cm   pé do lado ERRADO, na altura do quadril
+//     perna resolvida pela busca ..  50,9 cm   PIOR do que não mexer
+// Os ângulos de perna do `POSE_MOTO` foram resolvidos noutra moto e não transferem; e a busca,
+// partindo deles, só afundou. O clipe já entrega a perna certa. Sobram 6,6 cm de pé acima da
+// pedaleira — o preço de ter subido o quadril pro selim, e muito menos visível que o corpo enterrado
+// no quadro, que foi a queixa.
+// ===== QUANTO O BONECO SOBE DO CHÃO PRO SELIM =====
+// Cada veículo passa o seu: usar um número só punha a cabeça do motorista atravessando o teto de um
+// carro de 0,80 m de altura.
+//
+// Era 0,09, herdado da moto ANTIGA (selim em 0,59). Na moto nova isso deixava o quadril em 0,496 com
+// o topo do selim em 0,552 no ponto onde ele senta — 5,6 cm DENTRO do banco, e o Bruno viu na hora:
+// "ele ficou pra dentro da moto, ele deve estar sentado no banco".
+// 0,146 põe o quadril na superfície do selim. Quem paga a conta é a perna, que agora tem 0,352 até a
+// pedaleira em vez de 0,296 — e por isso ela também passou a ser resolvida (ver `POSE_NA_MOTO`).
+export const ALTURA_SELIM=.146;
 let poseMoto=false,baseYRaiz=null,escalaRaiz=1,alturaDoBanco=ALTURA_SELIM,ladoDoBanco=0,recuoDoBanco=0;
 // `altura` é onde o quadril senta; `lado` desloca o motorista pro banco (negativo = esquerda, que é
 // onde fica o volante). A moto não usa `lado`: o piloto senta no meio.
@@ -424,7 +447,7 @@ export function atualizarAnimacaoPersonagem(dt,velocidade,atirando,agachado=fals
     mixer.update(dt);
     // DEPOIS do mixer, senão ele reescreve por cima: o clipe manda no corpo, a manopla manda nos
     // braços.
-    aplicarAngulos(POSE_GUIDAO);
+    aplicarAngulos(POSE_NA_MOTO);
     assentarPiloto();
     return;
   }

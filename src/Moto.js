@@ -6,11 +6,14 @@
 import{criarVeiculo}from'./Veiculo.js';
 import{definirPoseVeiculo,ALTURA_SELIM,personagemCarregado,atualizarAnimacaoPersonagem}from'./Personagem.js';
 
-// Quanto o piloto senta atrás do centro da moto, em metros. Sai do perfil do `moto.glb` (o topo do
-// selim vai de x +0,32 a +0,52) LIMITADO PELO BRAÇO: o boneco tem 24,9 cm de braço, medido osso a
-// osso, e com 0,25 de recuo o guidão ficava a 35,9 cm do ombro — ele não alcançava, e a busca
-// devolvia um braço esticado no vazio. 0,12 tira o piloto de cima do guidão e continua ao alcance.
-const RECUO_SELIM=.12;
+// Quanto o piloto senta atrás do centro da moto, em metros. Sai do perfil do `moto.glb` LIMITADO
+// PELO BRAÇO: o boneco tem 24,9 cm de braço (13,1 do ombro ao cotovelo + 11,8 até a mão, medidos no
+// rig), e o guidão está a 0,065 à frente do centro. Medindo o vão do ombro até a barra por recuo:
+//     0,12 -> 0,198   0,16 -> 0,236   0,20 -> 0,274   0,28 -> 0,352
+// ou seja 0,16 é o limite: em 0,20 ele já não alcança, e a busca só devolveria braço esticado no
+// vazio. É pouco pra um selim que vai até 0,52 porque este boneco tem 0,90 m e a moto tem 1,35 —
+// ele é curto pra ela.
+const RECUO_SELIM=.16;
 
 const moto=criarVeiculo({
   nome:'motoJogador',
