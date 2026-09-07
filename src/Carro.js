@@ -28,6 +28,15 @@ const carro=criarVeiculo({
   esterco:.55,estercoPorVelocidade:.55,inclinacaoNaCurva:.06,
   entreEixos:.72,meiaBitola:.40,
   pesoNaFrente:.01,// carro assenta quase plano; o bico caído da moto aqui pareceria pneu murcho
+  // ===== AS QUATRO RODAS NO CHÃO =====
+  // Carro tem quatro rodas em retângulo, e é isso que estas duas bandeiras assumem:
+  //  · `plantarAsQuatroRodas` desce o corpo até nenhuma delas sobrar no ar (ver `assentar`);
+  //  · `rolagemDoTerrenoDireta` tira o amortecimento da rolagem que vem do CHÃO, deixando amortecida
+  //    só a de curva.
+  // A moto não recebe nenhuma das duas: ela tem duas rodas em linha (não há quatro folgas pra
+  // plantar) e a rolagem dela é o piloto deitando, que PRECISA do atraso pra ler como peso.
+  plantarAsQuatroRodas:true,
+  rolagemDoTerrenoDireta:true,
   alturaAssento:-.02,
   raioMontar:4,
   // Nasce do lado OPOSTO ao da moto (que nasce em +3): sem isso os dois apareceriam um dentro do

@@ -23,6 +23,13 @@ import{PLAYER_LIMIT}from'./WorldBounds.js';
 // O limite antigo de 124 m fazia carro e moto ignorarem a expansão do mapa, mesmo quando o jogador
 // a pé já conseguia chegar muito mais longe. Todos os modos agora usam a mesma borda jogável.
 const LIMITE_MUNDO=PLAYER_LIMIT,ZONA_MORTA=.12;
+// O quanto a roda mais funda pode ficar ABAIXO do chão depois de plantar as outras. É o ÚNICO botão
+// da troca, e ela é assimétrica: roda enterrada não se vê (o pneu some no barro), roda no ar abre
+// fresta de luz e foi o que ele fotografou. Por isso o valor é generoso — 14 cm afunda quase meio
+// pneu no pior canto do morro mais torcido do mapa, em troca de nenhuma roda levantada em lugar
+// nenhum. Não é o tamanho do passo, é o teto do RESULTADO — ver o
+// comentário em `assentar`, que essa distinção já custou uma medida errada.
+const TETO_AFUNDAR=.14;
 // ===== SÓ SE DIRIGE UM DE CADA VEZ =====
 // Com dois veículos no mapa, nada impedia entrar no carro e depois montar na moto: os dois passariam
 // a mover o `player` no mesmo quadro, cada um com a sua velocidade, e o jogador sairia arrastado numa
@@ -50,6 +57,9 @@ export function criarVeiculo(cfg){
   grupo.rotation.order='YXZ';
   let montado=false,carregado=false,velocidade=0;
   let botaoVisivel=null;// null = ainda não decidido, pra o primeiro quadro sempre escrever
+  // A parcela de CURVA da rolagem, guardada à parte pra poder ser amortecida sozinha, sem arrastar a
+  // do terreno junto (ver o fim do `atualizar`). Só o veículo com `rolagemDoTerrenoDireta` usa.
+  let inclinacaoDeCurva=0;
 
   // ===== O CORPO PRECISA GIRAR COM O VEÍCULO =====
   // A física do jogo é AABB pura (`Physics.js`): uma caixa fixa mede sempre o mesmo nos eixos do
@@ -104,18 +114,77 @@ export function criarVeiculo(cfg){
   // na terra e no asfalto igualmente, porque a fita da rua também assenta nela.
   // Só o ASSENTAMENTO muda. Colisão e desmonte continuam na curva analítica, que é o que o jogador a
   // pé usa: misturar as duas na física faria veículo e pedestre discordarem de onde é o chão.
+  // ===== AS AMOSTRAS VÃO ONDE AS RODAS ESTÃO, NÃO NUMA CRUZ =====
+  // "lugar é inclinado aí ele fica com uma 2 roda no chão e as outras levanta."
+  //
+  // A versão anterior media o chão em QUATRO PONTOS EM CRUZ: frente, trás e os dois lados, todos
+  // passando pelo centro do carro. Só que as rodas não estão na cruz, estão nas QUINAS. Num terreno
+  // torcido o plano que passa pela cruz não é o plano que passa pelas quinas, e a diferença aparece
+  // como roda no ar.
+  //
+  // Medido no morro da foto dele — 27.636 casos, posição x rumo, folga de cada roda contra o chão
+  // desenhado:
+  //     em cruz : mediana 3,1 cm · 90% 5,8 · 99% 8,7 · PIOR 12,7 · 16,9% acima de 5 cm
+  //     nas quinas: mediana 2,8 cm · 90% 4,7 · 99% 6,9 · PIOR 9,8 ·  7,7% acima de 5 cm
+  // Um pneu tem 33 cm: 12,7 cm de folga é um terço de roda no ar.
+  const _quinas=[[1,-1],[-1,-1],[1,1],[-1,1]];// (lado, frente/trás) em unidades de meiaBitola/entreEixos
+  const _alt=[0,0,0,0];
+  const _eulerQuina=new THREE.Euler(),_quatQuina=new THREE.Quaternion(),_vetQuina=new THREE.Vector3();
   function assentar(x,z,rumo){
-    const fx=-Math.sin(rumo),fz=-Math.cos(rumo);
-    const lx=Math.cos(rumo),lz=-Math.sin(rumo);
-    const yF=alturaDoChaoDesenhado(x+fx*cfg.entreEixos,z+fz*cfg.entreEixos);
-    const yT=alturaDoChaoDesenhado(x-fx*cfg.entreEixos,z-fz*cfg.entreEixos);
-    const yD=alturaDoChaoDesenhado(x+lx*cfg.meiaBitola,z+lz*cfg.meiaBitola);
-    const yE=alturaDoChaoDesenhado(x-lx*cfg.meiaBitola,z-lz*cfg.meiaBitola);
-    grupo.position.set(x,(yF+yT)/2+cfg.alturaAssento,z);
+    const cy=Math.cos(rumo),sy=Math.sin(rumo);
+    // ===== UMA PASSADA SÓ, E ISSO FOI MEDIDO =====
+    // Tentei refinar: amostrar as quinas no plano, ajustar, e reamostrar ONDE as rodas ficam depois de
+    // inclinar (numa ladeira de 30° a quina traseira anda 36 cm na horizontal). Parecia mais correto e
+    // saiu PIOR em tudo — espalhamento mediano de 2,7 pra 5,2 cm, roda no ar de 3,9 pra 7,2, erro
+    // contra a normal de 1,7° pra 3,7°.
+    // O motivo é realimentação: mais arfagem afasta as quinas morro acima, quinas mais afastadas dão
+    // mais desnível, que dá mais arfagem. A amostra no plano é a estimativa estável, e é também a mais
+    // fiel ao que acontece de verdade — o corpo é que pivota, a roda fica onde está.
+    for(let i=0;i<4;i++){
+      const lx=_quinas[i][0]*cfg.meiaBitola,lz=_quinas[i][1]*cfg.entreEixos;
+      _alt[i]=alturaDoChaoDesenhado(x+lx*cy+lz*sy,z-lx*sy+lz*cy);
+    }
+    const[DD,DE,TD,TE]=_alt;
+    // Plano de mínimos quadrados por cima das quatro: num retângulo isso é exatamente a média de cada
+    // par. Arfagem pela diferença frente/trás, rolagem pela diferença direita/esquerda.
+    const arfagem=Math.atan2((DD+DE)/2-(TD+TE)/2,cfg.entreEixos*2)-cfg.pesoNaFrente;
+    const rolagem=Math.atan2((DD+TD)/2-(DE+TE)/2,cfg.meiaBitola*2);
+    let py=(DD+DE+TD+TE)/4+cfg.alturaAssento;
+
     grupo.rotation.y=rumo;
-    // Girando em torno do X local, ângulo positivo LEVANTA o bico; subtrair o peso baixa ele.
-    grupo.rotation.x=Math.atan2(yF-yT,cfg.entreEixos*2)-cfg.pesoNaFrente;
-    return Math.atan2(yD-yE,cfg.meiaBitola*2);// rolamento do terreno, pra somar com o de curva
+    grupo.rotation.x=arfagem;// ângulo positivo LEVANTA o bico; o peso na frente já veio subtraído
+
+    // ===== E AGORA DESCE ATÉ NENHUMA RODA FICAR NO AR =====
+    // O que sobra depois do ajuste é a TORÇÃO do terreno, e plano nenhum resolve: corpo rígido sobre
+    // chão torcido levanta roda mesmo — carro de verdade resolve com suspensão, e aqui o modelo é uma
+    // malha só, sem rodas separadas (conferido no GLB: um nó de malha e mais nada).
+    //
+    // Mas o olho não vê os dois erros igual. Roda ENTERRADA alguns centímetros é invisível; roda NO
+    // AR abre uma fresta de luz embaixo do pneu, e foi isso que ele fotografou. Então o alvo não é
+    // erro zero, é FOLGA POSITIVA ZERO: desce o corpo até a roda mais alta encostar.
+    if(cfg.plantarAsQuatroRodas){
+      // A conta do giro é do THREE, não minha. Escrevi esta altura à mão com os dois sinais e as duas
+      // discordaram da medição — o erro não era de álgebra, era de CONVENÇÃO: a ordem 'YXZ' não
+      // compõe as matrizes na sequência que eu assumia. Aplicando o quaternion de verdade, a conta
+      // fecha seja qual for a convenção, por quatro multiplicações de vetor no quadro.
+      _eulerQuina.set(arfagem,rumo,rolagem,grupo.rotation.order);
+      _quatQuina.setFromEuler(_eulerQuina);
+      let maiorFolga=-Infinity,menorFolga=Infinity;
+      for(let i=0;i<4;i++){
+        _vetQuina.set(_quinas[i][0]*cfg.meiaBitola,0,_quinas[i][1]*cfg.entreEixos)
+          .applyQuaternion(_quatQuina);
+        const folga=py+_vetQuina.y-_alt[i];
+        if(folga>maiorFolga)maiorFolga=folga;
+        if(folga<menorFolga)menorFolga=folga;
+      }
+      // ===== O TETO É NO RESULTADO, NÃO NO PASSO =====
+      // A primeira versão limitava o quanto o corpo DESCE. Errado: a roda mais funda já estava
+      // `espalhamento` abaixo da mais alta, então o afundamento final é espalhamento + descida —
+      // medido, deu 13,8 cm com um teto de 6. Limitar o passo não limita o resultado.
+      if(maiorFolga>0)py-=Math.min(maiorFolga,Math.max(0,TETO_AFUNDAR+menorFolga));
+    }
+    grupo.position.set(x,py,z);
+    return rolagem;// rolamento do terreno, pra somar com o de curva
   }
 
   // ===== COLISOR DO VEÍCULO PARADO =====
@@ -258,8 +327,19 @@ export function criarVeiculo(cfg){
       // PARADO TAMBÉM PRECISA DE QUADRO. Sem isto o veículo largado fica com a pose do instante em
       // que foi solto — nivelado, mesmo num barranco. E é parado que ele tem colisor, então é aqui
       // que a caixa é mantida em dia.
-      assentar(grupo.position.x,grupo.position.z,grupo.rotation.y);
-      grupo.rotation.z=0;// sem motorista não há inclinação de curva; só o que o chão manda
+      // ===== PARADO TAMBÉM ROLA COM O MORRO =====
+      // Aqui estava `grupo.rotation.z=0`, com o comentário dizendo "só o que o chão manda" — e
+      // mandando ZERO. O `assentar` calculava a rolagem do terreno e a linha de baixo jogava fora.
+      //
+      // É ESTA a foto que o Bruno mandou: carro PARADO num barranco, duas rodas no chão e duas no ar.
+      // Eu tinha medido o problema só com o carro MONTADO, onde a rolagem é aplicada, e por isso o
+      // erro contra a normal do terreno dava 1,4° e parecia que estava tudo certo. Parado, medido
+      // agora em 7.200 casos no morro dele: 21,5° de erro e até 23 cm de roda no ar.
+      //
+      // Sem motorista não há inclinação de CURVA (não há curva), mas a do CHÃO continua existindo —
+      // são coisas diferentes, e foi somá-las numa variável só que deixou a segunda ser apagada com
+      // a primeira.
+      grupo.rotation.z=assentar(grupo.position.x,grupo.position.z,grupo.rotation.y);
       atualizarCaixa();
       return false;
     }
@@ -318,7 +398,25 @@ export function criarVeiculo(cfg){
     // Inclinação de curva, visual, sem alterar a colisão. Somada ao rolamento do terreno: numa encosta
     // de través o veículo tomba pro lado de baixo, e é isso que mantém as rodas no chão.
     const inclinacao=direcao*rapidez*cfg.inclinacaoNaCurva;
-    grupo.rotation.z=THREE.MathUtils.lerp(grupo.rotation.z,rolamentoDoChao-inclinacao,1-Math.exp(-10*dt));
+    // ===== SÃO DUAS ROLAGENS, COM TEMPOS DIFERENTES =====
+    // Elas estavam somadas dentro do MESMO amortecimento, e por isso a geometria herdou um atraso que
+    // não era dela. A constante era 0,1 s; a 14 m/s isso é 1,4 m de estrada — quase um entre-eixos
+    // inteiro. Medido: parado o espalhamento entre as quatro rodas é 2–3 cm, andando no talo vai a
+    // 7,4 cm. O atraso TRIPLICA o defeito.
+    //
+    //  · a do TERRENO é geometria: onde o chão está agora, e não onde estava há um décimo de segundo.
+    //    Vai direto, igual à arfagem, que sempre foi direta.
+    //  · a de CURVA é peso do carro se transferindo, e é o atraso que a faz LER como peso. Continua
+    //    amortecida.
+    //
+    // A moto fica de fora: nela a rolagem é o piloto deitando na curva, e tirar o atraso deixaria a
+    // moto rígida. Por isso a separação é por ficha (`rolagemDoTerrenoDireta`) e não pra todo mundo.
+    if(cfg.rolagemDoTerrenoDireta){
+      inclinacaoDeCurva=THREE.MathUtils.lerp(inclinacaoDeCurva,-inclinacao,1-Math.exp(-10*dt));
+      grupo.rotation.z=rolamentoDoChao+inclinacaoDeCurva;
+    }else{
+      grupo.rotation.z=THREE.MathUtils.lerp(grupo.rotation.z,rolamentoDoChao-inclinacao,1-Math.exp(-10*dt));
+    }
     sumirCaixa();// dirigindo, o veículo é o jogador: colisor aqui seria ele batendo em si mesmo
 
     // ===== O MOTORISTA ANDA JUNTO =====
