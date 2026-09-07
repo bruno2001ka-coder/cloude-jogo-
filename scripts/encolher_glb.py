@@ -37,6 +37,11 @@ def encolher(entrada,saida):
             img=img.resize((alvo,alvo),Image.LANCZOS)
         buf=io.BytesIO()
         img.convert('RGB').save(buf,format='JPEG',quality=QUALIDADE,optimize=True)
+        # O CONTEÚDO VIRA JPEG, ENTÃO O `mimeType` TEM QUE DIZER ISSO. Ficou 'image/png' na primeira
+        # versão e passou batido porque o SUV já vinha com JPEG; a moto do piloto veio em PNG e
+        # entregaria bytes JPEG anunciados como PNG. Navegador costuma adivinhar pelo cabeçalho, mas
+        # não é obrigado — e um asset que depende de adivinhação quebra no aparelho de alguém.
+        im['mimeType']='image/jpeg'
         novas[im['bufferView']]=buf.getvalue()
         print(f"  {im.get('name')}: {n/1048576:.2f} MB -> {len(novas[im['bufferView']])/1048576:.2f} MB ({alvo}px)")
 

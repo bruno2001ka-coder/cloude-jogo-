@@ -6,6 +6,12 @@
 import{criarVeiculo}from'./Veiculo.js';
 import{definirPoseVeiculo,ALTURA_SELIM,personagemCarregado,atualizarAnimacaoPersonagem}from'./Personagem.js';
 
+// Quanto o piloto senta atrás do centro da moto, em metros. Sai do perfil do `moto.glb` (o topo do
+// selim vai de x +0,32 a +0,52) LIMITADO PELO BRAÇO: o boneco tem 24,9 cm de braço, medido osso a
+// osso, e com 0,25 de recuo o guidão ficava a 35,9 cm do ombro — ele não alcançava, e a busca
+// devolvia um braço esticado no vazio. 0,12 tira o piloto de cima do guidão e continua ao alcance.
+const RECUO_SELIM=.12;
+
 const moto=criarVeiculo({
   nome:'motoJogador',
   arquivo:'assets/moto.glb',
@@ -22,7 +28,17 @@ const moto=criarVeiculo({
   maxVel:11,maxRe:3.8,aceleracao:14,aceleracaoRe:7,freio:24,atrito:5.5,
   esterco:1.05,estercoPorVelocidade:1.25,inclinacaoNaCurva:.22,
   // Amostragem do chão: metade da distância entre as rodas, e metade da largura.
-  entreEixos:.58,meiaBitola:.24,
+  // O 0,47 é MEDIDO no modelo novo: os centros das duas rodas estão em x -0,454 e +0,483, ou seja
+  // 0,937 de distância. (Era 0,58, do modelo antigo — com a moto nova ela assentaria torta.)
+  entreEixos:.47,meiaBitola:.24,
+  // ===== AS DUAS RODAS GIRAM, E A DA FRENTE ESTERÇA =====
+  // A moto ANTIGA não podia: a roda dela era um corpo só com o quadro, e eu cheguei a dizer que só
+  // trocando o modelo. Esta troca é exatamente isso. Medido no arquivo novo: 322 ilhas de geometria,
+  // com as duas rodas saindo limpas como discos finos —
+  //     frente  centro x -0,454  0,448 x 0,439 x 0,064  (raio 0,220)
+  //     trás    centro x +0,483  0,389 x 0,387 x 0,059  (raio 0,194)
+  // Roda da frente maior que a de trás, como manda uma trail bike.
+  rodasQueGiram:2,
   // O bico pesa e desce um tico, como moto parada de verdade.
   pesoNaFrente:.05,
   // NEGATIVO de propósito: afunda 2 cm. `obterElevacao` é a curva analítica, mas o chão DESENHADO é
@@ -36,7 +52,9 @@ const moto=criarVeiculo({
   avisoLonge:'Chegue perto da moto para montar.',
   avisoMontar:'Moto montada — W acelera, S freia e A/D viram.',
   avisoDescer:'Você desceu da moto.',
-  aoMontar(){definirPoseVeiculo(true,ALTURA_SELIM)},// selim alto, piloto no meio
+  // Selim alto, piloto no meio da largura e RECUADO: o selim desta moto fica atrás do centro, e sem
+  // o recuo o piloto sentava em cima do guidão (ombro a 5 mm da manopla) — ver `definirPoseVeiculo`.
+  aoMontar(){definirPoseVeiculo(true,ALTURA_SELIM,0,RECUO_SELIM)},
   aoDescer(){definirPoseVeiculo(false)},
   // A animação PRECISA ser chamada aqui: quem chamava era `atualizarMovimentoJogador`, e o main pula
   // ela justamente quando se está na moto. Sem isto a pose de piloto nunca seria aplicada — o mixer

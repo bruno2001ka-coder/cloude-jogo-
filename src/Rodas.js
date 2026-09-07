@@ -82,7 +82,8 @@ function caixaDe(geo,triangulos){
 }
 
 /**
- * Acha as quatro rodas na malha fundida e as troca por peças articuladas.
+ * Acha as rodas na malha fundida e as troca por peças articuladas.
+ * `quantas` é 4 (carro) ou 2 (moto) — ver a nota sobre a linha central logo abaixo.
  * Devolve `null` quando o modelo não tem o recorte (aí o veículo segue com a malha inteira, como era).
  *
  * Cada roda vira DOIS objetos aninhados, e não um só: um GRUPO que esterça (gira em Y) e, dentro
@@ -90,7 +91,7 @@ function caixaDe(geo,triangulos){
  * evita a armadilha da ordem de Euler — a mesma que já me custou duas medidas erradas no assentamento
  * do carro. Com pai e filho, a ordem é a hierarquia, e não há convenção pra errar.
  */
-export function separarRodas(raiz){
+export function separarRodas(raiz,quantas=4){
   let malha=null;
   raiz.traverse(o=>{if(o.isMesh&&!malha)malha=o});
   if(!malha)return null;
@@ -143,14 +144,19 @@ export function separarRodas(raiz){
     const m=medir(g);
     const baixo=m.cen.y<meio.y;
     const foraDoEixoLongo=Math.abs(m.cen[eixoLongo]-meio[eixoLongo])>tam[eixoLongo]*.18;
-    const foraDoEixoLargo=Math.abs(m.cen[eixoLargo]-meio[eixoLargo])>tam[eixoLargo]*.18;
+    // ===== MOTO NÃO TEM ESQUERDA E DIREITA =====
+    // Esta era a linha que barrava a moto, e não o `porQuina.size!==4` que eu esperava: as duas rodas
+    // dela ficam EM CIMA da linha central, então `foraDoEixoLargo` reprovava as duas antes mesmo de
+    // chegar na contagem. Num carro a exigência continua valendo — é ela que separa as quinas.
+    const foraDoEixoLargo=quantas===2||Math.abs(m.cen[eixoLargo]-meio[eixoLargo])>tam[eixoLargo]*.18;
     if(!(baixo&&foraDoEixoLongo&&foraDoEixoLargo)){sobra.push(g);continue}
-    const chave=`${Math.sign(m.cen[eixoLongo]-meio[eixoLongo])}|${Math.sign(m.cen[eixoLargo]-meio[eixoLargo])}`;
+    const chave=quantas===2?`${Math.sign(m.cen[eixoLongo]-meio[eixoLongo])}`
+      :`${Math.sign(m.cen[eixoLongo]-meio[eixoLongo])}|${Math.sign(m.cen[eixoLargo]-meio[eixoLargo])}`;
     if(!porQuina.has(chave))porQuina.set(chave,[]);
     porQuina.get(chave).push(m);
     candidatas.push(m);
   }
-  if(porQuina.size!==4)return null;
+  if(porQuina.size!==quantas)return null;
 
   const quinas=new Map();
   for(const[chave,pecas]of porQuina){
@@ -210,9 +216,10 @@ export function separarRodas(raiz){
       dianteira:Number(chave.split('|')[0])<0,
     });
   }
-  // As quatro rodas de um carro giram no MESMO eixo. Se a detecção discordar entre elas, alguma peça
-  // foi lida errada — devolve null e o carro fica inteiro, que é melhor que uma roda torta girando.
-  if(new Set(rodas.map(r=>r.eixoGiro)).size!==1)return null;
+  // Todas as rodas giram no MESMO eixo, sejam duas ou quatro. Se a detecção discordar entre elas,
+  // alguma peça foi lida errada — devolve null e o veículo fica inteiro, que é melhor que uma roda
+  // torta girando.
+  if(rodas.length!==quantas||new Set(rodas.map(r=>r.eixoGiro)).size!==1)return null;
 
   // O corpo perde os triângulos das rodas: sem isso ficariam duas rodas no mesmo lugar, uma girando e
   // a outra colada na lataria.

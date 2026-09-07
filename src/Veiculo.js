@@ -66,9 +66,9 @@ export function criarVeiculo(cfg){
   // A parcela de CURVA da rolagem, guardada à parte pra poder ser amortecida sozinha, sem arrastar a
   // do terreno junto (ver o fim do `atualizar`). Só o veículo com `rolagemDoTerrenoDireta` usa.
   let inclinacaoDeCurva=0;
-  // As quatro rodas, se o modelo permitir separá-las (ver `Rodas.js`). `null` = modelo sem recorte,
-  // e aí o veículo anda como sempre andou, com a roda desenhada parada — que é o caso da moto.
-  let rodas=null,anguloDaRoda=0;
+  // As rodas, se o modelo permitir separá-las (ver `Rodas.js`). `null` = modelo sem recorte, e aí o
+  // veículo anda como sempre andou, com a roda desenhada parada.
+  let rodas=null;
 
   // ===== O CORPO PRECISA GIRAR COM O VEÍCULO =====
   // A física do jogo é AABB pura (`Physics.js`): uma caixa fixa mede sempre o mesmo nos eixos do
@@ -292,7 +292,7 @@ export function criarVeiculo(cfg){
     ajustarModelo(gltf.scene);grupo.add(gltf.scene);carregado=true;
     // DEPOIS do `ajustarModelo`: ele escala, centra e gira a raiz, e as rodas entram como filhas da
     // malha, herdando tudo isso. Separar antes daria peças na escala crua do arquivo.
-    if(cfg.rodasQueGiram)rodas=separarRodas(gltf.scene);
+    if(cfg.rodasQueGiram)rodas=separarRodas(gltf.scene,cfg.rodasQueGiram);
     assentar(player.position.x+cfg.nascePerto,player.position.z+cfg.nascePerto,0,player.position.y);
     atualizarCaixa();// já nasce sendo obstáculo: chega parado, e parado ele tem corpo
     grupo.visible=true;
@@ -473,7 +473,11 @@ export function criarVeiculo(cfg){
     // FUNDO da roda tem que andar pra TRÁS em relação ao carro — é isso que "rolar sem patinar"
     // quer dizer. Com a frente do modelo no lado negativo do eixo comprido, isso dá ângulo crescente.
     if(rodas){
-      anguloDaRoda+=distancia/Math.max(.05,rodas[0].raio);
+      // ===== CADA RODA COM O SEU RAIO =====
+      // Era um ângulo só, do `rodas[0]`, pra todas. Num carro dá no mesmo (as quatro são iguais), mas
+      // a moto tem 22 cm na frente contra 19,4 atrás — 13% de diferença, que numa roda grande ao lado
+      // de uma pequena se vê. `distância / raio` é o ângulo de quem rola SEM PATINAR, e ele depende
+      // do raio de cada uma.
       // ===== O SINAL DO ESTERÇO, DERIVADO E NÃO CHUTADO =====
       // "eu viro pra direita, as rodas vão pra esquerda, mas o carro vai na direção certa."
       //
@@ -487,7 +491,8 @@ export function criarVeiculo(cfg){
       // então o sinal local é o mesmo do mundo — não há inversão escondida no caminho.
       const esterco=-direcao*ESTERCO_VISUAL;
       for(const r of rodas){
-        r.malha.rotation[r.eixoGiro]=anguloDaRoda;
+        r.angulo=(r.angulo||0)+distancia/Math.max(.05,r.raio);
+        r.malha.rotation[r.eixoGiro]=r.angulo;
         // Só as da frente esterçam; as de trás ficam retas, como em qualquer carro.
         if(r.dianteira)r.pivo.rotation.y=esterco;
       }

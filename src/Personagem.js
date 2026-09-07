@@ -47,7 +47,7 @@ const VEL_PARADO=.35;
 
 let mixer=null,acoes=null,atual=null,raiz=null,maoOsso=null,malhaPele=null,troncoOsso=null;
 const ossos={},repouso={};
-let acaoAgachado=null;
+let acaoAgachado=null,acaoPilotando=null;
 let aNormalizar=false,alvoAltura=0,playerRef=null,aoProntoCb=null;
 // Colete 3D: o arquivo e o encaixe no corpo. Chegam em ordem imprevisível (o GLB do colete pode vir
 // antes ou depois do primeiro quadro do boneco), então o encaixe é tentado dos dois lados.
@@ -197,6 +197,17 @@ export function carregarPersonagem(player,alturaMundo,aoCarregar){
       const clip=ag.animations.find(c=>c.name==='rigify_clip')||ag.animations[0];
       if(clip){acaoAgachado=mixer.clipAction(clip);acaoAgachado.enabled=true;acaoAgachado.setLoop(THREE.LoopOnce,1);acaoAgachado.clampWhenFinished=true}
     },undefined,err=>console.warn('Quintal 3D: animação agachada não carregou.',err));
+    // ===== A ANIMAÇÃO DE PILOTAR =====
+    // O comentário do `POSE_MOTO` logo abaixo dizia que não precisava baixar um clipe de pilotar. Ele
+    // estava certo pro que existia na época — clipe genérico do Mixamo, mão fora da manopla DESTA
+    // moto. Este veio junto com a moto nova, no MESMO rig de 24 ossos do personagem (conferido: 72
+    // canais, mesmos nomes de osso do `personagem.glb`), então encaixa sem adivinhação.
+    // A pose fixada osso a osso continua no arquivo e continua sendo usada se o clipe não carregar:
+    // é ela que garante que o piloto nunca volte a aparecer de pé em cima da moto.
+    new GLTFLoader().load('assets/pilotando.glb',pi=>{
+      const clip=pi.animations.find(c=>c.name==='rigify_clip')||pi.animations[0];
+      if(clip){acaoPilotando=mixer.clipAction(clip);acaoPilotando.enabled=true;acaoPilotando.setLoop(THREE.LoopRepeat,Infinity)}
+    },undefined,err=>console.warn('Quintal 3D: animação de pilotar não carregou.',err));
     // Nasce parado: a animação de andar congelada no primeiro quadro. O GLB não traz um clipe de
     // "parado", e o primeiro quadro do passo é uma pose neutra de pé — serve como repouso.
     trocar(ANIM.andar,0);
@@ -297,20 +308,63 @@ export const POSE_MOTO={
   RightForeArm:[ .416, 0, 0],
   LeftForeArm: [ .416, 0, 0],
 };
+// ===== E OS BRAÇOS, POR CIMA DO CLIPE =====
+// O clipe de pilotar resolve o corpo todo, menos o que depende DESTA moto. Medido com o clipe rodando
+// e a manopla lida do `moto.glb` (lado 0,322 · altura 0,777 · frente -0,065):
+//     mão em [0,227 · 0,621 · -0,218]  ->  23,7 cm de erro
+// ou seja 9,5 cm estreita, 15 cm baixa e 15 cm à frente: o clipe foi feito pra guidão baixo e
+// recuado, e esta é uma trail de guidão alto. É exatamente a ressalva que o comentário do POSE_MOTO
+// já fazia sobre clipe genérico — só que agora ela custa quatro ossos em vez do corpo inteiro.
+//
+// Estes ângulos foram RESOLVIDOS contra a manopla (busca por descida de coordenada no jogo rodando,
+// `scratchpad/maonamanopla.mjs`), não ajustados no olho. Refazer a busca é obrigatório se a moto,
+// o clipe ou a meia-volta do corpo mudarem — a pose é toda relativa a eles.
+// A BUSCA LEVOU TRÊS RODADAS, E CADA ERRO ENSINOU UMA COISA:
+//  1. Mirando SÓ a distância mão-manopla ela chegou a 2,7 cm e ficou errada: braço contorcido por
+//     dentro do tronco, e na foto o piloto sumiu atrás da moto. Mesmo erro que a busca da PERNA já
+//     tinha documentado ali em cima — destino certo, forma errada. Entrou a forma: cotovelo ATRÁS da
+//     mão, PRA FORA do tronco, não acima do ombro.
+//  2. Aí os braços saíram esticados na horizontal, feito asa. A causa não era o ângulo: o piloto
+//     sentava EM CIMA do guidão (ombro a 5 mm da manopla) e não tinha pra onde esticar. Entrou o
+//     `RECUO_SELIM` na ficha da moto.
+//  3. Recuado, ele não ALCANÇAVA a ponta do guidão: braço de 24,9 cm (medido osso a osso) contra
+//     35,9 cm até a ponta. Guidão é uma BARRA — a mão pousa em qualquer ponto dela. O alvo virou o
+//     segmento, e a mão parou em 0,204 de lado, dentro da barra, que é onde este boneco alcança.
+// Resultado: 52,8 cm -> 1,1 cm de erro médio, 1,2 cm no pior instante da volta (a pose antiga, na
+// moto antiga, dava 5,3 cm). Braço: ombro 0,082 · cotovelo 0,181 · mão 0,204, com o antebraço
+// dobrado em 58°.
+export const POSE_GUIDAO={
+  RightArm:   [-2.040, 0,  .830],
+  LeftArm:    [-2.040, 0, -.830],
+  RightForeArm:[-1.010, 0, 0],
+  LeftForeArm: [-1.010, 0, 0],
+};
 // Quanto o boneco sobe do chão pro selim, em metros de jogo. O quadril de pé fica em torno de 0,48 m
 // e o selim está em 0,59: a diferença é isto, e ela é ajustada pela foto.
 // Quanto o boneco sobe do chão pro banco, em metros de jogo. O quadril de pé fica em torno de 0,48 m.
 // Cada veículo passa o seu: a moto tem selim alto (0,59) e o carro tem banco baixo, e usar um número
 // só punha a cabeça do motorista atravessando o teto de um carro de 0,80 m de altura.
 export const ALTURA_SELIM=.09;
-let poseMoto=false,baseYRaiz=null,escalaRaiz=1,alturaDoBanco=ALTURA_SELIM,ladoDoBanco=0;
+let poseMoto=false,baseYRaiz=null,escalaRaiz=1,alturaDoBanco=ALTURA_SELIM,ladoDoBanco=0,recuoDoBanco=0;
 // `altura` é onde o quadril senta; `lado` desloca o motorista pro banco (negativo = esquerda, que é
 // onde fica o volante). A moto não usa `lado`: o piloto senta no meio.
-export function definirPoseVeiculo(v,altura=ALTURA_SELIM,lado=0){
-  poseMoto=!!v;alturaDoBanco=altura;ladoDoBanco=lado;
+// `recuo` empurra o piloto PRA TRÁS (+Z é atrás; a marcha é -Z). Ele nasceu de uma medida: o ombro do
+// piloto estava em z -0,060 e a manopla em -0,065, ou seja ele sentava EM CIMA do guidão, e por isso
+// os braços tinham que abrir pro lado em vez de esticar pra frente. O selim da moto nova fica atrás
+// do centro (topo entre x +0,32 e +0,52, medido no `moto.glb`), e é pra lá que ele vai.
+export function definirPoseVeiculo(v,altura=ALTURA_SELIM,lado=0,recuo=0){
+  poseMoto=!!v;alturaDoBanco=altura;ladoDoBanco=lado;recuoDoBanco=recuo;
 }
 export function pilotando(){return poseMoto}
 const _eP=new THREE.Euler(),_qP=new THREE.Quaternion();
+// Põe um conjunto de ângulos (desvio da pose T, no espaço de cada osso) nos ossos citados.
+function aplicarAngulos(tabela){
+  for(const nome in tabela){
+    const o=ossos[nome],r=repouso[nome];if(!o||!r)continue;
+    const a=tabela[nome];
+    o.quaternion.copy(r).multiply(_qP.setFromEuler(_eP.set(a[0],a[1],a[2])));
+  }
+}
 function aplicarPoseMoto(){
   for(const nome in POSE_MOTO){
     const o=ossos[nome],r=repouso[nome];if(!o||!r)continue;
@@ -322,6 +376,28 @@ function aplicarPoseMoto(){
 
 // Chamado uma vez por quadro pelo Player. `velocidade` é o módulo da velocidade horizontal em unidades
 // de mundo por segundo; `atirando` vem do gatilho.
+// Põe o piloto no selim: altura do banco, deslocamento lateral e a meia-volta do corpo. Vale pros
+// DOIS caminhos — o clipe de pilotar e a pose fixada osso a osso — porque nenhum dos dois mexe na
+// posição da raiz, só nos ossos.
+function assentarPiloto(){
+  if(baseYRaiz!==null){
+    raiz.position.y=baseYRaiz+alturaDoBanco/escalaRaiz;
+    raiz.position.x=ladoDoBanco/escalaRaiz;
+    raiz.position.z=recuoDoBanco/escalaRaiz;
+  }
+  // ===== O PILOTO IA SENTADO DE COSTAS, E A CULPA É DE DUAS CONVENÇÕES =====
+  // O CORPO deste boneco olha pra +Z quando `player.rotation.y` é zero: quem vira o personagem a
+  // pé é `encararDirecao`, que faz `rotation.y = atan2(dirX, dirZ)` — nessa conta, ângulo zero é
+  // +Z. Já o MOVIMENTO do jogo usa `(-sen, -cos)`, em que ângulo zero é -Z. As duas convivem a pé
+  // porque `encararDirecao` recebe a direção do movimento e faz a conversão sozinha.
+  // A moto não passa por ela: ela escreve `player.rotation.y` direto como rumo de marcha. O
+  // resultado, medido com o osso `headfront`: a cara apontava pra +2° e a moto andava pra -180°,
+  // ou seja o piloto descia a rua olhando pra trás — o Bruno viu na foto.
+  // Meia-volta no boneco (e só nele) acerta sem mexer no rumo de marcha, que já está certo e
+  // testado. Também é onde o problema está: é o corpo que discorda, não a moto.
+  raiz.rotation.y=Math.PI;
+}
+
 export function atualizarAnimacaoPersonagem(dt,velocidade,atirando,agachado=false){
   if(!mixer)return;
   if(aNormalizar)normalizar();
@@ -334,6 +410,23 @@ export function atualizarAnimacaoPersonagem(dt,velocidade,atirando,agachado=fals
       acaoAgachado.paused=false;
     }else if(atual){atual.paused=true}
     mixer.update(dt);return;
+  }
+  // ===== EM CIMA DA MOTO QUEM MANDA É O CLIPE DE PILOTAR =====
+  // Entra antes da escolha de andar/correr/atirar porque nenhuma delas faz sentido sentado — e
+  // porque o clipe precisa ser a ação ATIVA antes do `mixer.update`, senão o mixer reescreveria os
+  // ossos com a caminhada logo depois.
+  if(poseMoto&&acaoPilotando){
+    if(atual!==acaoPilotando){
+      if(atual)atual.crossFadeTo(acaoPilotando,TRANSICAO,false);
+      acaoPilotando.reset();acaoPilotando.setEffectiveWeight(1);acaoPilotando.play();atual=acaoPilotando;
+    }
+    acaoPilotando.paused=false;
+    mixer.update(dt);
+    // DEPOIS do mixer, senão ele reescreve por cima: o clipe manda no corpo, a manopla manda nos
+    // braços.
+    aplicarAngulos(POSE_GUIDAO);
+    assentarPiloto();
+    return;
   }
   const parado=velocidade<VEL_PARADO;
   const correndo=velocidade>=VEL_CORRIDA;
@@ -356,23 +449,9 @@ export function atualizarAnimacaoPersonagem(dt,velocidade,atirando,agachado=fals
   // ficam no quadro congelado da caminhada, que é uma pose neutra de pé — serve de base.
   if(poseMoto){
     aplicarPoseMoto();
-    if(baseYRaiz!==null){
-      raiz.position.y=baseYRaiz+alturaDoBanco/escalaRaiz;
-      raiz.position.x=ladoDoBanco/escalaRaiz;
-    }
-    // ===== O PILOTO IA SENTADO DE COSTAS, E A CULPA É DE DUAS CONVENÇÕES =====
-    // O CORPO deste boneco olha pra +Z quando `player.rotation.y` é zero: quem vira o personagem a
-    // pé é `encararDirecao`, que faz `rotation.y = atan2(dirX, dirZ)` — nessa conta, ângulo zero é
-    // +Z. Já o MOVIMENTO do jogo usa `(-sen, -cos)`, em que ângulo zero é -Z. As duas convivem a pé
-    // porque `encararDirecao` recebe a direção do movimento e faz a conversão sozinha.
-    // A moto não passa por ela: ela escreve `player.rotation.y` direto como rumo de marcha. O
-    // resultado, medido com o osso `headfront`: a cara apontava pra +2° e a moto andava pra -180°,
-    // ou seja o piloto descia a rua olhando pra trás — o Bruno viu na foto.
-    // Meia-volta no boneco (e só nele) acerta sem mexer no rumo de marcha, que já está certo e
-    // testado. Também é onde o problema está: é o corpo que discorda, não a moto.
-    raiz.rotation.y=Math.PI;
+    assentarPiloto();
   }else{
-    if(baseYRaiz!==null&&raiz.position.y!==baseYRaiz)raiz.position.y=baseYRaiz;
+    if(baseYRaiz!==null&&raiz.position.y!==baseYRaiz){raiz.position.y=baseYRaiz;raiz.position.z=0}
     if(raiz.position.x!==0)raiz.position.x=0;
     if(raiz.rotation.y!==0)raiz.rotation.y=0;// a pé ele volta a olhar pro rumo de sempre
   }
