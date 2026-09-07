@@ -292,7 +292,9 @@ function faltaAte(de,ate){let d=ate-de;if(d<0)d+=1;return d*COMPRIMENTO_DA_ROTA}
 // DEVOLVE o ponto onde uma viatura acabou de estacionar numa ocorrência (uma vez só, no quadro da
 // chegada) ou null. Quem faz alguma coisa com isso é o `main`: é ele que sabe da polícia. Foi assim
 // que o alvo entrou, e é assim que a resposta sai — este módulo continua só dirigindo.
-let despachada=null,ocorrenciaAtendida=false;
+let despachada=null,ocorrenciaAtendida=false,alvoAtendido=null;
+// Quanto a ocorrência precisa andar pra virar OUTRA ocorrência. Canteiro não anda; jogador anda.
+const OCORRENCIA_ANDOU=12;
 // `segurar` vem do main: é a polícia dizendo "ainda tem serviço" — tem canteiro sendo batido, ou a
 // guarnição ainda está em campo voltando pro carro. Enquanto for true a despachada NÃO sai do lugar.
 export function atualizarViaturas(dt,alvo,segurar){
@@ -313,15 +315,26 @@ export function atualizarViaturas(dt,alvo,segurar){
   //    parada até concluir o serviço ou os polícias morreren". Quem sabe isso é a polícia, e chega
   //    aqui pelo `segurar`. (A versão anterior esperava 4 s e caía fora; ficava a viatura rodando
   //    tranquila enquanto a dupla dela trabalhava sozinha do outro lado do morro.)
-  if(!alvo&&!segurar){despachada=null;ocorrenciaAtendida=false}
-  else if(alvo&&!despachada&&!ocorrenciaAtendida){
+  if(!alvo&&!segurar){despachada=null;ocorrenciaAtendida=false;alvoAtendido=null}
+  // ===== A OCORRÊNCIA ANDOU: É OUTRA =====
+  // Canteiro fica onde está, mas o JOGADOR corre. Sem isto, a viatura despachada atrás dele ficava
+  // grudada pra sempre no primeiro ponto onde ele foi visto — ele já estava três quarteirões adiante
+  // e ela parada, o que é a mesma cara de "não faz nada" que este conserto veio tirar.
+  // Só solta com a guarnição RECOLHIDA (`segurar` falso): largar o carro com a dupla no chão é
+  // exatamente o defeito que o `viatura.mjs` já mediu — dupla trabalhando sozinha do outro lado do
+  // morro enquanto a viatura dela roda tranquila.
+  else if(alvo&&alvoAtendido&&!segurar&&
+          Math.hypot(alvo.x-alvoAtendido.x,alvo.z-alvoAtendido.z)>OCORRENCIA_ANDOU){
+    despachada=null;ocorrenciaAtendida=false;alvoAtendido=null;
+  }
+  if(alvo&&!despachada&&!ocorrenciaAtendida){
     const destino=uMaisPerto(alvo);
     let melhor=Infinity;
     for(const v of viaturas){
       const d=faltaAte(v.u,destino);
       if(d<melhor){melhor=d;despachada=v}
     }
-    if(despachada){despachada.destino=destino;despachada.desembarcou=false}
+    if(despachada){despachada.destino=destino;despachada.desembarcou=false;alvoAtendido={x:alvo.x,z:alvo.z}}
   }
   for(const v of viaturas){
     const atendendo=v===despachada;

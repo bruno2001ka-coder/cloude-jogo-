@@ -575,7 +575,25 @@ export function __plantacoesBatidas(){return plantacoesBatidas.map(q=>({x:q.x,z:
 // O canteiro que a polícia está batendo agora, ou null. Quem lê é a viatura: quando tem ocorrência
 // ela larga a ronda e vem. É um acessor e não o `policia` inteiro exportado de propósito — o de fora
 // só precisa saber ONDE é a treta, não mexer na máquina de estados.
-export function ocorrenciaAtual(){return policia.alvoPlantacao}
+// ===== O JOGADOR TAMBÉM É UMA OCORRÊNCIA =====
+// "melhora a polícia, ela não me para, não faz nada, fica andando o carro."
+//
+// Ele estava certo, e a causa era esta linha: a ocorrência só podia ser um CANTEIRO. O despacho
+// inteiro da viatura pendurava aqui, então o nível de procurado não chegava nela — com 5 estrelas a
+// viatura seguia a ronda. Medido antes do conserto, com ele procurado e já avistado: a viatura
+// passou a 0,2 m dele e seguiu reto, zero guarnição desembarcada.
+//
+// O ALVO É O RASTRO, e não a posição viva dele. O rastro é o que a polícia SABE pelo rádio (ver
+// `compartilharAvistamento`): eles vão onde ele foi VISTO. Perseguir a coordenada viva seria
+// teleguiado — e injusto, porque despistar deixaria de existir.
+function alvoDoJogador(){
+  if(policia.procurado<=0)return null;
+  if(!rastroValido(performance.now()/1000))return null;
+  return{x:rastro.x,z:rastro.z};
+}
+// Canteiro primeiro: batida em andamento é serviço começado, e largar no meio deixa a guarnição a pé
+// sozinha do outro lado do morro — defeito que o `viatura.mjs` já mediu uma vez.
+export function ocorrenciaAtual(){return policia.alvoPlantacao??alvoDoJogador()}
 
 // Próximo ponto da patrulha. Com PATRULHA_VIES de chance cai num disco de PATRULHA_RAIO_VIES em volta
 // de uma muda madura sorteada — o heli "está batendo aquela região", não indo na coordenada exata dela.
@@ -1472,7 +1490,8 @@ const VIATURA_EQUIPE=2;
 // viatura ficava órfã, com a dupla dela sumindo do outro lado da favela.
 let equipeDaViatura=[],pontoDaViatura=null;
 export function desembarcarDaViatura(ponto){
-  const centro=policia.alvoPlantacao??policia.alvoPlanta;
+  const centro=policia.alvoPlantacao??policia.alvoPlanta??alvoDoJogador();
+  const atrasDele=!policia.alvoPlantacao&&!policia.alvoPlanta;
   if(!ponto||!centro)return 0;
   let saiu=0;
   pontoDaViatura={x:ponto.x,z:ponto.z};
@@ -1487,7 +1506,9 @@ export function desembarcarDaViatura(ponto){
     saiu++;
   }
   policia.equipeViatura=VIATURA_EQUIPE;
-  if(saiu)mostrarAviso('🚓 A viatura parou na rua e a guarnição está subindo a pé.',3200);
+  if(saiu)mostrarAviso(atrasDele
+    ?'🚓 A viatura parou do seu lado — a guarnição desceu atrás de você.'
+    :'🚓 A viatura parou na rua e a guarnição está subindo a pé.',3200);
   return saiu;
 }
 // Ainda tem alguém da guarnição vivo e em campo? Enquanto tiver, a viatura NÃO sai do lugar.
@@ -1506,6 +1527,10 @@ export function __equipeDaViaturaParaTeste(){
 // ordem em que ele disse: enquanto tem canteiro sendo batido, ela espera; acabada a batida, ela ainda
 // espera a dupla voltar e embarcar. Se os dois morrem, `equipeEmCampo` vira falso e ela vai embora
 // sozinha — que é o segundo caso dele.
+// SEGURA a viatura no ponto enquanto há serviço. O jogador NÃO entra aqui de propósito: se entrasse,
+// `segurar` ficaria true o tempo todo em que ele estivesse procurado, e a viatura ficaria colada pra
+// sempre no primeiro ponto onde ele foi visto — sem poder ser redespachada quando ele fosse avistado
+// de novo três quarteirões adiante. Quem cuida disso é o "a ocorrência andou" no `Viatura.js`.
 export function viaturaEsperando(){return !!policia.alvoPlantacao||equipeEmCampo()}
 // Serviço concluído: manda a dupla de volta pro carro. Não é a base — é a porta da viatura, no ponto
 // exato onde ela parou e onde ela continua parada esperando.
