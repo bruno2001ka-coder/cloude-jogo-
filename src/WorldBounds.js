@@ -5,7 +5,8 @@
 // futura sem obrigar o renderizador a duplicar casas, NPCs ou colisores neste commit.
 export const MAP_HALF_SIZE=260;
 export const MAP_SIZE=MAP_HALF_SIZE*2;
-export const MAP_EDGE_MARGIN=.6;
+// A barreira fica fora do terreno; esta margem mínima só preserva a hitbox na quina.
+export const MAP_EDGE_MARGIN=.12;
 export const PLAYER_LIMIT=MAP_HALF_SIZE-MAP_EDGE_MARGIN;
 
 // A grade de colisão cobre o terreno e uma pequena folga. A célula é mantida em 2 m porque

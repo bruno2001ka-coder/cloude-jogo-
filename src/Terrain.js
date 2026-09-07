@@ -105,10 +105,11 @@ function criarBorda(largura,profundidade,x,z,categoria){
     new THREE.Vector3(x+largura/2,BORDA_BASE+BORDA_ALTURA,z+profundidade/2)),categoria);
   mapaBordas.push(mesh);
 }
-// O centro fica 0,5 m para dentro da linha matemática do terreno: a parede fecha qualquer fresta,
-// mas continua fora da área útil do jogador, que para 0,6 m antes da borda.
-criarBorda(BORDA_ESPESSURA,MAP_SIZE,MAP_HALF_SIZE-.5,0,'borda-leste');
-criarBorda(BORDA_ESPESSURA,MAP_SIZE,-MAP_HALF_SIZE+.5,0,'borda-oeste');
-criarBorda(MAP_SIZE-2*BORDA_ESPESSURA,BORDA_ESPESSURA,0,MAP_HALF_SIZE-.5,'borda-sul');
-criarBorda(MAP_SIZE-2*BORDA_ESPESSURA,BORDA_ESPESSURA,0,-MAP_HALF_SIZE+.5,'borda-norte');
+// A parede começa exatamente depois de ±260 m. Ela fecha o cenário sem se projetar para dentro
+// do terreno; o jogador pode chegar praticamente até a última faixa de chão.
+const BORDA_FORA=MAP_HALF_SIZE+BORDA_ESPESSURA/2;
+criarBorda(BORDA_ESPESSURA,MAP_SIZE,BORDA_FORA,0,'borda-leste');
+criarBorda(BORDA_ESPESSURA,MAP_SIZE,-BORDA_FORA,0,'borda-oeste');
+criarBorda(MAP_SIZE-2*BORDA_ESPESSURA,BORDA_ESPESSURA,0,BORDA_FORA,'borda-sul');
+criarBorda(MAP_SIZE-2*BORDA_ESPESSURA,BORDA_ESPESSURA,0,-BORDA_FORA,'borda-norte');
 export{mapaBordas};
