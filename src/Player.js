@@ -174,7 +174,23 @@ export function zonasDeAcertoJogador(){
 
 // Encontra a superfície andável (laje/degrau) ou o terreno mais alto logo abaixo de um ponto X/Z.
 const raycasterVertical=new THREE.Raycaster();const direcaoBaixo=new THREE.Vector3(0,-1,0);const origemVertical=new THREE.Vector3();
-function encontrarSuperficieAbaixo(x,z,yOrigem){origemVertical.set(x,yOrigem,z);raycasterVertical.set(origemVertical,direcaoBaixo);const terrenoY=obterElevacao(x,z);const hits=raycasterVertical.intersectObjects(superficiesAndaveis,true);const suporte=hits.find(hit=>hit.point.y>=terrenoY-.35);let alvo=suporte?Math.max(suporte.point.y,terrenoY):terrenoY;
+// ===== A MESMA CONSULTA SERVE PRO VEÍCULO =====
+// Exportada porque o carro precisa EXATAMENTE disto e não tinha: o `assentar` do Veiculo.js só
+// conhecia o terreno, então no escadão, no piso do esconderijo e no chão do hospital o carro afundava
+// até o nível do morro enquanto o jogador a pé andava por cima. ("no hospital ele entra pra dentro")
+// Compartilhar em vez de copiar: duas versões da mesma pergunta divergem no primeiro ajuste.
+//
+// Devolve o ponto mais alto de superfície andável abaixo de `yOrigem`, ou `null` se não houver
+// nenhuma acima de `pisoMinimo` — que é o corte que impede o raio de agarrar uma laje muito abaixo,
+// num vão, e teleportar quem está em cima.
+export function topoAndavelAbaixo(x,z,yOrigem,pisoMinimo){
+  origemVertical.set(x,yOrigem,z);
+  raycasterVertical.set(origemVertical,direcaoBaixo);
+  const hits=raycasterVertical.intersectObjects(superficiesAndaveis,true);
+  const suporte=hits.find(hit=>hit.point.y>=pisoMinimo);
+  return suporte?suporte.point.y:null;
+}
+function encontrarSuperficieAbaixo(x,z,yOrigem){const terrenoY=obterElevacao(x,z);const suporte=topoAndavelAbaixo(x,z,yOrigem,terrenoY-.35);let alvo=suporte!==null?Math.max(suporte,terrenoY):terrenoY;
   // Trava também contra o topo de paredes/muretas sólidas sob o jogador: sem isso, caindo perto da
   // borda de um telhado (fora do alcance de qualquer laje/degrau registrado) o jogador atravessava
   // reto o volume da parede e aparecia "dentro" da casa em vez de pousar em cima dela.

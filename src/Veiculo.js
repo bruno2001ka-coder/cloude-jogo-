@@ -14,10 +14,11 @@
 // entre eles — e o que custou caro pra descobrir — mora aqui.
 import*as THREE from'three';
 import{GLTFLoader}from'three/addons/loaders/GLTFLoader.js';
-import{player}from'./Player.js';
+import{player,topoAndavelAbaixo}from'./Player.js';
 import{scene}from'./core.js';
 import{obterElevacao,alturaDoChaoDesenhado}from'./Terrain.js';
 import{separarRodas}from'./Rodas.js';
+import{levanteContraQuina,PASSO_DA_FITA}from'./Favela.js';
 import{colideObstaculoXZ,registrarCaixa,marcarObstaculoMovel,buscarPosicaoLivre}from'./Physics.js';
 import{PLAYER_LIMIT}from'./WorldBounds.js';
 
@@ -135,10 +136,68 @@ export function criarVeiculo(cfg){
   //     em cruz : mediana 3,1 cm · 90% 5,8 · 99% 8,7 · PIOR 12,7 · 16,9% acima de 5 cm
   //     nas quinas: mediana 2,8 cm · 90% 4,7 · 99% 6,9 · PIOR 9,8 ·  7,7% acima de 5 cm
   // Um pneu tem 33 cm: 12,7 cm de folga é um terço de roda no ar.
+  // ===== ONDE O PNEU APOIA: O MAIS ALTO DE TRÊS COISAS =====
+  // Isto respondia só a primeira, e as outras duas eram as queixas dele:
+  //
+  //  1. O CHÃO DESENHADO. A malha do terreno, que é o que a placa de vídeo mostra.
+  //  2. A FITA DA RUA. Ela não assenta no terreno cru: sobe pelas quinas do chão pra o morro não
+  //     furar o asfalto (ver `levanteContraQuina` no Favela.js), até uns 4,5 cm. O veículo apoiava no
+  //     terreno cru — ou seja, ABAIXO do asfalto que ele vê. "no asfalto tem vários lugares que ele
+  //     entra dentro." A mesma regra da fita, aplicada aqui, faz os dois concordarem por construção.
+  //     Fora da rua ela vale zero em chão plano e uns centímetros na quina, que não se vê.
+  //  3. A SUPERFÍCIE ANDÁVEL. Escadão, laje, piso de esconderijo, chão de hospital — tudo que o
+  //     jogador a pé pisa e o carro atravessava como se não existisse. "no hospital ele entra pra
+  //     dentro." É a MESMA consulta do jogador (`topoAndavelAbaixo`), compartilhada e não copiada.
+  //
+  // O RAIO COMEÇA LOGO ACIMA DO VEÍCULO, e não numa altura fixa. Fixa alta agarraria a laje sob a
+  // qual ele está passando e o teleportaria pro telhado; a altura atual dele é a referência certa,
+  // porque subir rampa é gradual. `ALCANCE_APOIO` é a folga pra ele conseguir SUBIR num degrau.
+  // ===== A ORIGEM DO RAIO NÃO PODE SER A ALTURA DO PRÓPRIO CARRO =====
+  // A primeira versão usava `max(grupo.position.y, chao) + alcance`, e isso é uma CATRACA: perto de
+  // um degrau, uma quina agarra a laje, o corpo inteiro sobe um pouco, a origem do raio sobe junto,
+  // e no quadro seguinte mais quinas alcançam — o carro vai escalando sozinho. Medido na varredura
+  // do morro: p99 de 7,3 cm de folga, mas um extremo de 45 cm, que é o carro escalado meio degrau.
+  //
+  // A referência certa é o APOIO DAQUELA QUINA no quadro anterior, guardado por quina. Ele acompanha
+  // a superfície (subir rampa continua funcionando, degrau por degrau) sem realimentar a inclinação
+  // do corpo, que é o que fechava o laço.
+  //
+  // E o alcance caiu de 70 pra 35 cm: é a guia que um carro sobe de verdade. Com 70 ele montava em
+  // qualquer mureta que passasse perto.
+  // ===== E A MEMÓRIA PRECISA DE TETO, SENÃO ELA ENVELHECE =====
+  // Só a memória por quina não bastava: ela nunca descia sozinha. Numa queda rápida — ou na
+  // varredura do teste, que TELEPORTA o veículo — a quina continuava com a altura do lugar
+  // ANTERIOR, o raio partia de lá de cima, e agarrava uma laje metros acima do veículo. Medido em
+  // (-30,-15): terreno a 7,22 m, laje a 10,11 m, e a moto pendurada no meio, a 9,33 m. E a altura
+  // mudava conforme o RUMO testado antes — assinatura de memória velha, não de geometria.
+  //
+  // O teto NÃO pode ser a altura do próprio veículo. Tentei, e é o mesmo laço de sempre com outra
+  // roupa: corpo alto deixa o teto alto, o teto alto agarra a laje de novo, e o corpo nunca desce.
+  // Ficou na medição: a moto MONTADA parada a 5,32 m com o piloto a 2,73 — dois metros e meio acima
+  // de quem estava pilotando.
+  //
+  // O teto é a altura de QUEM MANDA na posição, que é a mesma referência que já decide o x,z: o
+  // piloto quando alguém está montado, o próprio veículo quando está estacionado (aí não há mais
+  // ninguém pra discordar). O piloto tem a lógica de chão dele, que já resolve laje e escadão — e
+  // com isso o veículo não tem como ficar num andar diferente do motorista.
+  // Como entra por `Math.min`, só ENCURTA o alcance: nunca devolve a escalada que a memória por
+  // quina resolveu.
+  const ALCANCE_APOIO=.35;
+  const _apoioAnterior=[-Infinity,-Infinity,-Infinity,-Infinity];
+  let _tetoApoio=0;
+  function alturaDeApoio(x,z,quina){
+    const chao=levanteContraQuina(x,z,PASSO_DA_FITA);
+    const base=Math.min(Math.max(_apoioAnterior[quina],chao),_tetoApoio);
+    const sup=topoAndavelAbaixo(x,z,base+ALCANCE_APOIO,chao-.35);
+    const apoio=sup!==null&&sup>chao?sup:chao;
+    _apoioAnterior[quina]=apoio;
+    return apoio;
+  }
   const _quinas=[[1,-1],[-1,-1],[1,1],[-1,1]];// (lado, frente/trás) em unidades de meiaBitola/entreEixos
   const _alt=[0,0,0,0];
   const _eulerQuina=new THREE.Euler(),_quatQuina=new THREE.Quaternion(),_vetQuina=new THREE.Vector3();
-  function assentar(x,z,rumo){
+  function assentar(x,z,rumo,refY){
+    _tetoApoio=refY;
     const cy=Math.cos(rumo),sy=Math.sin(rumo);
     // ===== UMA PASSADA SÓ, E ISSO FOI MEDIDO =====
     // Tentei refinar: amostrar as quinas no plano, ajustar, e reamostrar ONDE as rodas ficam depois de
@@ -150,7 +209,7 @@ export function criarVeiculo(cfg){
     // fiel ao que acontece de verdade — o corpo é que pivota, a roda fica onde está.
     for(let i=0;i<4;i++){
       const lx=_quinas[i][0]*cfg.meiaBitola,lz=_quinas[i][1]*cfg.entreEixos;
-      _alt[i]=alturaDoChaoDesenhado(x+lx*cy+lz*sy,z-lx*sy+lz*cy);
+      _alt[i]=alturaDeApoio(x+lx*cy+lz*sy,z-lx*sy+lz*cy,i);
     }
     const[DD,DE,TD,TE]=_alt;
     // Plano de mínimos quadrados por cima das quatro: num retângulo isso é exatamente a média de cada
@@ -234,7 +293,7 @@ export function criarVeiculo(cfg){
     // DEPOIS do `ajustarModelo`: ele escala, centra e gira a raiz, e as rodas entram como filhas da
     // malha, herdando tudo isso. Separar antes daria peças na escala crua do arquivo.
     if(cfg.rodasQueGiram)rodas=separarRodas(gltf.scene);
-    assentar(player.position.x+cfg.nascePerto,player.position.z+cfg.nascePerto,0);
+    assentar(player.position.x+cfg.nascePerto,player.position.z+cfg.nascePerto,0,player.position.y);
     atualizarCaixa();// já nasce sendo obstáculo: chega parado, e parado ele tem corpo
     grupo.visible=true;
   },undefined,err=>console.warn(`Quintal 3D: ${cfg.nome} não carregou`,err));
@@ -350,7 +409,7 @@ export function criarVeiculo(cfg){
       // Sem motorista não há inclinação de CURVA (não há curva), mas a do CHÃO continua existindo —
       // são coisas diferentes, e foi somá-las numa variável só que deixou a segunda ser apagada com
       // a primeira.
-      grupo.rotation.z=assentar(grupo.position.x,grupo.position.z,grupo.rotation.y);
+      grupo.rotation.z=assentar(grupo.position.x,grupo.position.z,grupo.rotation.y,grupo.position.y);
       atualizarCaixa();
       return false;
     }
@@ -434,7 +493,7 @@ export function criarVeiculo(cfg){
       }
     }
 
-    const rolamentoDoChao=assentar(player.position.x,player.position.z,player.rotation.y);
+    const rolamentoDoChao=assentar(player.position.x,player.position.z,player.rotation.y,player.position.y);
     // Inclinação de curva, visual, sem alterar a colisão. Somada ao rolamento do terreno: numa encosta
     // de través o veículo tomba pro lado de baixo, e é isso que mantém as rodas no chão.
     const inclinacao=direcao*rapidez*cfg.inclinacaoNaCurva;

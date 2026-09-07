@@ -1240,6 +1240,10 @@ const COR_TERRA=new THREE.Color(0x9a8259);
 // INTEIRO tem 78 mil triângulos). 0,60 m é onde a curva ainda paga — corta o furo pela metade por
 // 3 mil triângulos — e o resto fica pra folga de 2 mm mais o `polygonOffset` do material.
 const PASSO_LARGURA=.6;
+// Exportado junto com o passo: o VEÍCULO precisa apoiar na mesma altura em que a fita da rua foi
+// assentada, senão a roda apoia no terreno cru e afunda no asfalto ("no asfalto tem vários lugares
+// que ele entra dentro"). Ver `alturaDeApoio` no Veiculo.js.
+export const PASSO_DA_FITA=PASSO_LARGURA;
 // ===== QUANTO ESTE VÉRTICE PRECISA SUBIR PRA CORDA NÃO PASSAR POR DENTRO DO CHÃO =====
 // A primeira tentativa aqui foi pegar o PONTO MAIS ALTO da vizinhança. Errado, e o teste mostrou na
 // hora: a via principal sobe o morro, e numa rampa o ponto mais alto a 30 cm de distância está 30 cm
@@ -1259,7 +1263,7 @@ const PASSO_LARGURA=.6;
 // de 4,2 cm: a corda que precisa ser coberta vai de um vértice ATÉ O OUTRO, e o meio do caminho — que
 // é onde a barriga é maior — ficava fora do alcance da sonda.
 const DIRECOES_QUINA=[[1,0],[0,1],[1,1],[1,-1]];
-function levanteContraQuina(x,z,r){
+export function levanteContraQuina(x,z,r){
   const h0=alturaDoChaoDesenhado(x,z);
   let levante=0;
   for(const[ux,uz]of DIRECOES_QUINA)for(const s of[1,-1]){
