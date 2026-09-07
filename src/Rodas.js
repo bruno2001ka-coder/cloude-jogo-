@@ -107,53 +107,113 @@ export function separarRodas(raiz){
   const eixoLongo=tam.x>=tam.z?'x':'z';
   const eixoLargo=eixoLongo==='x'?'z':'x';
 
-  // Candidatas a roda: ilhas na METADE DE BAIXO e afastadas do eixo central nos dois sentidos.
-  // Retrovisor e antena ficam em cima e caem fora sozinhos.
-  const quinas=new Map();
+  // ===== UMA RODA É UM DISCO, E É ISSO QUE PRECISA SER CHECADO =====
+  // A primeira versão juntava, em cada quina, TODA ilha que estivesse na metade de baixo e longe dos
+  // dois eixos centrais. Regra gulosa: ela engolia para-lama, braço de suspensão, ponteira de
+  // escapamento — qualquer peça pequena que morasse por ali.
+  //
+  // O Bruno viu na hora, e o número confirma. Medindo as quatro rodas montadas assim:
+  //     0,594 x 0,363 x 0,228  <- inchada
+  //     0,530 x 0,447 x 0,233  <- inchada
+  //     0,370 x 0,364 x 0,162  <- a única certa
+  //     0,532 x 0,448 x 0,243  <- inchada
+  // Girando, as três inchadas arrastam a peça vizinha junto e saem do lugar. "só uma roda que saiu
+  // certo girando no eixo."
+  //
+  // Agora: em cada quina, a MAIOR ilha é o pneu, e só entram com ele as peças CONCÊNTRICAS de raio
+  // parecido — o que aceita a calota (que é exatamente isso) e recusa o resto. Braço de suspensão não
+  // é concêntrico com o pneu; para-lama é muito maior; parafuso é muito menor.
+  const RAZAO_DISCO=1.35;  // um disco tem os dois maiores lados parecidos
+  const CONCENTRICO=.30;   // desvio máximo do centro, em fração do raio do pneu
+  const RAIO_PARECIDO=1.15;// a calota tem quase o raio do pneu; o resto, não
+
+  const medir=g=>{
+    const c=caixaDe(geo,g),cen=new THREE.Vector3(),t=new THREE.Vector3();
+    c.getCenter(cen);c.getSize(t);
+    const lados=[['x',t.x],['y',t.y],['z',t.z]].sort((a,b)=>a[1]-b[1]);
+    return{tris:g,cen,t,eixo:lados[0][0],raio:lados[2][1]/2,razao:lados[2][1]/(lados[1][1]||1e-6)};
+  };
+
+  const porQuina=new Map();
   const sobra=[];
   const maior=grupos.reduce((a,b)=>a.length>=b.length?a:b);
+  const candidatas=[];
   for(const g of grupos){
     if(g===maior||g.length<MIN_VERTICES){sobra.push(g);continue}
-    const c=caixaDe(geo,g),cen=new THREE.Vector3();c.getCenter(cen);
-    const baixo=cen.y<meio.y;
-    const foraDoEixoLongo=Math.abs(cen[eixoLongo]-meio[eixoLongo])>tam[eixoLongo]*.18;
-    const foraDoEixoLargo=Math.abs(cen[eixoLargo]-meio[eixoLargo])>tam[eixoLargo]*.18;
+    const m=medir(g);
+    const baixo=m.cen.y<meio.y;
+    const foraDoEixoLongo=Math.abs(m.cen[eixoLongo]-meio[eixoLongo])>tam[eixoLongo]*.18;
+    const foraDoEixoLargo=Math.abs(m.cen[eixoLargo]-meio[eixoLargo])>tam[eixoLargo]*.18;
     if(!(baixo&&foraDoEixoLongo&&foraDoEixoLargo)){sobra.push(g);continue}
-    const chave=`${Math.sign(cen[eixoLongo]-meio[eixoLongo])}|${Math.sign(cen[eixoLargo]-meio[eixoLargo])}`;
-    if(!quinas.has(chave))quinas.set(chave,[]);
-    quinas.get(chave).push(...g);// pneu e calota da mesma quina viram UMA roda
+    const chave=`${Math.sign(m.cen[eixoLongo]-meio[eixoLongo])}|${Math.sign(m.cen[eixoLargo]-meio[eixoLargo])}`;
+    if(!porQuina.has(chave))porQuina.set(chave,[]);
+    porQuina.get(chave).push(m);
+    candidatas.push(m);
   }
-  if(quinas.size!==4)return null;
+  if(porQuina.size!==4)return null;
+
+  const quinas=new Map();
+  for(const[chave,pecas]of porQuina){
+    // O pneu é a maior peça da quina, e tem que PARECER disco. Se não parecer, o modelo não é o que
+    // este código sabe recortar — melhor devolver null e deixar o carro inteiro do que entregar uma
+    // roda torta girando.
+    const pneu=pecas.reduce((a,b)=>a.tris.length>=b.tris.length?a:b);
+    if(pneu.razao>RAZAO_DISCO)return null;
+    const eixo=pneu.eixo;
+    // Distância entre centros MEDIDA NO PLANO DO DISCO: ao longo do eixo do pneu a calota fica
+    // deslocada de propósito (ela mora na face de fora), e isso não desalinha nada — girar em torno
+    // de um eixo não depende de onde se está AO LONGO dele.
+    const noPlano=(a,b)=>{
+      let d=0;
+      for(const k of['x','y','z'])if(k!==eixo)d+=(a[k]-b[k])**2;
+      return Math.sqrt(d);
+    };
+    const juntas=[];
+    for(const q of pecas){
+      if(q===pneu){juntas.push(...q.tris);continue}
+      if(q.eixo!==eixo)continue;                                   // peça deitada noutro sentido
+      if(q.raio>pneu.raio*RAIO_PARECIDO)continue;                  // grande demais pra ser calota
+      if(noPlano(q.cen,pneu.cen)>pneu.raio*CONCENTRICO)continue;   // não é concêntrica
+      juntas.push(...q.tris);
+    }
+    // O que não entrou volta pro corpo: para-lama e suspensão continuam parados, onde devem ficar.
+    for(const q of pecas)if(!juntas.includes(q.tris[0]))sobra.push(q.tris);
+    quinas.set(chave,{tris:juntas,eixo,pneu});
+  }
 
   // A FRENTE do modelo é o lado NEGATIVO do eixo longo: o `giroDoModelo` do veículo leva -X pra -Z,
   // que é a frente do jogo (medido em foto: a câmera em -Z vê a grade e os faróis).
   const rodas=[];
-  for(const[chave,tris]of quinas){
-    const c=caixaDe(geo,tris),cen=new THREE.Vector3(),t=new THREE.Vector3();
-    c.getCenter(cen);c.getSize(t);
+  for(const[chave,roda]of quinas){
+    const{tris,eixo,pneu}=roda;
+    // ===== O PIVÔ SAI DO PNEU, NÃO DO CONJUNTO =====
+    // No plano do disco o centro tem que ser o do PNEU: é ele que rola. A calota é concêntrica, então
+    // não muda nada ali — mas se um dia entrar uma peça levemente descentrada, usar o pneu impede que
+    // ela puxe o eixo de rotação pra fora do lugar.
+    // AO LONGO do eixo, tanto faz: girar em torno de uma reta não depende de onde se está nela.
+    const c=caixaDe(geo,tris),cen=new THREE.Vector3();c.getCenter(cen);
+    for(const k of['x','y','z'])if(k!==eixo)cen[k]=pneu.cen[k];
     const pivo=new THREE.Group();
     pivo.position.copy(cen);
     const m=new THREE.Mesh(recortar(geo,tris,cen),malha.material);
     m.castShadow=true;m.receiveShadow=true;
     pivo.add(m);
     malha.add(pivo);// entra no MESMO referencial da malha original, então herda escala e giro dela
-    // O EIXO DO PNEU É A DIMENSÃO MAIS FINA. Um pneu é um disco: redondo em dois eixos e chato no
-    // terceiro, e o chato é o eixo. Descobrir assim, em vez de fixar 'z', é o que faz isto funcionar
-    // com qualquer modelo — o Meshy exporta em orientações diferentes conforme o prompt.
-    const lados=[['x',t.x],['y',t.y],['z',t.z]].sort((a,b)=>a[1]-b[1]);
-    const eixoGiro=lados[0][0];          // o mais fino
     // ===== O RAIO SAI EM METROS, NÃO EM UNIDADES DO ARQUIVO =====
     // A geometria continua na escala CRUA do .glb; quem encolhe pro tamanho do jogo é a escala da
     // raiz, posta pelo `ajustarModelo`. O giro da roda é `distância / raio`, e a distância vem em
     // metros de mundo — misturar as duas dava uma roda girando na proporção errada (medido: o pneu
     // parecia ter 48 cm de raio num carro de 1,97 m, quando tem 18).
     const escala=new THREE.Vector3();m.getWorldScale(escala);
-    const raio=lados[2][1]/2*escala.x;
     rodas.push({
-      pivo,malha:m,eixoGiro,raio,
+      pivo,malha:m,eixoGiro:eixo,raio:pneu.raio*escala.x,
       dianteira:Number(chave.split('|')[0])<0,
     });
   }
+  // As quatro rodas de um carro giram no MESMO eixo. Se a detecção discordar entre elas, alguma peça
+  // foi lida errada — devolve null e o carro fica inteiro, que é melhor que uma roda torta girando.
+  if(new Set(rodas.map(r=>r.eixoGiro)).size!==1)return null;
+
   // O corpo perde os triângulos das rodas: sem isso ficariam duas rodas no mesmo lugar, uma girando e
   // a outra colada na lataria.
   const doCorpo=[];
