@@ -28,12 +28,34 @@ initDragLook(renderer.domElement);
 
 const droneBtn=document.getElementById('droneBtn');
 droneBtn.addEventListener('click',()=>alternarDrone(player.position,inputState));
+
+// ===== O MENU =====
+// "crie um menu, para esconder o drone e as configurações de HUD."
+// Drone, editor de HUD e DEBUG não são botões de jogo — são ferramentas, e estavam ocupando canto bom
+// da tela o tempo todo. Agora moram atrás do ☰. O painel fecha ao escolher qualquer coisa (menu que
+// fica aberto por cima do jogo é menu atrapalhando) e ao tocar fora dele.
+{
+  const menuBtn=document.getElementById('menuBtn'),menuPanel=document.getElementById('menuPanel');
+  if(menuBtn&&menuPanel){
+    const fechar=()=>{menuPanel.classList.remove('open');menuBtn.classList.remove('on')};
+    menuBtn.addEventListener('click',e=>{
+      e.stopPropagation();
+      const abrindo=!menuPanel.classList.contains('open');
+      menuPanel.classList.toggle('open',abrindo);menuBtn.classList.toggle('on',abrindo);
+    });
+    menuPanel.addEventListener('click',e=>{if(e.target.closest('button'))fechar()});
+    // `pointerdown` na captura: fecha antes de o toque virar clique em qualquer outra coisa.
+    addEventListener('pointerdown',e=>{
+      if(!menuPanel.contains(e.target)&&e.target!==menuBtn)fechar();
+    },true);
+  }
+}
 document.getElementById('destravarBtn').addEventListener('click',()=>destravarJogador(true));
 
 // Marca de versão na tela inicial. Existe por um motivo prático: quando uma novidade "não aparece",
 // a primeira pergunta é se o navegador está servindo o build novo ou um cache velho — e sem isso não
 // há como responder olhando a tela. O segundo campo diz se o boneco 3D entrou.
-const VERSAO_JOGO='2026-09-07-olhovivo';
+const VERSAO_JOGO='2026-09-07-gps';
 {const el=document.getElementById('versaoJogo');
  if(el){el.textContent=`versão ${VERSAO_JOGO} · boneco 3D: carregando…`;
    const marcar=()=>{el.textContent=`versão ${VERSAO_JOGO} · boneco 3D: ${personagemCarregado()?'ok':'não carregou'}`};

@@ -49,6 +49,7 @@ export function criarVeiculo(cfg){
   // Em 'YXZ' o giro vem primeiro e a inclinação acontece nos eixos DELE.
   grupo.rotation.order='YXZ';
   let montado=false,carregado=false,velocidade=0;
+  let botaoVisivel=null;// null = ainda não decidido, pra o primeiro quadro sempre escrever
 
   // ===== O CORPO PRECISA GIRAR COM O VEÍCULO =====
   // A física do jogo é AABB pura (`Physics.js`): uma caixa fixa mede sempre o mesmo nos eixos do
@@ -159,9 +160,17 @@ export function criarVeiculo(cfg){
     }
   }
 
+  // ===== O BOTÃO SÓ EXISTE QUANDO SERVE PRA ALGUMA COISA =====
+  // "os botão de carro e moto devem aparecer só quando estiver perto do veículo."
+  // Eram dois botões fixos no meio da tela, o tempo todo, ocupando o espaço bom do polegar — e a
+  // única coisa que faziam longe do veículo era responder "você está longe". Agora aparecem quando
+  // dá pra usar: perto o bastante pra montar, ou já dirigindo (aí ele é o botão de DESCER).
+  // `raioMontar` é a MESMA distância que o `alternar` cobra, então o botão nunca aparece mentindo.
   function atualizarBotao(){
     const b=document.getElementById(cfg.botaoId);
-    if(b)b.textContent=montado?cfg.rotuloSair:cfg.rotuloEntrar;
+    if(!b)return;
+    b.textContent=montado?cfg.rotuloSair:cfg.rotuloEntrar;
+    b.hidden=!(montado||(carregado&&perto()));
   }
 
   function alternar(){
@@ -198,6 +207,10 @@ export function criarVeiculo(cfg){
 
   function atualizar(dt,keys,joyX=0,joyY=0){
     if(!carregado)return montado;
+    // Mostrar/esconder o botão é decisão de QUADRO (o jogador anda, a distância muda), mas escrever
+    // no DOM 60 vezes por segundo pra dizer a mesma coisa não é. Só toca quando VIRA.
+    const deveAparecer=montado||perto();
+    if(deveAparecer!==botaoVisivel){botaoVisivel=deveAparecer;atualizarBotao()}
     if(!montado){
       // PARADO TAMBÉM PRECISA DE QUADRO. Sem isto o veículo largado fica com a pose do instante em
       // que foi solto — nivelado, mesmo num barranco. E é parado que ele tem colisor, então é aqui

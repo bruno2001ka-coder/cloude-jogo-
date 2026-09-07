@@ -6,67 +6,185 @@ import{obstaculos,superficiesAndaveis,contarColisores}from'./Physics.js';
 import{casasPos,refugios,BAR,BIQUEIRA,clienteLaje}from'./WorldGenerator.js';
 import{plantas,lojaPos,receptadorPos,fazendaPos,armasPos}from'./Economy.js';
 import{POLOS}from'./Poles.js';
+import{corredores}from'./Favela.js';
 import{npcs}from'./NPCs.js';
 import{ALT_CANO,ALT_TORSO}from'./Combate.js';
 import{amostrarCelulasBloqueadas}from'./NavMesh.js';
 import{heli,policiais,policia,__estadoDeCombate as estadoDeCombate}from'./Police.js';
 
-// ===== RADAR (minimapa estilo GTA): canvas 2D separado, não usa o pipeline WebGL — custo desprezível por frame.
+// ===== O GPS =====
+// O Bruno pediu "mais profissional e funcional possível", com "abreviação de cada nome em cada lugar
+// igual no GTA San Andreas". O que existia era um disco preto com bolinhas coloridas: dava pra saber
+// que TEM alguma coisa ali, nunca O QUE é. A legenda morava numa linha de texto embaixo da tela
+// ("🔵 sementes · 🟠 armas · ...") que ninguém lê no meio de uma fuga.
+//
+// Quatro coisas mudaram, e cada uma responde a uma pergunta que o jogador faz olhando pro canto:
+//   1. AS RUAS SÃO DESENHADAS. `corredores` (Favela.js) já tem cada via e cada beco com a largura
+//      real que foi usada pra pendurar as casas. Desenhar isso é a diferença entre um mapa e um
+//      monte de pontos: dá pra ver PARA ONDE dá pra correr, não só onde estão as coisas.
+//   2. CADA MARCA TEM SIGLA. DP, ARM, REC, MERC, BIQ — do lado do ponto, com contorno escuro pra ler
+//      em cima de qualquer fundo. É o pedido dele, e é o que tira a dependência da legenda.
+//   3. NORTE FIXO. O radar não gira (só a seta do jogador gira), então o N fica cravado em cima —
+//      é o que faz "está ao norte" querer dizer alguma coisa.
+//   4. QUEM ESTÁ FORA DO ALCANCE GRUDA NA BORDA COM A DISTÂNCIA EM METROS. Antes grudava sem número:
+//      o jogador via que a Loja de Armas era "pra lá", sem ideia se era 50 m ou 300.
 const radarCanvas=document.getElementById('radar'),radarCtx=radarCanvas.getContext('2d');
 const RADAR_TAM=130,RADAR_DPR=Math.min(devicePixelRatio||1,2);
 radarCanvas.width=RADAR_TAM*RADAR_DPR;radarCanvas.height=RADAR_TAM*RADAR_DPR;radarCtx.scale(RADAR_DPR,RADAR_DPR);
 const RADAR_ALCANCE=45;// metros de mundo visíveis do centro até a borda
-// sempreVisivel: quando o ponto está fora do alcance, gruda na borda do radar apontando a direção (tipo waypoint de GTA),
-// em vez de simplesmente sumir — sem isso o Esconderijo (bem isolado) nunca aparecia se o jogador estivesse longe dele.
-function desenharPontoRadar(x,z,cor,raio,sempreVisivel){
-  const cx=RADAR_TAM/2,cy=RADAR_TAM/2,escala=(RADAR_TAM/2-6)/RADAR_ALCANCE;
-  let dx=(x-player.position.x)*escala,dz=(z-player.position.z)*escala;
-  const dist=Math.hypot(dx,dz),limite=RADAR_TAM/2-8;
-  if(dist>limite){
-    if(!sempreVisivel)return;
-    const fator=limite/dist;dx*=fator;dz*=fator;
-    radarCtx.strokeStyle=cor;radarCtx.lineWidth=2;radarCtx.beginPath();radarCtx.arc(cx+dx,cy+dz,raio+2,0,Math.PI*2);radarCtx.stroke();
-  }
-  radarCtx.fillStyle=cor;radarCtx.beginPath();radarCtx.arc(cx+dx,cy+dz,raio,0,Math.PI*2);radarCtx.fill();
+const RADAR_CX=RADAR_TAM/2,RADAR_CY=RADAR_TAM/2;
+const RADAR_ESCALA=(RADAR_TAM/2-6)/RADAR_ALCANCE;
+const RADAR_LIMITE=RADAR_TAM/2-8;
+
+// ===== AS RUAS, AMOSTRADAS UMA VEZ SÓ =====
+// `corredores` é {curva, meia} por via e por beco. Reamostrar as curvas a cada quadro seria refazer o
+// mesmo trabalho 60 vezes por segundo pra um desenho que nunca muda — o mapa é estático. Uma passada
+// no carregamento, e depois é só recortar o pedaço perto do jogador.
+const RUAS=[];
+for(const c of corredores){
+  const comp=c.curva.getLength();
+  const n=Math.max(2,Math.ceil(comp/2));// um ponto a cada ~2 m
+  const pts=[];
+  for(let i=0;i<=n;i++){const q=c.curva.getPointAt(i/n);pts.push(q.x,q.z)}
+  RUAS.push({pts,largura:c.meia*2});
 }
+
+// Sigla de cada lugar. Curta de propósito: o radar tem 130 px e o rótulo divide espaço com o ponto.
+const SIGLAS={fazenda:'DEP',sementes:'MERC',armas:'ARM',receptador:'REC',delegacia:'DP'};
+
+function paraTela(x,z){
+  return{x:RADAR_CX+(x-player.position.x)*RADAR_ESCALA,y:RADAR_CY+(z-player.position.z)*RADAR_ESCALA};
+}
+// ===== UM RÓTULO NÃO PODE COMER O OUTRO =====
+// A primeira versão escrevia a sigla de tudo, e a foto mostrou o estrago: oito refúgios viraram oito
+// "ESC" empilhados por cima de BAR, MERC e DP. Mapa ilegível é pior que mapa sem sigla.
+// Duas regras resolveram: refúgio não leva texto (são muitos, e o ponto vermelho já é a legenda), e
+// rótulo que cairia em cima de outro simplesmente não é escrito. A ORDEM de desenho vira prioridade —
+// os polos e a delegacia vêm primeiro, porque são os que o jogador procura de longe.
+let rotulosNoQuadro=[];
+function rotulo(txt,x,y,cor,tamanho=8){
+  radarCtx.font=`800 ${tamanho}px ui-sans-serif,system-ui,sans-serif`;
+  radarCtx.textBaseline='middle';
+  const larg=radarCtx.measureText(txt).width;
+  // Se não cabe à direita do ponto, escreve à esquerda — senão a sigla sai pela borda do disco.
+  const alinhaEsquerda=x+larg+6>RADAR_TAM-2;
+  const tx=alinhaEsquerda?x-5:x+5;
+  const caixa={x0:alinhaEsquerda?tx-larg:tx,y0:y-tamanho/2-1,
+               x1:alinhaEsquerda?tx:tx+larg,y1:y+tamanho/2+1};
+  for(const c of rotulosNoQuadro)
+    if(caixa.x0<c.x1&&caixa.x1>c.x0&&caixa.y0<c.y1&&caixa.y1>c.y0)return;
+  rotulosNoQuadro.push(caixa);
+  radarCtx.textAlign=alinhaEsquerda?'right':'left';
+  radarCtx.lineWidth=2.5;radarCtx.strokeStyle='rgba(0,0,0,.85)';radarCtx.strokeText(txt,tx,y);
+  radarCtx.fillStyle=cor;radarCtx.fillText(txt,tx,y);
+}
+// sempreVisivel: fora do alcance, gruda na borda apontando a direção (waypoint de GTA) em vez de
+// sumir — sem isso a Loja de Armas e o Depósito, que ficam fora do bairro, nunca apareceriam.
+// O ponto é desenhado NA HORA; a sigla fica pra depois, numa fila. Motivo na foto: com tudo saindo
+// junto, o ponto de uma marca desenhada depois caía em cima do rótulo de outra desenhada antes ("DEP
+// 114m" com uma bolinha amarela em cima do 1). Pontos primeiro, rótulos por último, e nenhum texto
+// fica escondido atrás de bolinha.
+const filaDeRotulos=[];
+function desenharPontoRadar(x,z,cor,raio,sempreVisivel,sigla){
+  let{x:px,y:py}=paraTela(x,z);
+  let dx=px-RADAR_CX,dy=py-RADAR_CY;
+  const dist=Math.hypot(dx,dy);
+  let naBorda=false;
+  if(dist>RADAR_LIMITE){
+    if(!sempreVisivel)return;
+    const fator=RADAR_LIMITE/dist;dx*=fator;dy*=fator;
+    px=RADAR_CX+dx;py=RADAR_CY+dy;naBorda=true;
+    radarCtx.strokeStyle=cor;radarCtx.lineWidth=2;
+    radarCtx.beginPath();radarCtx.arc(px,py,raio+2,0,Math.PI*2);radarCtx.stroke();
+  }
+  radarCtx.fillStyle=cor;radarCtx.beginPath();radarCtx.arc(px,py,raio,0,Math.PI*2);radarCtx.fill();
+  if(!sigla)return;
+  // Na borda, o rótulo leva a DISTÂNCIA junto: é a informação que falta quando a coisa está fora da
+  // tela. Perto, a distância seria ruído — dá pra ver.
+  if(naBorda){
+    const metros=Math.round(Math.hypot(x-player.position.x,z-player.position.z));
+    filaDeRotulos.push({txt:`${sigla} ${metros}m`,x:px,y:py,cor,tam:7.5});
+  }else filaDeRotulos.push({txt:sigla,x:px,y:py,cor,tam:8});
+}
+
 export function atualizarRadar(){
   radarCtx.clearRect(0,0,RADAR_TAM,RADAR_TAM);
-  const cx=RADAR_TAM/2,cy=RADAR_TAM/2,escala=(RADAR_TAM/2-6)/RADAR_ALCANCE;
-  radarCtx.save();radarCtx.beginPath();radarCtx.arc(cx,cy,RADAR_TAM/2-3,0,Math.PI*2);radarCtx.clip();
-  // traçado das casas próximas (silhueta das quadras), pra dar noção real de rua em vez de só pontos soltos.
-  radarCtx.fillStyle='rgba(210,200,170,.32)';
+  rotulosNoQuadro=[];filaDeRotulos.length=0;
+  radarCtx.save();
+  radarCtx.beginPath();radarCtx.arc(RADAR_CX,RADAR_CY,RADAR_TAM/2-3,0,Math.PI*2);radarCtx.clip();
+  // Chão. Escuro de propósito: rua e casa são claras, e o contraste é o que faz o traçado aparecer.
+  radarCtx.fillStyle='#171a14';radarCtx.fillRect(0,0,RADAR_TAM,RADAR_TAM);
+  // ===== AS RUAS =====
+  radarCtx.lineCap='round';radarCtx.lineJoin='round';
+  radarCtx.strokeStyle='rgba(196,190,170,.55)';
+  for(const rua of RUAS){
+    radarCtx.lineWidth=Math.max(1.5,rua.largura*RADAR_ESCALA);
+    radarCtx.beginPath();
+    let desenhando=false;
+    for(let i=0;i<rua.pts.length;i+=2){
+      const p=paraTela(rua.pts[i],rua.pts[i+1]);
+      // Recorta o pedaço perto: fora do disco não adianta traçar.
+      if(Math.abs(p.x-RADAR_CX)>RADAR_TAM||Math.abs(p.y-RADAR_CY)>RADAR_TAM){desenhando=false;continue}
+      if(desenhando)radarCtx.lineTo(p.x,p.y);else{radarCtx.moveTo(p.x,p.y);desenhando=true}
+    }
+    radarCtx.stroke();
+  }
+  // ===== AS CASAS =====
+  radarCtx.fillStyle='rgba(226,214,180,.5)';
   for(const c of casasPos){
-    const dx=(c.x-player.position.x)*escala,dz=(c.z-player.position.z)*escala;
-    if(Math.hypot(dx,dz)>RADAR_TAM/2+10)continue;
-    radarCtx.fillRect(cx+dx-(c.w/2)*escala,cy+dz-(c.d/2)*escala,c.w*escala,c.d*escala);
+    const p=paraTela(c.x,c.z);
+    if(Math.hypot(p.x-RADAR_CX,p.y-RADAR_CY)>RADAR_TAM/2+10)continue;
+    radarCtx.fillRect(p.x-(c.w/2)*RADAR_ESCALA,p.y-(c.d/2)*RADAR_ESCALA,c.w*RADAR_ESCALA,c.d*RADAR_ESCALA);
   }
   radarCtx.restore();
-  // Os 4 polos econômicos, cada um na cor declarada em Poles.js e sempre visível (gruda na borda do
-  // radar quando fica fora de alcance, tipo waypoint de GTA): sem isso o jogador nunca acharia a
-  // Fazenda nem a Loja de Armas, que ficam fora do bairro.
-  desenharPontoRadar(lojaPos.x,lojaPos.z,POLOS.sementes.cor,5,true);
-  desenharPontoRadar(receptadorPos.x,receptadorPos.z,POLOS.receptador.cor,5,true);
-  desenharPontoRadar(fazendaPos.x,fazendaPos.z,POLOS.fazenda.cor,5,true);
-  desenharPontoRadar(armasPos.x,armasPos.z,POLOS.armas.cor,5,true);
-  // A DELEGACIA gruda na borda como os polos, e por um motivo de jogo: é a única marca que deixa o
-  // jogador DESVIAR da polícia em vez de só reagir a ela. Saber onde eles moram é a informação que
-  // torna a patrulha permanente justa.
-  desenharPontoRadar(POLOS.delegacia.x,POLOS.delegacia.z,POLOS.delegacia.cor,5,true);
+
+  // ===== AS MARCAS =====
+  radarCtx.save();
+  radarCtx.beginPath();radarCtx.arc(RADAR_CX,RADAR_CY,RADAR_TAM/2-3,0,Math.PI*2);radarCtx.clip();
+  // Os quatro polos econômicos e a delegacia grudam na borda: são eles que ficam FORA do bairro, e
+  // saber onde a polícia mora é o que deixa o jogador desviar dela em vez de só reagir.
+  desenharPontoRadar(lojaPos.x,lojaPos.z,POLOS.sementes.cor,5,true,SIGLAS.sementes);
+  desenharPontoRadar(receptadorPos.x,receptadorPos.z,POLOS.receptador.cor,5,true,SIGLAS.receptador);
+  desenharPontoRadar(fazendaPos.x,fazendaPos.z,POLOS.fazenda.cor,5,true,SIGLAS.fazenda);
+  desenharPontoRadar(armasPos.x,armasPos.z,POLOS.armas.cor,5,true,SIGLAS.armas);
+  desenharPontoRadar(POLOS.delegacia.x,POLOS.delegacia.z,POLOS.delegacia.cor,5,true,SIGLAS.delegacia);
+  // Os do morro não grudam na borda: encher a borda de marca tira a leitura dos que ficam longe.
+  desenharPontoRadar(BIQUEIRA.x,BIQUEIRA.z,'#c86bff',4.5,false,'BIQ');
+  desenharPontoRadar(BAR.x,BAR.z,'#ffc14d',4.5,false,'BAR');
+  // Refúgio SEM sigla: são oito espalhados pelo morro, e oito "ESC" tapavam o mapa inteiro (está na
+  // foto que motivou esta linha). O ponto vermelho continua, e a legenda da tela inicial explica.
   for(const r of refugios)desenharPontoRadar(r.x,r.z,'#c23a3a',4,false);
-  // A boca e o bar: são pontos do morro, dentro do alcance do radar quase sempre, então não grudam
-  // na borda — encher a borda de marcador tira a leitura dos quatro polos, que são os que ficam fora.
-  desenharPontoRadar(BIQUEIRA.x,BIQUEIRA.z,'#c86bff',4.5,false);
-  desenharPontoRadar(BAR.x,BAR.z,'#ffc14d',4.5,false);
-  // O cliente da laje gruda na borda: ele é um prazo, e o jogador precisa saber pra onde correr.
-  if(clienteLaje.ativo)desenharPontoRadar(clienteLaje.x,clienteLaje.z,'#63d16a',5.5,true);
+  // O cliente da laje é um PRAZO: gruda na borda porque o jogador precisa saber pra onde correr.
+  if(clienteLaje.ativo)desenharPontoRadar(clienteLaje.x,clienteLaje.z,'#63d16a',5.5,true,'CLI');
+  // Muda sem sigla: são muitas, e o ponto verde já diz tudo. Sigla em cada pé viraria borrão.
   for(const pl of plantas)if(!pl.colhida)desenharPontoRadar(pl.x,pl.z,'#7cfc00',3.5,false);
-  // helicóptero e policiais só ficam "acesos" no radar quando a polícia está de olho em algo — senão
-  // some, já que patrulhando bem longe não é uma ameaça que o jogador precise rastrear o tempo todo.
-  if(policia.estado!=='patrulha')desenharPontoRadar(heli.position.x,heli.position.z,'#8fd4ff',5,true);
+  // Helicóptero e polícia só acendem quando estão de olho em alguma coisa.
+  if(policia.estado!=='patrulha')desenharPontoRadar(heli.position.x,heli.position.z,'#8fd4ff',5,true,'HELI');
   if(policia.estado==='combate')for(const pol of policiais)if(pol.vivo)desenharPontoRadar(pol.pos.x,pol.pos.z,'#ff3b3b',3,false);
-  // seta do jogador: fixa no centro (norte-fixo), só gira pra indicar a direção que o personagem está olhando.
-  radarCtx.save();radarCtx.translate(cx,cy);radarCtx.rotate(Math.PI-player.rotation.y);
-  radarCtx.fillStyle='#ffe17a';radarCtx.beginPath();radarCtx.moveTo(0,-8);radarCtx.lineTo(6,7);radarCtx.lineTo(0,3);radarCtx.lineTo(-6,7);radarCtx.closePath();radarCtx.fill();
+  radarCtx.restore();
+
+  // ===== NORTE =====
+  // O radar é norte-fixo (só a seta do jogador gira), então o N pode ficar cravado em cima.
+  radarCtx.font='800 9px ui-sans-serif,system-ui,sans-serif';
+  radarCtx.textAlign='center';radarCtx.textBaseline='top';
+  radarCtx.lineWidth=3;radarCtx.strokeStyle='rgba(0,0,0,.85)';
+  radarCtx.strokeText('N',RADAR_CX,3);
+  radarCtx.fillStyle='#f0e2b0';radarCtx.fillText('N',RADAR_CX,3);
+
+  // Seta do jogador: fixa no centro, girando pra mostrar pra onde ele olha.
+  radarCtx.save();radarCtx.translate(RADAR_CX,RADAR_CY);radarCtx.rotate(Math.PI-player.rotation.y);
+  radarCtx.lineWidth=1.5;radarCtx.strokeStyle='rgba(0,0,0,.8)';
+  radarCtx.fillStyle='#ffe17a';
+  radarCtx.beginPath();radarCtx.moveTo(0,-8);radarCtx.lineTo(6,7);radarCtx.lineTo(0,3);radarCtx.lineTo(-6,7);radarCtx.closePath();
+  radarCtx.fill();radarCtx.stroke();
+  radarCtx.restore();
+
+  // ===== AS SIGLAS, POR ÚLTIMO =====
+  // Depois de rua, casa, ponto e seta: texto é a camada que não pode ser tapada por nada, porque é a
+  // única que responde "o que É aquilo".
+  radarCtx.save();
+  radarCtx.beginPath();radarCtx.arc(RADAR_CX,RADAR_CY,RADAR_TAM/2-3,0,Math.PI*2);radarCtx.clip();
+  for(const r of filaDeRotulos)rotulo(r.txt,r.x,r.y,r.cor,r.tam);
   radarCtx.restore();
 }
 
