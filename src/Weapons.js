@@ -23,14 +23,24 @@ function peca(geo,mat,x,y,z,rx,g){const m=new THREE.Mesh(geo,mat);m.position.set
 // deslocamento certo passa a ser outro — se ele estivesse aqui, a arma ficaria boiando fora da mão.
 function novoGrupo(){const g=new THREE.Group();maoDireita.add(g);return g}
 
-function construirPistola(){
-  const g=novoGrupo();
+// ===== A RECEITA DA PISTOLA, SEPARADA DO GRUPO EM QUE ELA MORA =====
+// A polícia usa ESTA função (ver `construirPistolaPolicial` no Police.js). Antes havia uma segunda
+// pistola, escrita à mão lá, com outras medidas (corpo 14 cm contra 10) e outro referencial: o corpo
+// nascia em z=.12 e o cano em z=.39, enquanto a do jogador nasce em .05 e .32. Duas armas parecidas
+// mas não iguais, que era exatamente a queixa — "apaga as armas deles e cria uma nova do zero com a
+// direção igual a do meu jogador".
+//
+// Com uma receita só, "igual à do jogador" deixa de ser um ajuste que alguém tem que manter e vira
+// uma consequência: não existe segundo número pra divergir. Quem chama passa o grupo, então o
+// jogador continua pendurando na âncora da mão e a polícia monta num grupo solto.
+export function montarPistola(g){
   peca(new THREE.BoxGeometry(.1,.13,.34),armaMat,0,0,.05,0,g);
   peca(new THREE.CylinderGeometry(.028,.028,.3,6),armaMat,0,.03,.32,Math.PI/2,g);
   peca(new THREE.BoxGeometry(.085,.17,.1),armaMadeira,0,-.12,-.04,-.22,g);
   peca(new THREE.BoxGeometry(.02,.035,.02),armaMat,0,.1,.2,0,g);
   return g;
 }
+function construirPistola(){return montarPistola(novoGrupo())}
 function construirRifle(){
   const g=novoGrupo();
   // Fallback imediato: o tiro e a âncora da mão funcionam mesmo antes do GLB terminar de baixar.

@@ -19,8 +19,9 @@ import{atualizarEfeitos}from'./CombatFX.js';
 import{atualizarRecuoArmas}from'./Weapons.js';
 import{isHUDEditando}from'./HUDEditor.js';
 import{definirPosicaoAudio}from'./Audio.js';
-import{atualizarMoto}from'./Moto.js';
-import{atualizarCarro}from'./Carro.js';
+import{atualizarMoto,maxVelMoto}from'./Moto.js';
+import{valorAcelerador,reSegurada,configurar as configurarAcelerador,modoDirigindo}from'./Acelerador.js';
+import{atualizarCarro,maxVelCarro}from'./Carro.js';
 import{atualizarViaturas}from'./Viatura.js';
 
 camera.position.set(0,EYE_HEIGHT,16);
@@ -55,7 +56,7 @@ document.getElementById('destravarBtn').addEventListener('click',()=>destravarJo
 // Marca de versão na tela inicial. Existe por um motivo prático: quando uma novidade "não aparece",
 // a primeira pergunta é se o navegador está servindo o build novo ou um cache velho — e sem isso não
 // há como responder olhando a tela. O segundo campo diz se o boneco 3D entrou.
-const VERSAO_JOGO='2026-09-07-acelerador';
+const VERSAO_JOGO='2026-09-07-alavanca';
 {const el=document.getElementById('versaoJogo');
  if(el){el.textContent=`versão ${VERSAO_JOGO} · boneco 3D: carregando…`;
    const marcar=()=>{el.textContent=`versão ${VERSAO_JOGO} · boneco 3D: ${personagemCarregado()?'ok':'não carregou'}`};
@@ -64,6 +65,10 @@ const VERSAO_JOGO='2026-09-07-acelerador';
 // Lembra se o quadro anterior já estava na moto: é o que separa "acabou de montar" (câmera encaixa)
 // de "está pilotando" (câmera recentra suave). Ver o bloco da moto em `quadro`.
 let dirigindoMotoAntes=false;
+// Quanto tempo a câmera fica onde o jogador deixou, depois que ele tira o dedo, antes de voltar pras
+// costas do veículo. 1,6 s é o que separa "olhei de relance" de "enquadrei a cena".
+const FOLGA_CAMERA=1.6;
+let folgaCamera=0;
 const startScreen=document.getElementById('startScreen'),playBtn=document.getElementById('playBtn');let gameStarted=false;playBtn.addEventListener('click',()=>{gameStarted=true;startScreen.classList.add('hide');document.body.classList.add('started');
   // O hint cobre a faixa dos botões embaixo. Ele serve pra primeira partida, não pro jogo todo:
   // some sozinho depois de meio minuto em vez de disputar espaço com o PULAR pra sempre.
@@ -151,9 +156,20 @@ function quadro(){
     // o estado das duas teclas é o Input — por isso o fator vem de lá pronto.
     // Os dois veículos recebem quadro sempre — parados eles ainda se assentam no terreno e mantêm o
     // colisor em dia. Só UM pode estar sendo dirigido, e é ele quem manda no movimento do jogador.
-    const naMoto=atualizarMoto(dt,keys,inputState.joyX,inputState.joyY);
-    const noCarro=atualizarCarro(dt,keys,inputState.joyX,inputState.joyY);
+    // A alavanca de acelerador vale pros DOIS, e o veículo parado ignora ela (o `atualizar` só lê o
+    // acelerador quando está montado). O analógico continua indo junto, mas agora só pela DIREÇÃO:
+    // `joyY` saiu da conta de velocidade (ver o comentário em `Veiculo.js`).
+    const alavanca=valorAcelerador(),re=reSegurada();
+    const naMoto=atualizarMoto(dt,keys,inputState.joyX,inputState.joyY,alavanca,re);
+    const noCarro=atualizarCarro(dt,keys,inputState.joyX,inputState.joyY,alavanca,re);
     const dirigindoMoto=naMoto||noCarro;
+    // A alavanca aparece com o veículo e some com ele, já zerada — é a rede contra ficar engatada de
+    // uma pilotagem pra outra. A escala em km/h sai do teto de QUEM está sendo dirigido: 50 no carro,
+    // 40 na moto, então a escada de marcas nunca mostra um número que aquele veículo não alcança.
+    if(dirigindoMoto!==dirigindoMotoAntes){
+      configurarAcelerador(dirigindoMoto?(noCarro?maxVelCarro():maxVelMoto())*3.6:null);
+      modoDirigindo(dirigindoMoto);
+    }
     if(!dirigindoMoto)atualizarMovimentoJogador(dt,keys,inputState.joyX,inputState.joyY,inputState.yaw,fatorVelocidadeDesejado());
     // ===== NA MOTO, A CÂMERA VAI PRA TRÁS DELA =====
     // A PÉ o movimento é RELATIVO À CÂMERA: `atualizarMovimentoJogador` recebe `inputState.yaw` e
@@ -180,9 +196,27 @@ function quadro(){
         // abaixo é pra DEPOIS, quando o que existe é o atraso normal de curva.
         inputState.yaw=inputState.targetYaw=player.rotation.y;
       }else{
-        let d=player.rotation.y-inputState.targetYaw;
-        while(d>Math.PI)d-=Math.PI*2;while(d<-Math.PI)d+=Math.PI*2;// caminho angular mais curto
-        inputState.targetYaw+=d*(1-Math.exp(-3.5*dt));
+        // ===== A CÂMERA DE DIREÇÃO, ESTILO GTA SAN ANDREAS =====
+        // "quero uma câmera onde posso dirigir e virar ela prá mostrar melhor igual no GTA San
+        //  Andreas, isso tbm vai ajudar na hora de começar as game play."
+        //
+        // O recentro existia, mas com constante de tempo de 0,29 s (`exp(-3,5*dt)`): ele voltava a
+        // câmera pras costas do carro quase na mesma velocidade em que o dedo a girava. Dava pra
+        // "olhar pro lado", só que a tela era arrancada de volta antes de dar pra enquadrar
+        // qualquer coisa — inútil pra gravar.
+        //
+        // Duas mudanças, e as duas importam:
+        //  · ENQUANTO O DEDO ESTÁ NA TELA, não recentra nada. Recentrar por cima de quem está
+        //    girando é a câmera brigando com o jogador, e o jogador sempre perde.
+        //  · DEPOIS DE SOLTAR, espera `FOLGA_CAMERA` parado e só então volta, e volta LENTO (~1,1 s
+        //    de constante). É o tempo de enquadrar uma casa, um policial, e seguir dirigindo.
+        if(inputState.olhando)folgaCamera=FOLGA_CAMERA;
+        else folgaCamera=Math.max(0,folgaCamera-dt);
+        if(folgaCamera<=0){
+          let d=player.rotation.y-inputState.targetYaw;
+          while(d>Math.PI)d-=Math.PI*2;while(d<-Math.PI)d+=Math.PI*2;// caminho angular mais curto
+          inputState.targetYaw+=d*(1-Math.exp(-.9*dt));
+        }
       }
     }
     dirigindoMotoAntes=dirigindoMoto;

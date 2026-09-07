@@ -15,12 +15,17 @@ export const SENSIBILIDADE_MOUSE_VERTICAL=.0025;// giro vertical (pitch) com poi
 export const SENSIBILIDADE_TOQUE=.009,SENSIBILIDADE_TOQUE_VERTICAL=.006;// arraste de dedo/mouse sem lock
 
 export const inputState={yaw:0,targetYaw:0,pitch:.28,targetPitch:.28,joyX:0,joyY:0,joyActive:false,joyId:null,joyForca:0,
-  aimX:0,aimY:0,aimActive:false,aimId:null,correndo:false};
+  aimX:0,aimY:0,aimActive:false,aimId:null,correndo:false,
+  // ===== ESTÁ OLHANDO EM VOLTA AGORA? =====
+  // Verdadeiro enquanto um dedo (ou o mouse) arrasta a tela pra girar a câmera, venha pela área de
+  // mira ou pelo arraste no canvas. Quem precisa é a câmera de direção: dirigindo, ela se recentra
+  // atrás do veículo, e recentrar POR CIMA do dedo é o que impedia enquadrar a tela ao volante.
+  olhando:false};
 export const keys=Object.create(null);
 const keyMap={w:'KeyW',a:'KeyA',s:'KeyS',d:'KeyD',ArrowUp:'KeyW',ArrowLeft:'KeyA',ArrowDown:'KeyS',ArrowRight:'KeyD'};
 // Solta o gatilho junto com as teclas: trocar de aba com F pressionado deixaria o tiro preso ligado.
 // Solta também a corrida: se o Shift ficar "preso" ao trocar de aba, o jogador voltaria correndo sozinho.
-const clearKeys=()=>{for(const k in keys)keys[k]=false;inputState.correndo=false;inputState.joyX=0;inputState.joyY=0;inputState.joyForca=0;inputState.joyActive=false;inputState.joyId=null;inputState.aimX=0;inputState.aimY=0;inputState.aimActive=false;inputState.aimId=null;stickBase?.classList.remove('correndo');if(stick)stick.style.transform='translate(0,0)';if(aimStick)aimStick.style.transform='translate(0,0)';definirGatilho(false);if(document.pointerLockElement)definirMira(false)};
+const clearKeys=()=>{for(const k in keys)keys[k]=false;inputState.correndo=false;inputState.joyX=0;inputState.joyY=0;inputState.joyForca=0;inputState.joyActive=false;inputState.joyId=null;inputState.aimX=0;inputState.aimY=0;inputState.aimActive=false;inputState.aimId=null;inputState.olhando=false;stickBase?.classList.remove('correndo');if(stick)stick.style.transform='translate(0,0)';if(aimStick)aimStick.style.transform='translate(0,0)';definirGatilho(false);if(document.pointerLockElement)definirMira(false)};
 
 function pularOuSubir(){if(droneState.ativo){subirDrone()}else{pularJogador()}}
 
@@ -108,8 +113,8 @@ function updateAim(e){
   inputState.targetPitch=limitarPitch(inputState.targetPitch+dy*AIM_SENS_Y);
   aimLastX=e.clientX;aimLastY=e.clientY;
 }
-function releaseAim(e){if(inputState.aimId!==null&&e.pointerId!==inputState.aimId)return;inputState.aimX=0;inputState.aimY=0;inputState.aimActive=false;inputState.aimId=null;aimStick.style.transform='translate(0,0)'}
-aimBase?.addEventListener('pointerdown',e=>{e.preventDefault();inputState.aimActive=true;inputState.aimId=e.pointerId;aimLastX=e.clientX;aimLastY=e.clientY;aimBase.setPointerCapture?.(e.pointerId);updateAim(e)});
+function releaseAim(e){if(inputState.aimId!==null&&e.pointerId!==inputState.aimId)return;inputState.aimX=0;inputState.aimY=0;inputState.aimActive=false;inputState.aimId=null;inputState.olhando=false;aimStick.style.transform='translate(0,0)'}
+aimBase?.addEventListener('pointerdown',e=>{e.preventDefault();inputState.aimActive=true;inputState.olhando=true;inputState.aimId=e.pointerId;aimLastX=e.clientX;aimLastY=e.clientY;aimBase.setPointerCapture?.(e.pointerId);updateAim(e)});
 aimBase?.addEventListener('pointermove',e=>{if(inputState.aimActive&&e.pointerId===inputState.aimId)updateAim(e)});
 aimBase?.addEventListener('pointerup',releaseAim);aimBase?.addEventListener('pointercancel',releaseAim);
 
@@ -131,7 +136,7 @@ export function initDragLook(rendererDomElement){
   rendererDomElement.addEventListener('pointerdown',e=>{
     // O segundo dedo no canvas não rouba o arraste do primeiro.
     if(dragId!==null&&e.pointerId!==dragId)return;
-    dragId=e.pointerId;lastX=e.clientX;lastY=e.clientY;
+    dragId=e.pointerId;lastX=e.clientX;lastY=e.clientY;inputState.olhando=true;
     // No desktop, com o mouse já travado, o clique é tiro — antes só a tecla F atirava, e com o
     // ponteiro travado o cursor nem alcançava o botão 🔫 na tela.
     if(e.pointerType==='mouse'){
@@ -178,7 +183,7 @@ export function initDragLook(rendererDomElement){
   const soltar=e=>{
     // Só o dedo que estava girando encerra o giro. Antes qualquer pointerup zerava o arraste.
     if(dragId!==null&&e.pointerId!==dragId)return;
-    dragId=null;
+    dragId=null;inputState.olhando=false;
     if(e.pointerType==='mouse'){
     if(e.type==='pointercancel'){definirGatilho(false);definirMira(false)}else sincronizarBotoesMouse(e);
   }};

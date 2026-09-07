@@ -53,7 +53,9 @@ import{definirColeteVisivel}from'./Player.js';
 import{droneState,miraState}from'./Camera.js';
 import{crimeAtivo,alertarDisparoProximo,alertarColisaoPolicial,alertarEntregaIlegal,definirArmaVisivel}from'./CrimeTriggers.js';
 import{pontoDeEntregaAtual}from'./DeliveryPoints.js';
-import{hasWeaponEquipped}from'./Weapons.js';
+// `montarPistola` é a receita da pistola do JOGADOR, usada tal e qual pela polícia — ver
+// `construirArmaPolicial` mais abaixo.
+import{hasWeaponEquipped,montarPistola}from'./Weapons.js';
 import{tocarSomEquiparColete,tocarSomTiro,tocarSomSemMunicao}from'./Audio.js';
 import{adicionarTremorCamera}from'./Camera.js';
 import{obterPontoNascimento,registrarCuraHospital}from'./Hospital.js';
@@ -259,17 +261,27 @@ const skinPolicial=[0xc79067,0x8a5a3c,0xe0b088,0x6b4a30];
 const uniformeMat=new THREE.MeshStandardMaterial({color:0x232c3d,roughness:.7}),
   coleteMat=new THREE.MeshStandardMaterial({color:0x14181f,roughness:.75}),
   boneMat=new THREE.MeshStandardMaterial({color:0x14181f,roughness:.8}),
-  armaMat=new THREE.MeshStandardMaterial({color:0x2a2a2a,roughness:.4,metalness:.6}),
+  // (o `armaMat` daqui saiu junto com a arma velha: a pistola nova usa os materiais do Weapons.js,
+  //  os MESMOS do jogador — material próprio era mais um jeito de as duas armas divergirem)
   // Mesmo tom do rosto do morador (NPCs.js), de propósito: os dois são gente do mesmo mundo.
   rostoMat=new THREE.MeshStandardMaterial({color:0x171712,roughness:.8});
 function blocoP(geo,mat,x,y,z,parent){const m=new THREE.Mesh(geo,mat);m.position.set(x,y,z);m.castShadow=true;m.receiveShadow=true;parent.add(m);return m}
+// ===== A ARMA DA POLÍCIA É A ARMA DO JOGADOR =====
+// A daqui foi APAGADA e refeita do zero, a pedido: "só vc apagar as armas deles e criar uma nova do
+// Zero com a direção igual a do meu jogador".
+//
+// A antiga era uma segunda pistola escrita à mão, e a comparação lado a lado explica a queixa: corpo
+// de 14 cm contra os 10 da do jogador, cano nascendo em z=.39 contra .32, empunhadura em z=.01 contra
+// -.04, e o punho num material de colete em vez de madeira. Parecida, nunca igual — e "parecida" é o
+// que produz aquele efeito de arma errada e sobreposta.
+//
+// Agora ela sai de `montarPistola`, a MESMA função que monta a do jogador (Weapons.js). Não há
+// medida própria pra ajustar, nem pra alguém mexer num lado e esquecer o outro. A orientação vem de
+// graça junto: a receita nasce apontando pra +Z na origem da âncora, e o `PersonagemPolicial.js`
+// copia a âncora do jogador inteira — mesma receita, mesma âncora, mesma arma.
 function construirArmaPolicial(){
-  const g=new THREE.Group();g.name='pistolaPolicial';
-  blocoP(GEO_POL.armaCorpo,armaMat,0,0,.12,g);
-  const cano=blocoP(GEO_POL.armaCano,armaMat,0,.01,.39,g);cano.rotation.x=Math.PI/2;
-  const emp=blocoP(GEO_POL.armaEmpunhadura,coleteMat,0,-.13,.01,g);emp.rotation.x=-.22;
-  blocoP(GEO_POL.armaGuarda,armaMat,0,-.035,.095,g);
-  blocoP(GEO_POL.armaMira,armaMat,0,.085,.34,g);
+  const g=montarPistola(new THREE.Group());
+  g.name='pistolaPolicial';
   return g;
 }
 
@@ -305,11 +317,7 @@ const GEO_POL={
   olho:new THREE.BoxGeometry(.06,.06,.03),
   boca:new THREE.BoxGeometry(.13,.03,.02),
   braco:new THREE.BoxGeometry(.13,.58,.16),
-  armaCorpo:new THREE.BoxGeometry(.14,.12,.34),
-  armaCano:new THREE.CylinderGeometry(.022,.025,.24,8),
-  armaEmpunhadura:new THREE.BoxGeometry(.09,.2,.11),
-  armaGuarda:new THREE.BoxGeometry(.025,.08,.075),
-  armaMira:new THREE.BoxGeometry(.025,.025,.055),
+  // (as cinco geometrias de arma saíram daqui: a pistola da polícia agora vem de `montarPistola`)
 };
 const MATS_PELE=skinPolicial.map(c=>new THREE.MeshStandardMaterial({color:c,roughness:.55}));
 
@@ -330,7 +338,11 @@ function criarPolicial(indice,tipo='rapel'){
   blocoP(GEO_POL.bone,boneMat,0,1.7,0,g);
   const pernas=[-.14,.14].map(lx=>blocoP(GEO_POL.perna,uniformeMat,lx,.29,0,g));
   const bracos=[-.37,.37].map(lx=>blocoP(GEO_POL.braco,skinMat,lx,.9,0,g));
-  const arma=construirArmaPolicial();arma.position.set(.37,.68,.18);g.add(arma);
+  // O boneco de CAIXA (o que aparece enquanto o modelo 3D não chegou) segura a arma na mão direita,
+  // não flutuando no quadril: os braços ficam em x=±.37 e o punho cai por volta de y=.62. E ela
+  // aponta pra +Z sem giro nenhum porque é PRA LÁ que o policial olha — o rosto dele é desenhado em
+  // +z local, na mesma convenção.
+  const arma=construirArmaPolicial();arma.position.set(.37,.62,.10);g.add(arma);
   g.scale.setScalar(ESCALA_POLICIAL);
   scene.add(g);
   const pol={

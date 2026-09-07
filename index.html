@@ -103,6 +103,34 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
 #fireBtn:active{transform:scale(.92);background:rgba(220,70,35,1)}
 #aimBase{display:none;position:fixed;z-index:6;right:0;bottom:0;width:65vw;height:78vh;border:0;border-radius:0;background:transparent;box-shadow:none;touch-action:none;-webkit-tap-highlight-color:transparent;user-select:none}
 #aimStick{display:none}
+/* ===== ACELERADOR ===== */
+/* Vertical e alto: o curso é a precisão. Uma alavanca curta transforma 10 km/h de diferença em três
+   pixels de polegar, e aí nenhuma marca adianta. 220px dá ~4px por km/h no carro. */
+#acelerador{position:fixed;z-index:9;right:22px;bottom:150px;width:66px;height:246px;display:flex;flex-direction:column;align-items:center;touch-action:none;-webkit-tap-highlight-color:transparent;user-select:none}
+#acelerador[hidden]{display:none}
+#acelTrilho{position:relative;flex:1;width:100%;border:2px solid rgba(231,197,104,.8);border-radius:33px;background:rgba(11,25,13,.55);box-shadow:inset 0 0 0 6px rgba(255,255,255,.03),0 8px 24px rgba(0,0,0,.3);overflow:hidden;touch-action:none}
+#acelPreenche{position:absolute;left:0;right:0;bottom:0;height:0;background:linear-gradient(0deg,rgba(124,180,78,.85),rgba(180,214,110,.75));pointer-events:none}
+/* O puxador é o que o polegar procura. Fica por cima do preenchimento e não recebe evento: quem
+   escuta é o trilho inteiro, então tocar em qualquer altura já salta pra lá. */
+#acelPuxador{position:absolute;left:4px;right:4px;height:26px;bottom:-13px;border-radius:13px;border:2px solid #f1d178;background:rgba(231,197,104,.95);box-shadow:0 4px 12px rgba(0,0,0,.35);pointer-events:none}
+#acelMarcas{position:absolute;inset:0;pointer-events:none}
+.acelMarca{position:absolute;left:0;right:0;height:0;border-top:1px dashed rgba(255,255,255,.32)}
+.acelMarca::after{content:attr(data-rotulo);position:absolute;right:6px;top:-9px;font-size:9px;font-weight:800;color:rgba(255,255,255,.6);letter-spacing:.04em}
+#acelValor{margin-top:4px;font-size:20px;font-weight:900;color:#f1d178;line-height:1;text-shadow:0 2px 6px rgba(0,0,0,.6)}
+#acelUnidade{font-size:9px;font-weight:700;letter-spacing:.1em;color:rgba(241,209,120,.7)}
+/* RÉ: à esquerda da alavanca, na altura do polegar, longe do botão de tiro pra não trocar um pelo outro. */
+#reBtn{display:flex;align-items:center;justify-content:center;position:fixed;z-index:9;right:100px;bottom:150px;width:58px;height:58px;border-radius:50%;border:2px solid #f1d178;background:rgba(40,52,36,.9);color:#f1d178;font-weight:900;font-size:20px;box-shadow:0 8px 24px rgba(0,0,0,.3);touch-action:none;-webkit-tap-highlight-color:transparent;cursor:pointer;user-select:none}
+#reBtn[hidden]{display:none}
+#reBtn.ativo{background:rgba(231,197,104,.95);color:#1b2417}
+/* ===== HUB LIMPO DIRIGINDO =====
+   "quero um Hub limpo sem aparecer coisas desnecessária na hora de dirigir." Pular não faz nada num
+   carro, trocar de arma e mirar também não, e a dica de teclado ocupa o rodapé. O `!important` é
+   obrigatório: o Police.js reescreve `style.display` do botão de tiro e da mira a cada quadro, e
+   estilo em linha ganha de regra de folha por especificidade. O TIRO fica — perseguição é o momento
+   em que ele mais serve. */
+body.dirigindo #jumpBtn,body.dirigindo #armaBtn,body.dirigindo #miraBtn,
+body.dirigindo #invBtn,body.dirigindo #acaoPanel,body.dirigindo #hint,
+body.dirigindo #fireSecondary{display:none!important}
 /* Troca de arma: empilhado acima do botão de tiro, na coluna do polegar direito.
    jumpBtn bottom:36 (96px) → fireBtn bottom:152 (80px) → armaBtn bottom:244 (64px), sem sobreposição. */
 #armaBtn{display:none;flex-direction:column;align-items:center;justify-content:center;gap:1px;position:fixed;z-index:8;right:30px;bottom:244px;width:64px;height:64px;border-radius:50%;border:2px solid #f1d178;background:rgba(45,38,12,.88);color:#f1d178;box-shadow:0 6px 18px rgba(0,0,0,.35);touch-action:none;-webkit-tap-highlight-color:transparent;cursor:pointer;user-select:none}
@@ -207,6 +235,14 @@ body.debug #debugBtn{display:block}
 <button id="fireBtn" aria-label="Atirar">🔫</button>
 <button id="armaBtn" aria-label="Trocar de arma"><span id="armaIcone">🔫</span><span id="armaMunicao">24</span></button>
 <button id="miraBtn" aria-label="Modo de mira">🎯</button>
+<!-- ===== ACELERADOR E RÉ (só aparecem dirigindo) =====
+     A alavanca fica no lado direito, com marcas em km/h e um ímã em cada uma: "arrastar e por tipo
+     10k 15k 20k 40k 50k". Ela SEGURA a posição — o carro cruza na velocidade escolhida sem dedo
+     nenhum encostado, que é o que libera o polegar esquerdo pra dirigir e o direito pra olhar em
+     volta. A ré é botão de SEGURAR à parte, porque ele pediu o curso inteiro da alavanca pra frente.
+     Os dois entram no editor de HUD, então dá pra arrastar pro lugar que a mão dele pedir. -->
+<div id="acelerador" aria-label="Acelerador" hidden><div id="acelTrilho"><div id="acelMarcas"></div><div id="acelPreenche"></div><div id="acelPuxador"></div></div><div id="acelValor">0</div><div id="acelUnidade">km/h</div></div>
+<button id="reBtn" aria-label="Ré" hidden>R</button>
 <div id="vinheta"></div>
 <div id="danoFlash"></div>
 <script type="module" src="./src/main.js?v=20260905s"></script>

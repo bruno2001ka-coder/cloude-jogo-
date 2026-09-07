@@ -248,7 +248,7 @@ export function criarVeiculo(cfg){
     aviso(cfg.avisoMontar);atualizarBotao();
   }
 
-  function atualizar(dt,keys,joyX=0,joyY=0){
+  function atualizar(dt,keys,joyX=0,joyY=0,alavanca=0,reSegurada=false){
     if(!carregado)return montado;
     // Mostrar/esconder o botão é decisão de QUADRO (o jogador anda, a distância muda), mas escrever
     // no DOM 60 vezes por segundo pra dizer a mesma coisa não é. Só toca quando VIRA.
@@ -264,18 +264,28 @@ export function criarVeiculo(cfg){
       return false;
     }
 
-    // ===== O SINAL DO ANALÓGICO, E POR QUE ELE É NEGATIVO =====
-    // `Input.js` calcula `joyY=(clientY-centro)/max`, e a coordenada Y da TELA cresce PRA BAIXO.
-    // Empurrar o dedo pra FRENTE dá `joyY` NEGATIVO. O andar a pé já sabe disso (`Player.js` soma
-    // `joyY` no eixo que aponta pra TRÁS), mas o teclado usa a convenção contrária (`KeyW` = +1 =
-    // frente): uma variável, duas convenções.
-    // Medido no jogo antes do conserto: analógico pra frente andava -4,7 m (ré) e pra trás +10,2 m,
-    // enquanto o W andava +16,5 m. No celular o veículo fazia o contrário do dedo. O `-` abaixo é o
-    // conserto, e este comentário existe pra ninguém inverter de novo às cegas: foram quatro commits
-    // seguidos tentando adivinhar esse sinal.
-    const teclado=(keys.KeyW?1:0)-(keys.KeyS?1:0);
-    // Soma em vez de `teclado||joyY`: com o `||`, uma tecla encostada anulava o analógico inteiro.
-    const acelerador=limitar(teclado-joyY);
+    // ===== O ANALÓGICO NÃO ACELERA MAIS. SÓ DIRIGE. =====
+    // (Morreu aqui o comentário do SINAL do `joyY`, que explicava por que o acelerador levava um `-`:
+    //  a coordenada Y da tela cresce pra baixo, então dedo pra frente dava valor negativo, e acertar
+    //  esse sinal custou quatro commits. Ele não vale mais porque o `joyY` saiu da conta de
+    //  velocidade — e deixar comentário descrevendo código que não existe é pior que não ter nenhum.
+    //  Quem ainda depende desse sinal é o andar a pé, no `Player.js`, e lá a explicação continua.)
+    // "não quero que o análogo freia não enquanto tô virando."
+    //
+    // Ele estava certo e a causa era estrutural: o acelerador saía do EIXO Y do analógico, e o
+    // analógico é UM SÓ. Empurrar na diagonal pra virar encolhe a componente pra frente — com o corte
+    // circular no aro, diagonal cheia dá joyY ≈ -0,707. Medido no jogo: dedo cheio reto = 14,0 m/s,
+    // dedo cheio na diagonal = 9,9 m/s. Virar custava 30% da velocidade, e ia custar enquanto as duas
+    // funções dividissem o mesmo dedo. Não dava pra ajustar isso; dava pra separar.
+    //
+    // Agora o acelerador tem alavanca própria (`Acelerador.js`) e `joyY` NÃO ENTRA MAIS NA CONTA da
+    // velocidade — some da linha de baixo de propósito, e este comentário existe pra ninguém somar
+    // ele de volta "pra funcionar no celular". No celular quem acelera é a alavanca.
+    //
+    // O TECLADO CONTINUA INTEIRO: W acelera, S freia e dá ré. Quem joga no PC não perde nada, e o
+    // `Math.max` deixa os dois caminhos conviverem sem um anular o outro.
+    const reAtiva=reSegurada||!!keys.KeyS;
+    const acelerador=reAtiva?-1:Math.max(keys.KeyW?1:0,Math.max(0,Math.min(1,alavanca)));
     const direcao=limitar((keys.KeyD?1:0)-(keys.KeyA?1:0)+joyX);
     atualizarVelocidade(dt,acelerador);
 
@@ -328,5 +338,8 @@ export function criarVeiculo(cfg){
   });
   atualizarBotao();
 
-  return{grupo,alternar,atualizar,montado:()=>montado,velocidade:()=>velocidade};
+  return{grupo,alternar,atualizar,montado:()=>montado,velocidade:()=>velocidade,
+    // O teto em m/s. Quem precisa é a alavanca de acelerador: as marcas dela são em km/h e a escada
+    // é filtrada pelo teto do veículo que está sendo dirigido (o carro chega a 50, a moto a 40).
+    maxVel:()=>cfg.maxVel};
 }
