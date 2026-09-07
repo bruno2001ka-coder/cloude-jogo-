@@ -462,7 +462,7 @@ amostrar(viaPrincipal);amostrar(viaBaixa);becos.forEach(amostrar);
 //     uma malha e uma matriz por cópia.
 // Sem isso a favela anterior chegou a 2.116 malhas na cena com 2.110 geometrias distintas.
 import{mergeGeometries}from'three/addons/utils/BufferGeometryUtils.js';
-import{matReboco,matTelha,matConcreto,tijolo,concreto,janela,janelaAcesa,molduraJanela,porta,agua,aguaPreta,posteMat,
+import{matRebocoSujo,matTelha,matConcreto,tijolo,concreto,janela,janelaAcesa,molduraJanela,porta,agua,aguaPreta,posteMat,
   ferroMat,pvcMat,antenaMat,roupaMat,gradeMat,matLaje,
   matMadeira,graffiteMat,bmat,uvPorMetro}from'./Materials.js';
 
@@ -476,7 +476,54 @@ const pilhas=new Map(),pilhasAndaveis=new Map();
 // Materiais que projetam sombra. Marcar por material (e não por malha) porque depois da fusão só
 // existe UMA malha por material — a decisão tem que ser tomada aqui, antes.
 const MAT_SOMBRA=new Set();
+// ===== SUJEIRA DE RODAPÉ E SOMBRA DE CONTATO, SEM UMA TEXTURA A MAIS =====
+// O Bruno: "as paredes usam cores sólidas e saturadas, sem sujeira, infiltração ou desgaste".
+// A textura de reboco JÁ tem descascado e escorrido — a foto de perto mostra isso. O que faltava era o
+// que nenhuma textura ladrilhada consegue dar: variação AO LONGO DA ALTURA. Uma parede real é escura
+// no pé (terra respingada, umidade, mofo) e escura embaixo da laje (sombra de contato), e clara no
+// meio. Ladrilho não sabe onde é o chão.
+//
+// Isso podia sair de uma textura por parede (caríssimo), de um shader (quebra o `mergeGeometries`) ou
+// de COR POR VÉRTICE — que é o que se usa de verdade num caso destes. Custa 3 floats por vértice, não
+// cria draw call nenhuma, sobrevive à fusão e multiplica em cima da tinta da casa, então funciona em
+// parede verde, azul ou de tijolo sem eu escrever caso especial.
+//
+// O atributo é escrito em TODA geometria que passa por aqui, e não só nas paredes. Não é desperdício,
+// é requisito: `mergeGeometries` exige que todas as peças da mesma pilha tenham os MESMOS atributos, e
+// devolve null (apagando a pilha inteira em silêncio) se uma delas não tiver. Quem decide se a cor
+// aparece é o material, com `vertexColors` — quem não liga simplesmente ignora o atributo.
+const SUJEIRA_ALTURA=.45;   // até onde sobe a barra de terra/mofo, em metros
+const SUJEIRA_FORCA=.42;    // quanto escurece rente ao chão (1 = preto)
+const OCLUSAO_TOPO=.16;     // fatia do alto de cada volume que recebe sombra de contato
+const OCLUSAO_FORCA=.20;
+const _vTmp=new THREE.Vector3();
+function pintarSujeira(geo,ox=0,oy=0,oz=0){
+  const pos=geo.getAttribute('position');
+  if(!pos)return;
+  const n=pos.count,cores=new Float32Array(n*3);
+  geo.computeBoundingBox();
+  const bb=geo.boundingBox;
+  const alturaDoVolume=Math.max(.001,bb.max.y-bb.min.y);
+  for(let i=0;i<n;i++){
+    const x=pos.getX(i)+ox,y=pos.getY(i)+oy,z=pos.getZ(i)+oz;
+    // Altura ACIMA DO CHÃO daquele ponto — não altura absoluta. O morro sobe 10 m; usar Y absoluto
+    // deixaria a casa do alto sem pé sujo e a de baixo suja até o telhado.
+    const acimaDoChao=y-obterElevacao(x,z);
+    let v=1;
+    if(acimaDoChao<SUJEIRA_ALTURA){
+      const t=Math.max(0,acimaDoChao)/SUJEIRA_ALTURA;
+      v-=SUJEIRA_FORCA*(1-t)*(1-t);// quadrático: a sujeira é forte rente ao chão e some rápido
+    }
+    // Sombra de contato no alto do PRÓPRIO volume (embaixo da laje, do telheiro, da viga).
+    const dentro=(pos.getY(i)-bb.min.y)/alturaDoVolume;
+    if(dentro>1-OCLUSAO_TOPO)v-=OCLUSAO_FORCA*((dentro-(1-OCLUSAO_TOPO))/OCLUSAO_TOPO);
+    if(v<0)v=0;
+    cores[i*3]=cores[i*3+1]=cores[i*3+2]=v;
+  }
+  geo.setAttribute('color',new THREE.BufferAttribute(cores,3));
+}
 function acumularPronta(material,geo,andavel=false){
+  pintarSujeira(geo);
   const alvo=andavel?pilhasAndaveis:pilhas;
   if(!alvo.has(material))alvo.set(material,[]);
   alvo.get(material).push(geo);
@@ -488,9 +535,18 @@ function acumular(material,geo,x,y,z,giro=0,andavel=false,mpm=2){
   acumularPronta(material,geo,andavel);
 }
 // Caixa girada em torno de Y, posicionada no mundo. É o tijolo básico de tudo aqui.
-function caixa(material,lw,lh,ld,x,y,z,giro,andavel=false,mpm=2){
-  acumular(material,new THREE.BoxGeometry(lw,lh,ld),x,y,z,giro,andavel,mpm);
+// ===== POR QUE UMA PAREDE PRECISA DE FATIAS =====
+// `BoxGeometry` nasce com QUATRO vértices por face. A cor por vértice, então, só existe nos cantos: a
+// barra de sujeira de 45 cm do pé da parede era interpolada ao longo dos 2,7 m inteiros e virava um
+// degradê fraco de cima a baixo, em vez de uma mancha rente ao chão. Na foto, parede uniforme.
+// Fatiar na vertical dá ao gradiente onde morder. `fatias` é opcional e só as PAREDES pedem — mureta,
+// meio-fio e viga continuam com 4 vértices, porque num objeto de 15 cm não há gradiente pra mostrar.
+function caixa(material,lw,lh,ld,x,y,z,giro,andavel=false,mpm=2,fatias=1){
+  acumular(material,new THREE.BoxGeometry(lw,lh,ld,1,fatias,1),x,y,z,giro,andavel,mpm);
 }
+// Quantas fatias uma parede desta altura precisa: uma a cada ~38 cm, no máximo 8. Oito é onde o ganho
+// visual para e o custo de vértice continua subindo.
+const fatiasDaParede=h=>Math.max(1,Math.min(8,Math.round(h/.38)));
 // Ponto local (à direita, à frente) de um lote convertido pro mundo.
 function noLote(l,dx,dz){
   const c=Math.cos(l.giro),s=Math.sin(l.giro);
@@ -517,8 +573,19 @@ function caixaNoLote(l,material,lw,lh,ld,dx,dz,y,andavel=false,mpm=2){
 // de reboco escurece a tinta sem sujá-la. Roxo e coral entraram porque a referência cita
 // explicitamente "blues, greens, purples and yellows"; o cimento cru fica porque metade de um morro
 // de verdade nunca foi pintada, e uma fileira 100% colorida vira parque de diversão.
-const CORES_PAREDE=[0xe98d63,0x5fb6c9,0x8fc46a,0xf0d98a,0xe7635f,0xb98fd0,0xc9c4b8,0x4f97c4];
-const CORES_TELHA=[0xb8b2a8,0xa8a49c,0xc0b09c,0x9e9a92,0xb0a08c];
+// ===== TINTA VELHA, NÃO TINTA DE CATÁLOGO =====
+// A foto de perto contou a história: a textura de reboco TEM descascado e escorrido, mas com um verde
+// `#8fc46a` por cima a parede sai lisa e saturada e o detalhe some. Tinta de fachada de morro é tinta
+// que pegou anos de sol e chuva — ela desbota pro pastel sujo, nunca fica no tom do catálogo.
+// Cada cor aqui é a antiga puxada pra baixo em saturação e um degrau em luminosidade: azul pó, ocre
+// envelhecido, vermelho desmaiado, verde lavado. É o mesmo bairro, com dez anos a mais.
+const CORES_PAREDE=[0xcf8f6d,0x7fa8b4,0x9bb583,0xd8c894,0xc07f76,0xa694b0,0xc2bdb0,0x7593ad];
+// ===== ZINCO QUE JÁ PEGOU CHUVA =====
+// Eram cinco cinzas quase iguais: telhado de loja, nunca de morro. Chapa ondulada de favela oxida, e
+// oxida por partes — a que está há dois anos no sol tem o cinza puxando pro bege, a de dez anos está
+// marrom de ferrugem. Cinco tons, do zinco novo ao enferrujado, e o sorteio por casa espalha os dois
+// extremos no meio dos intermediários, que é o que dá aquele telhado remendado visto de cima.
+const CORES_TELHA=[0xa9a49a,0xb0a289,0xa2835f,0x8f6b4a,0x9c9086];
 const ESP_MURETA=.14,ALT_MURETA=.5;
 // Laje e mureta são CONCRETO, não telha. Estavam no material `telha` (chapa ondulada) desde sempre —
 // o morro inteiro tinha nervura de zinco na superfície em que o jogador ANDA, que é justo a que ele
@@ -608,7 +675,7 @@ function construirCasa(l){
   // Nada disso dava erro: dava um morro com menos variação do que o código pensava estar sorteando.
   // Por isso TODO deslocamento de hash neste arquivo agora é `>>>`.
   const corTelha=CORES_TELHA[(l.sem>>>3)%CORES_TELHA.length];
-  const reboco=matReboco(cor),telha=matTelha(corTelha);
+  const reboco=matRebocoSujo(cor),telha=matTelha(corTelha);
   MAT_SOMBRA.add(reboco);MAT_SOMBRA.add(telha);MAT_SOMBRA.add(LAJE);
   let larg=l.larg,prof=l.prof,y=l.baseY,recuoAcumulado=0;
 
@@ -650,7 +717,7 @@ function construirCasa(l){
       const afundar=Math.max(0,y-menor)+.25;
       alturaParede=alt+afundar;centroY=y+alt/2-afundar/2;
     }
-    caixa(pele,larg,alturaParede,prof,centro.x,centroY,centro.z,l.giro,false,MPM_PAREDE);
+    caixa(pele,larg,alturaParede,prof,centro.x,centroY,centro.z,l.giro,false,MPM_PAREDE,fatiasDaParede(alturaParede));
 
     // REMENDOS DE TIJOLO. Placas finas coladas na fachada, sorteadas por andar. Material sem tinta,
     // então o vermelho é vermelho em qualquer casa — e todas as placas do mapa viram um draw call.
@@ -675,26 +742,19 @@ function construirCasa(l){
       ? noLote(l,u*f.sinal,f.sinal*(prof/2+fora)+recuoDaFace)
       : noLote(l,f.sinal*(larg/2+fora),-u*f.sinal+recuoDaFace);
 
-    // REMENDOS. Numa parede rebocada é o tijolo aparecendo onde o reboco caiu; numa parede crua é o
-    // contrário, a mancha de reboco de quem começou a rebocar e parou. Os dois lados da mesma moeda,
-    // e é essa alternância que impede o morro de virar duas listas de casas iguais.
-    const remendo=cru?reboco:tijolo;
-    for(let fi=0;fi<faces.length;fi++){
-      const f=faces[fi];
-      const nRemendos=(l.sem>>>(andar*3+fi))%3;// 0 a 2 por face: nem toda parede tem remendo
-      for(let r=0;r<nRemendos;r++){
-        const h=hashInt(l.sem+andar*31+fi*97,r*7);
-        const lw=.6+((h%100)/100)*Math.min(1.3,f.vao*.5),lh=.5+(((h>>>5)%100)/100)*1.1;
-        const pu=(((h>>>11)%100)/100-.5)*Math.max(.2,f.vao-lw-.3);
-        const py=y+.2+(((h>>>17)%100)/100)*Math.max(.2,alt-lh-.4);
-        const p=pontoDaFace(f,pu,.025);
-        caixa(remendo,lw,lh,.05,p.x,py+lh/2,p.z,f.giro,false,MPM_PAREDE);
-      }
-      // Infiltração: faixa escura rente ao chão do andar, nas quatro faces. É o que dá o "pé sujo"
-      // que toda parede de alvenaria térrea tem.
-      const b=pontoDaFace(f,0,.02);
-      caixa(concreto,f.vao*.96,.35,.04,b.x,y+.17,b.z,f.giro);
-    }
+    // ===== O QUE SAIU DAQUI, E POR QUE =====
+    // Aqui moravam duas coisas feitas de GEOMETRIA que deviam ser acabamento:
+    //
+    //  · os REMENDOS de reboco: caixas de 5 cm coladas na fachada pra simular o reboco caído. De perto
+    //    elas nunca leram como reboco descascado — leram como placa de madeira pregada na parede, que
+    //    foi exatamente a palavra que o Bruno usou. E cada uma custava geometria: até 2 por face, 4
+    //    faces, 3 andares, 96 casas.
+    //  · a faixa de INFILTRAÇÃO: uma caixa cinza rente ao chão em cada face. Dava uma tarja, não uma
+    //    mancha — sujeira de verdade não tem borda reta nem espessura.
+    //
+    // As duas viraram acabamento de superfície: o descascado já vive no mapa de reboco (com relevo e
+    // normal, então a luz entra na falha), e o pé sujo agora é COR POR VÉRTICE, que desbota de baixo
+    // pra cima em vez de terminar num degrau. Menos malha, mais parede.
 
     // Porta só no térreo, e só na fachada.
     if(andar===0){
@@ -996,6 +1056,12 @@ const clienteMat=new THREE.MeshStandardMaterial({color:0x2f9c6e,roughness:.7,emi
 // Malha solta (fora das pilhas), já posicionada no mundo.
 function pecaSolta(geo,material,x,y,z,giro,pai,sombra=true){
   uvPorMetro(geo);
+  // A COR POR VÉRTICE TAMBÉM AQUI, e não é enfeite: `MeshStandardMaterial` com `vertexColors:true` e
+  // sem o atributo `color` renderiza PRETO. A casca do esconderijo usa o mesmo material de reboco das
+  // casas e vinha por este caminho — na primeira foto ela virou um bloco preto no meio da rua.
+  // O deslocamento vai explícito porque aqui a posição mora na transformada do mesh, não nos vértices,
+  // e a sujeira precisa saber onde é o chão DAQUELE lugar.
+  pintarSujeira(geo,x,y,z);
   const m=new THREE.Mesh(geo,material);
   m.position.set(x,y,z);m.rotation.y=giro;
   m.castShadow=sombra;m.receiveShadow=true;
@@ -1007,7 +1073,7 @@ function pecaSolta(geo,material,x,y,z,giro,pai,sombra=true){
 function construirCasaOca(l){
   const g=new THREE.Group();favela.add(g);
   const cor=CORES_PAREDE[l.sem%CORES_PAREDE.length];
-  const reboco=matReboco(cor),telha=matTelha(CORES_TELHA[(l.sem>>>3)%CORES_TELHA.length]);
+  const reboco=matRebocoSujo(cor),telha=matTelha(CORES_TELHA[(l.sem>>>3)%CORES_TELHA.length]);
   const larg=l.larg,prof=l.prof,y0=l.baseY,alt=ANDAR_ALT+.25;
   const P=(dx,dz)=>noLote(l,dx,dz);
   // O piso usa a cota da soleira, mas o morro pode descer vários centímetros (ou metros) atrás
@@ -1165,7 +1231,7 @@ const GEO_PERNA=new THREE.BoxGeometry(.05,.42,.05);
 const GEO_ENCOSTO=new THREE.BoxGeometry(.42,.42,.05);
 const GEO_MESA=new THREE.CylinderGeometry(.36,.36,.05,8);
 function construirBar(l){
-  const azulejo=matReboco(0xe6e2d6),telha=matTelha(0xa8a49c);
+  const azulejo=matRebocoSujo(0xe6e2d6),telha=matTelha(0xa8a49c);
   MAT_SOMBRA.add(azulejo);MAT_SOMBRA.add(telha);
   const larg=l.larg,prof=l.prof,y0=l.baseY,alt=2.9,afundar=afundarEstrutura(l,larg,prof,y0);
   const yParede=y0+alt/2-afundar/2,altParede=alt+afundar;
@@ -1216,7 +1282,7 @@ function construirBar(l){
 // alguém está. O ponto de interação fica NA BOCA, do lado da rua, e não dentro do barraco.
 export const BIQUEIRA={x:0,y:0,z:0,raio:0};
 function construirBiqueira(l){
-  const reboco=matReboco(0x7d7466),telha=matTelha(0x9e9a92);
+  const reboco=matRebocoSujo(0x7d7466),telha=matTelha(0x9e9a92);
   MAT_SOMBRA.add(reboco);MAT_SOMBRA.add(telha);
   const larg=l.larg,prof=l.prof,y0=l.baseY,alt=2.5,afundar=afundarEstrutura(l,larg,prof,y0);
   const yParede=y0+alt/2-afundar/2,altParede=alt+afundar;

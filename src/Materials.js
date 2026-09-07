@@ -32,6 +32,9 @@ function conjunto(nome){
 }
 // Monta um MeshStandardMaterial completo em cima de um conjunto. `cor` é TINTA: os mapas de reboco e
 // telha são quase neutros de propósito, pra cada casa manter a cor dela e ganhar a textura por cima.
+// `sujeira` liga a COR POR VÉRTICE (ver `pintarSujeira` no Favela.js): é o que dá pé sujo e sombra de
+// contato sem textura nova nem draw call a mais. Fica ligado só em quem é PAREDE — o atributo existe em
+// toda geometria por exigência do `mergeGeometries`, mas quem não pede simplesmente ignora.
 function pbr(nome,cor=0xffffff,extra={}){
   const c=conjunto(nome);
   return new THREE.MeshStandardMaterial({
@@ -50,12 +53,27 @@ export const bmat=c=>{if(!matCache.has(c))matCache.set(c,new THREE.MeshStandardM
 // pra 96 casas — e material compartilhado é o que mantém o número de draw calls baixo.
 const cacheReboco=new Map(),cacheTelha=new Map();
 export const matReboco=c=>{if(!cacheReboco.has(c))cacheReboco.set(c,pbr('reboco',c));return cacheReboco.get(c)};
+// ===== A VARIANTE QUE ACEITA SUJEIRA =====
+// Igual à de cima, mas lendo a COR POR VÉRTICE (pé sujo e sombra de contato — ver `pintarSujeira` no
+// Favela.js). É variante SEPARADA de propósito: `vertexColors:true` sem o atributo `color` na
+// geometria renderiza PRETO, e o Hospital e a fazenda usam `matReboco`/`matConcreto` por caminhos
+// próprios que não pintam nada. Deixar a bandeira no material compartilhado transformaria os dois em
+// blocos pretos — foi assim que a casca do esconderijo apareceu preta na primeira foto.
+const cacheRebocoSujo=new Map();
+export const matRebocoSujo=c=>{if(!cacheRebocoSujo.has(c))cacheRebocoSujo.set(c,pbr('reboco',c,{vertexColors:true}));return cacheRebocoSujo.get(c)};
 export const matTelha=c=>{if(!cacheTelha.has(c))cacheTelha.set(c,pbr('telha',c));return cacheTelha.get(c)};
 export const matConcreto=()=>pbrConcreto;
-const pbrConcreto=pbr('reboco',0x9d9a92,{aoMapIntensity:1});
+// Concreto cinza áspero, não cinza chapado de vetor: `#8a8a86` é o tom de laje curada que o Bruno
+// pediu, e o mapa de reboco por cima dá a granulação.
+const pbrConcreto=pbr('reboco',0x8a8a86,{aoMapIntensity:1});
+export const matConcretoSujo=()=>pbrConcretoSujo;
+const pbrConcretoSujo=pbr('reboco',0x8a8a86,{aoMapIntensity:1,vertexColors:true});
 export const matChao=()=>pbrChao;
 const pbrChao=pbr('chao',0xffffff);
-export const tijolo=pbr('tijolo',0xffffff),telha=matTelha(0x77736b);
+// TIJOLO CERÂMICO, não tijolo cinza. O mapa é quase neutro de propósito (pra servir de tinta), e sem
+// tinta ele lia como bloco escuro de concreto. `#b84a28` é a terracota do tijolo baiano queimado, que
+// é o que o Bruno pediu — e é o que a parede sem reboco tem numa favela de verdade.
+export const tijolo=pbr('tijolo',0xb84a28,{vertexColors:true}),telha=matTelha(0x77736b);
 // Madeira tingida: a mesma tábua serve de porta, de cerca e de parede de celeiro — o que muda é a
 // tinta. Cacheado por cor pela mesma razão das fachadas: a cerca da fazenda são ~120 peças e material
 // compartilhado é o que deixa elas caberem em InstancedMesh.
@@ -79,11 +97,26 @@ export function uvPorMetro(geo,metrosPorLado=2){
   const p=geo.parameters;if(!p)return geo;
   const{width:w,height:h,depth:d}=p;
   const uv=geo.attributes.uv;if(!uv)return geo;
-  const tam=[[d,h],[d,h],[w,d],[w,d],[w,h],[w,h]];
-  for(let f=0;f<6;f++){
-    const su=tam[f][0]/metrosPorLado,sv=tam[f][1]/metrosPorLado;
-    for(let v=0;v<4;v++){
-      const i=f*4+v;
+  // ===== ISTO PRECISA SABER DE SEGMENTOS =====
+  // A versão anterior indexava `f*4+v`: quatro vértices por face, seis faces, 24 no total. Valia
+  // enquanto TODA caixa do bairro tinha um segmento por lado. As paredes passaram a ser fatiadas na
+  // vertical (pra a cor por vértice ter onde morder — ver `fatiasDaParede` no Favela.js), e aí `f*4+v`
+  // reescalava 24 vértices de uma malha de 120 e deixava o resto com a UV crua: a textura sairia com
+  // densidade diferente na mesma parede.
+  // O `BoxGeometry` monta as faces nesta ordem fixa (+X,-X,+Y,-Y,+Z,-Z), cada uma com
+  // (segA+1)*(segB+1) vértices em grade. Andar por essa contagem funciona pra qualquer subdivisão,
+  // inclusive a de um segmento, que é o caso de quase tudo.
+  const ws=p.widthSegments||1,hs=p.heightSegments||1,ds=p.depthSegments||1;
+  const faces=[
+    {tam:[d,h],n:(ds+1)*(hs+1)},{tam:[d,h],n:(ds+1)*(hs+1)},
+    {tam:[w,d],n:(ws+1)*(ds+1)},{tam:[w,d],n:(ws+1)*(ds+1)},
+    {tam:[w,h],n:(ws+1)*(hs+1)},{tam:[w,h],n:(ws+1)*(hs+1)},
+  ];
+  let i=0;
+  for(const f of faces){
+    const su=f.tam[0]/metrosPorLado,sv=f.tam[1]/metrosPorLado;
+    for(let v=0;v<f.n;v++,i++){
+      if(i>=uv.count)break;
       uv.setXY(i,uv.getX(i)*su,uv.getY(i)*sv);
     }
   }
@@ -154,7 +187,9 @@ export function criarSombraContato(raio,parent,x=0,z=0){const mat=sombraContatoM
 export const ferroMat=new THREE.MeshStandardMaterial({color:0x8f5a37,roughness:.88,metalness:.28});
 // PVC da queda-d'água descendo a fachada. Branco encardido, nunca branco puro: com tone mapping ACES
 // o branco puro estoura e a listra vira um risco de luz na parede.
-export const pvcMat=new THREE.MeshStandardMaterial({color:0xd2cfc6,roughness:.62,metalness:.03});
+// PVC QUEIMADO DE SOL, não branco de loja. Cano de favela pega anos de sol e vira este bege
+// acinzentado; e a rugosidade sobe junto, porque plástico velho não brilha.
+export const pvcMat=new THREE.MeshStandardMaterial({color:0xc8c2b5,roughness:.82,metalness:.02});
 // ANTENA PARABÓLICA. DoubleSide porque metade delas é vista por trás, e uma antena só de um lado
 // some quando o jogador passa do outro lado da casa.
 // Cinza SUJO, não branco. Na primeira foto ela saiu branco-geladeira e puxava o olho pra si no meio
