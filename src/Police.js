@@ -106,6 +106,10 @@ const ESCONDIDO_PARA_SUMIR=3,ESCONDIDO_POR_NIVEL=5,CACA_ATRASO=4;
 // `obterElevacao(x,z)` fornece o chão mesmo nos morros; a margem mantém os esquis acima do relevo.
 const HELI_ALTURA_RONDA=52,HELI_ALTURA_APONTANDO=30,HELI_ALTURA_POUSO=2.4;
 const DESEMBARQUE_QTD=2,DESEMBARQUE_INTERVALO=.65;
+// Quanto ele demora pra revidar depois de LEVAR um tiro. Curto, porque não precisa procurar o
+// atirador — a bala já disse de onde veio. Mas não zero: revide no mesmo quadro do tiro tira do
+// jogador a chance de acertar e correr, que é a jogada.
+const REACAO_LEVOU_TIRO=.35;
 // ===== VISÃO (cone + linha de visão) =====
 // Meia-abertura do cone em radianos: 0,95 rad ≈ 54°, cone total ≈ 109° — perto do campo útil humano.
 // Sobe 0,07 rad por estrela (na ficha 5 vai a 1,30 rad ≈ 74°, cone de ~149°): com ficha alta eles estão
@@ -340,6 +344,9 @@ function criarPolicial(indice,tipo='rapel'){
     // Percepção: `proximaVisao` defasa a checagem entre policiais (ver comentário do custo por frame);
     // `viu` é o resultado da última avaliação, reaproveitado pelos frames intermediários.
     proximaVisao:indice*VISAO_DEFASAGEM,viu:false,olharY:0,
+    // Mesma defasagem da visão, pelo mesmo motivo: os quatro varrendo a lista de plantas no MESMO
+    // quadro é um pico de trabalho que não precisa existir.
+    proximaOlhada:indice*VISAO_DEFASAGEM,jaFoiFerido:false,
     // Setor de busca deste policial, espalhado pelo ângulo de ouro (ver SETOR_OURO).
     setorBusca:indice*SETOR_OURO,
     // Altura renderizada, interpolada: é o que deixa o policial subir junto pra laje (o A* é 2D).
@@ -514,6 +521,41 @@ function marcarPlantacaoBatida(agora){
   const pl=policia.alvoPlantacao;
   if(pl)plantacoesBatidas.push({x:pl.x,z:pl.z,ate:agora+COOLDOWN_PLANTACAO});
 }
+// ===== TODO POLICIAL A PÉ TAMBÉM ENXERGA PLANTAÇÃO =====
+// "todos os policiais devem conseguir detectar uma planta de cannabis ou algo de errado."
+// Era só o helicóptero. Um fardado podia passar RASPANDO num canteiro florido e seguir andando — o
+// que, do lado de fora, é a polícia sendo cega. E tinha um efeito colateral chato: plantar em beco
+// coberto, onde o heli não passa, era seguro pra sempre.
+//
+// As regras são as mesmas que valem pro heli, de propósito: só pé FLORIDO conta (é quando a muda fica
+// visível, e é quando o jogo avisa "sua muda floresceu"), canteiro batido há pouco não vale outra, e
+// quem acha chama a batida inteira pelo rádio — o heli vem, e a viatura também.
+// A diferença é o alcance: o heli varre de cima com 20 m; o de pé enxerga 14 m, E PRECISA DE LINHA DE
+// VISÃO. Parede tapa. É isso que mantém o beco fechado valendo alguma coisa em vez de virar armadilha.
+const POLICIAL_VE_PLANTA=14;
+const OLHADA_INTERVALO=.5;// não vale varrer a lista de plantas todo quadro, pra cada policial
+function policialOlhaPlantas(pol,agora){
+  // Já tem batida rolando: o rádio está ocupado, e abrir outra por cima só embaralharia o alvo.
+  if(policia.estado!=='rondando'||agora<pol.proximaOlhada)return false;
+  pol.proximaOlhada=agora+OLHADA_INTERVALO;
+  const ox=pol.pos.x,oy=pol.grupo.position.y+ALT_OLHO,oz=pol.pos.z;
+  for(const pl of plantas){
+    if(!plantaDetectavel(pl)||distXZ(pol.pos,pl)>POLICIAL_VE_PLANTA)continue;
+    if(plantacaoQueimada(pl.x,pl.z,agora))continue;
+    // A linha vai do OLHO dele até a altura do vaso: é por onde ele enxergaria de verdade.
+    if(!temLinhaDeVisao(ox,oy,oz,pl.x,pl.y+.35,pl.z))continue;
+    policia.alvoPlantacao=plantacaoEmVolta(pl);
+    policia.alvoPlanta=pl;policia.confiscoAte=0;
+    transitar('apontando');
+    const n=policia.alvoPlantacao.pes;
+    mostrarAviso(n>1
+      ?`👮 Um policial na rua achou sua plantação de ${n} pés e chamou no rádio.`
+      :'👮 Um policial na rua achou sua muda e chamou no rádio.',3800);
+    return true;
+  }
+  return false;
+}
+
 // Exposto pro teste: contar batidas repetidas no mesmo canteiro é a única forma de provar o conserto.
 export function __plantacoesBatidas(){return plantacoesBatidas.map(q=>({x:q.x,z:q.z}))}
 
@@ -1192,6 +1234,27 @@ function atingirPolicial(pol,dano){
     // Matar em plena rua é avistamento na certa: o rádio espalha a posição na hora. É o que impede
     // "limpar a ronda um por um sem ninguém notar".
     compartilharAvistamento(player.position.x,player.position.z,performance.now()/1000);
+  }else{
+    // ===== LEVOU TIRO E SOBREVIVEU: REAGE =====
+    // "os policiais são burros, se eu dou um tiro neles eles não fazem nada, tem que esperar morrer."
+    // Estava exatamente assim, e o número era constrangedor: dar o tiro e NÃO dar o tiro produziam
+    // o mesmo mundo — ficha 0, rádio calado, ninguém vindo, zero revide. Este ramo simplesmente não
+    // existia: só a MORTE tinha consequência.
+    //
+    // Três coisas acontecem, e nenhuma delas é "ele fica sabendo por mágica":
+    const agora=performance.now()/1000;
+    //  1. A FICHA SOBE, uma vez por policial. Uma vez, e não por bala, senão esvaziar o pente num
+    //     sujeito só daria ficha máxima — o que suja é acertar gente, não gastar munição.
+    if(!pol.jaFoiFerido){pol.jaFoiFerido=true;somarProcurado(1)}
+    //  2. O RÁDIO ESPALHA. É o que faz os outros virem, e é a diferença entre "eles são burros" e
+    //     "eu abri fogo no meio da rua". Sem isto, dava pra ferir um por um sem ninguém notar.
+    compartilharAvistamento(player.position.x,player.position.z,agora);
+    //  3. ELE MESMO JÁ SABE DE ONDE VEIO. Não precisa varrer o cone de visão atrás do atirador: levou
+    //     tiro, se vira pra lá. `viuDesde` marca que o alvo está adquirido e `prontoEm` encurta o
+    //     tempo de reação — mas não pra zero, que seria revide no mesmo quadro do tiro.
+    pol.viuDesde=pol.viuDesde||agora;pol.viuPor=agora;
+    pol.prontoEm=Math.min(pol.prontoEm??Infinity,agora+REACAO_LEVOU_TIRO);
+    pol.olharY=Math.atan2(player.position.x-pol.pos.x,player.position.z-pol.pos.z);
   }
   // Limpar o efetivo inteiro não encerra mais nada: eles voltam da base, um a um, andando. O aviso
   // existe pra ele entender que ficar ali não vai resolver.
@@ -1533,6 +1596,45 @@ export function __passoDoCombateDoEstado(dt){
 }
 export function __contarPoliciais(){return{emCampo:policiais.filter(p=>p.vivo).length,
   baixas:policia.baixas,desejado:efetivoDesejado(),teto:POLICIAIS_MAX,base:EFETIVO_BASE}}
+// FERIR sem matar, que é o caso da queixa: "dou um tiro neles e eles não fazem nada, tem que esperar
+// morrer". Passa pelo MESMO `atingirPolicial` que a bala usa — testar por um caminho paralelo provaria
+// o caminho paralelo.
+export function __policialAlvoParaTeste(){
+  const pol=policiais.find(p=>p.vivo);
+  return pol?{hp:+pol.hp.toFixed(1),x:+pol.pos.x.toFixed(1),z:+pol.pos.z.toFixed(1),modo:pol.modo}:null;
+}
+export function __ferirPolicialParaTeste(dano){
+  const pol=policiais.find(p=>p.vivo);
+  if(pol)atingirPolicial(pol,dano);
+  return !!pol;
+}
+export function __zerarFichaParaTeste(){policia.procurado=0;rastro.ativo=false;rastro.buscaAte=0}
+// Bancada do olho de rua: um policial PARADO num ponto escolhido, e o mapa limpo dos outros. Parado
+// porque a pergunta é sobre alcance e parede — com ele andando eu mediria a ronda, não a vista.
+export function __limparPoliciaisParaTeste(){
+  for(let i=policiais.length-1;i>=0;i--)removerPolicial(i);
+  turnoAberto=true;// não deixa o turno inicial nascer por cima do cenário
+}
+export function __plantarPolicialParaTeste(x,z){
+  const pol=criarPolicial(policiais.length,'rua');
+  pol.pos.set(x,0,z);pol.alturaAtual=obterElevacao(x,z);
+  pol.grupo.position.set(x,pol.alturaAtual,z);
+  pol.modo='ronda';pol.destinoRonda={x,z};// destino é onde ele já está: fica parado
+  policiais.push(pol);
+  return{x:+x.toFixed(1),z:+z.toFixed(1)};
+}
+export function __voltarHeliParaRondaParaTeste(){transitar('rondando')}
+// Prega o policial no lugar, quadro a quadro. `destinoRonda` apontando pro próprio pé NÃO segura: ao
+// "chegar", a ronda sorteia outro destino e ele sai andando. Foi assim que o caso da parede deu falso
+// positivo — ele andava até ganhar linha de visão e achava a planta aos 16,4 s, e eu teria concluído
+// que parede não tapa nada.
+export function __manterPolicialParado(x,z){
+  const pol=policiais[0];
+  if(!pol)return;
+  pol.pos.set(x,0,z);pol.alturaAtual=obterElevacao(x,z);
+  pol.grupo.position.set(x,pol.alturaAtual,z);
+  pol.destinoRonda={x,z};pol.rota=null;pol.destinoRota=null;
+}
 // Abate um policial em campo, pra o teste medir que o reforço só vem DEPOIS de uma baixa.
 export function __abaterUmParaTeste(){
   const vivo=policiais.find(p=>p.vivo);
@@ -1662,6 +1764,9 @@ function atualizarPatrulha(dt,agora){
       continue;
     }
     const vendo=perceber(pol,agora);
+    // Olhar em volta atrás de plantação faz parte da ronda, e roda ANTES do desvio de combate: se ele
+    // está no meio de um tiroteio, `policialOlhaPlantas` sai na primeira linha (só olha em ronda).
+    policialOlhaPlantas(pol,agora);
     // COM FICHA SUJA é o combate de sempre: papéis, cobertura, avanço e tiro.
     if(briga){atualizarPolicialCombate(pol,dt,agora);continue}
 
