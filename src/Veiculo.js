@@ -415,7 +415,18 @@ export function criarVeiculo(cfg){
     // quer dizer. Com a frente do modelo no lado negativo do eixo comprido, isso dá ângulo crescente.
     if(rodas){
       anguloDaRoda+=distancia/Math.max(.05,rodas[0].raio);
-      const esterco=direcao*ESTERCO_VISUAL;
+      // ===== O SINAL DO ESTERÇO, DERIVADO E NÃO CHUTADO =====
+      // "eu viro pra direita, as rodas vão pra esquerda, mas o carro vai na direção certa."
+      //
+      // Era `direcao*ESTERCO_VISUAL`, positivo. A conta que manda está seis linhas acima:
+      //     player.rotation.y -= direcao*taxa*dt*Math.sign(velocidade)
+      // ou seja, `direcao` POSITIVO faz o yaw DIMINUIR, e o comentário de lá diz o que isso quer
+      // dizer: "diminuir o yaw é a curva pra direita". Logo, virar pra direita é yaw NEGATIVO, e a
+      // roda tem que acompanhar o carro — com o sinal positivo ela apontava pro lado contrário.
+      //
+      // O pivô é neto da raiz, que leva um giro de -90° em Y. Giro em Y compõe somando com giro em Y,
+      // então o sinal local é o mesmo do mundo — não há inversão escondida no caminho.
+      const esterco=-direcao*ESTERCO_VISUAL;
       for(const r of rodas){
         r.malha.rotation[r.eixoGiro]=anguloDaRoda;
         // Só as da frente esterçam; as de trás ficam retas, como em qualquer carro.
