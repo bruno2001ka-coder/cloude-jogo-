@@ -16,7 +16,7 @@ import*as THREE from'three';
 import{GLTFLoader}from'three/addons/loaders/GLTFLoader.js';
 import{player}from'./Player.js';
 import{scene}from'./core.js';
-import{obterElevacao}from'./Terrain.js';
+import{obterElevacao,alturaDoChaoDesenhado}from'./Terrain.js';
 import{colideObstaculoXZ,registrarCaixa,marcarObstaculoMovel,buscarPosicaoLivre}from'./Physics.js';
 import{PLAYER_LIMIT}from'./WorldBounds.js';
 
@@ -89,13 +89,28 @@ export function criarVeiculo(cfg){
   // e a outra no ar em quase todo lugar. Sem simulação de suspensão, o jeito honesto num terreno de
   // altura é AMOSTRAR O CHÃO onde as rodas estão: a inclinação sai da diferença entre a frente e a
   // traseira, o rolamento da diferença entre um lado e o outro, e a altura da média das duas pontas.
+  // ===== A RODA ASSENTA NO CHÃO QUE SE VÊ, NÃO NA CURVA =====
+  // Estas quatro amostras usavam `obterElevacao`, a curva ANALÍTICA. Mas a roda é desenhada contra a
+  // MALHA do chão, que interpola reto entre vértices de 1,55 m: em terreno convexo ela fica abaixo da
+  // curva, em côncavo acima — medido ao longo da via principal, a diferença chega a 8,9 cm.
+  //
+  // Ou seja: o veículo já entrava no chão visível, e o `alturaAssento:-.02` da moto era um remendo
+  // médio pra isso ("Assentar exatamente na curva deixava 4,8 cm de folga mediana", diz o comentário
+  // de lá). Na terra batida quase não se notava, porque roda e chão têm cor parecida. Com asfalto
+  // escuro embaixo virou a queixa: "as rodas dos carros entra no asfalto, ele encosta só na parte da
+  // terra".
+  //
+  // Amostrando a MESMA superfície que a placa de vídeo desenha, a roda encosta onde o olho espera —
+  // na terra e no asfalto igualmente, porque a fita da rua também assenta nela.
+  // Só o ASSENTAMENTO muda. Colisão e desmonte continuam na curva analítica, que é o que o jogador a
+  // pé usa: misturar as duas na física faria veículo e pedestre discordarem de onde é o chão.
   function assentar(x,z,rumo){
     const fx=-Math.sin(rumo),fz=-Math.cos(rumo);
     const lx=Math.cos(rumo),lz=-Math.sin(rumo);
-    const yF=obterElevacao(x+fx*cfg.entreEixos,z+fz*cfg.entreEixos);
-    const yT=obterElevacao(x-fx*cfg.entreEixos,z-fz*cfg.entreEixos);
-    const yD=obterElevacao(x+lx*cfg.meiaBitola,z+lz*cfg.meiaBitola);
-    const yE=obterElevacao(x-lx*cfg.meiaBitola,z-lz*cfg.meiaBitola);
+    const yF=alturaDoChaoDesenhado(x+fx*cfg.entreEixos,z+fz*cfg.entreEixos);
+    const yT=alturaDoChaoDesenhado(x-fx*cfg.entreEixos,z-fz*cfg.entreEixos);
+    const yD=alturaDoChaoDesenhado(x+lx*cfg.meiaBitola,z+lz*cfg.meiaBitola);
+    const yE=alturaDoChaoDesenhado(x-lx*cfg.meiaBitola,z-lz*cfg.meiaBitola);
     grupo.position.set(x,(yF+yT)/2+cfg.alturaAssento,z);
     grupo.rotation.y=rumo;
     // Girando em torno do X local, ângulo positivo LEVANTA o bico; subtrair o peso baixa ele.

@@ -80,6 +80,37 @@ const groundGeometry=new THREE.PlaneGeometry(MAP_SIZE,MAP_SIZE,GROUND_SEGMENTS,G
 const groundPositions=groundGeometry.attributes.position;
 for(let i=0;i<groundPositions.count;i++){const x=groundPositions.getX(i),localY=groundPositions.getY(i),worldZ=-localY;groundPositions.setZ(i,obterElevacao(x,worldZ))}
 groundGeometry.computeVertexNormals();
+
+// ===== A ALTURA DO CHÃO QUE SE VÊ, NÃO A DA CURVA =====
+// `obterElevacao` é a curva ANALÍTICA. O chão DESENHADO é esta malha de quadrados de ~1,55 m, que
+// interpola reto entre os vértices — em terreno convexo a superfície visível fica ABAIXO da curva,
+// até uns 5 cm. As duas coisas não são a mesma, e confundi-las tem consequência visível: a moto já
+// carrega um `alturaAssento:-.02` só pra compensar isso, com o motivo escrito lá.
+//
+// Foi o mesmo tropeço com o asfalto. Pus a fita da rua na curva analítica +5 cm; o carro apoia na
+// curva; então a roda ficava 5 cm ABAIXO da superfície de asfalto e parecia enterrada nele, tocando
+// só a terra em volta. Era exatamente o que ele viu.
+//
+// Aqui devolvo a altura da MALHA, com a mesma triangulação que o `PlaneGeometry` usa (cada quadrado
+// vira dois triângulos, e interpolar por quadrilátero daria um valor diferente do que a placa de
+// vídeo desenha). Quem é acabamento colado no chão — a fita da rua, o meio-fio — assenta nisto.
+const CHAO_PASSO=MAP_SIZE/GROUND_SEGMENTS;
+export function alturaDoChaoDesenhado(x,z){
+  // Índice da célula e posição fracionária dentro dela.
+  const fx=(x+MAP_HALF_SIZE)/CHAO_PASSO,fz=(z+MAP_HALF_SIZE)/CHAO_PASSO;
+  const ix=Math.floor(fx),iz=Math.floor(fz);
+  // Fora da malha não há o que interpolar: devolve a curva, que é o melhor palpite disponível.
+  if(ix<0||iz<0||ix>=GROUND_SEGMENTS||iz>=GROUND_SEGMENTS)return obterElevacao(x,z);
+  const u=fx-ix,v=fz-iz;
+  const x0=-MAP_HALF_SIZE+ix*CHAO_PASSO,x1=x0+CHAO_PASSO;
+  const z0=-MAP_HALF_SIZE+iz*CHAO_PASSO,z1=z0+CHAO_PASSO;
+  // Os quatro cantos, nomeados como o PlaneGeometry os liga: a=(x0,z0) b=(x0,z1) c=(x1,z1) d=(x1,z0),
+  // com os triângulos (a,b,d) e (b,c,d).
+  const ha=obterElevacao(x0,z0),hb=obterElevacao(x0,z1),hc=obterElevacao(x1,z1),hd=obterElevacao(x1,z0);
+  return u+v<=1
+    ? ha+v*(hb-ha)+u*(hd-ha)
+    : hc+(1-u)*(hb-hc)+(1-v)*(hd-hc);
+}
 groundGeometry.setAttribute('uv1',groundGeometry.attributes.uv);// aoMap lê o 2º canal de UV
 export const ground=new THREE.Mesh(groundGeometry,groundMat);
 ground.rotation.x=-Math.PI/2;ground.castShadow=true;ground.receiveShadow=true;scene.add(ground);

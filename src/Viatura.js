@@ -49,7 +49,7 @@
 import*as THREE from'three';
 import{GLTFLoader}from'three/addons/loaders/GLTFLoader.js';
 import{scene}from'./core.js';
-import{obterElevacao}from'./Terrain.js';
+import{obterElevacao,alturaDoChaoDesenhado}from'./Terrain.js';
 import{viaPrincipal,viaBaixa}from'./Favela.js';
 import{registrarCaixa,marcarObstaculoMovel}from'./Physics.js';
 
@@ -240,8 +240,12 @@ function assentar(v){
   // do anel inteiro — duas viaturas no mesmo sentido ficam na mesma mão, como carro de verdade.
   const p={x:eixo.x-t.z*v.mao,z:eixo.z+t.x*v.mao};
   const fx=t.x,fz=t.z;
-  const yF=obterElevacao(p.x+fx*ENTRE_EIXOS,p.z+fz*ENTRE_EIXOS);
-  const yT=obterElevacao(p.x-fx*ENTRE_EIXOS,p.z-fz*ENTRE_EIXOS);
+  // Assenta no chão DESENHADO, igual aos veículos do jogador (ver o comentário longo em
+  // `assentar`, no Veiculo.js): a curva analítica difere da malha visível em até 8,9 cm, e a viatura
+  // roda a vida inteira na via principal — onde o asfalto escuro denuncia a roda enterrada.
+  // O COLISOR abaixo continua na curva, junto com o resto da física.
+  const yF=alturaDoChaoDesenhado(p.x+fx*ENTRE_EIXOS,p.z+fz*ENTRE_EIXOS);
+  const yT=alturaDoChaoDesenhado(p.x-fx*ENTRE_EIXOS,p.z-fz*ENTRE_EIXOS);
   v.grupo.position.set(p.x,(yF+yT)/2+ALTURA_ASSENTO,p.z);
   v.grupo.rotation.y=rumo;
   v.grupo.rotation.x=Math.atan2(yF-yT,ENTRE_EIXOS*2);// acompanha a ladeira da rua

@@ -161,8 +161,14 @@ export const concreto=pbr('reboco',0xb9b3a1,{aoMapIntensity:1});
 // `vertexColors` ligado, e não é enfeite: é ele que faz a EMENDA com o beco de terra. A fita da rua
 // tem uma sanga de cada lado cujos vértices de fora são pintados de cor de terra, então o asfalto
 // desbota pra terra em vez de terminar num corte reto de polígono. Zero draw call, zero textura.
+// `polygonOffset` no lugar de altura: a fita assenta 2 mm acima do chão desenhado, e nessa distância
+// o buffer de profundidade não separa as duas superfícies de longe — apareceriam manchas de terra
+// piscando no asfalto. Levantar a fita resolveria também, mas cada milímetro levantado é milímetro
+// que a roda do carro afunda no asfalto (foi essa a queixa), então a altura é o recurso caro aqui e o
+// deslocamento de profundidade é o barato: ele muda quem ganha o teste de Z sem mover nada na cena.
 export const matAsfalto=()=>pbrAsfalto;
-const pbrAsfalto=pbr('asfalto',0xffffff,{vertexColors:true,aoMapIntensity:1});
+const pbrAsfalto=pbr('asfalto',0xffffff,{vertexColors:true,aoMapIntensity:1,
+  polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-4});
 // MEIO-FIO. Concreto pré-moldado com junta de 1 m e canto lascado. Separado do `concreto` porque o
 // que dá escala ao meio-fio é a junta entre as peças, e ela é desenhada na textura.
 export const matMeioFio=()=>pbrMeioFio;

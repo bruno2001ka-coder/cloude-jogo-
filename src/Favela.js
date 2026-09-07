@@ -26,7 +26,7 @@
 export const BECO_MIN=2.0;
 export const PULO_ALCANCE=1.40;
 import*as THREE from'three';
-import{obterElevacao}from'./Terrain.js';
+import{obterElevacao,alturaDoChaoDesenhado}from'./Terrain.js';
 
 // ===== SORTEIO DETERMINÍSTICO =====
 // Nada aqui usa Math.random na GERAÇÃO. O jogador decora o caminho pelo morro, e um mapa que muda a
@@ -1227,9 +1227,53 @@ const COR_TERRA=new THREE.Color(0x9a8259);
 // A cada ~90 cm de largura entra uma coluna, e a amostragem ao longo da curva apertou de 2 m pra 1 m.
 // A fita passa a acompanhar o relevo em vez de cortar por dentro dele. Custo: a rua inteira sai de
 // ~900 pra ~7.000 triângulos, e são DUAS malhas no mapa todo.
-const PASSO_LARGURA=.9;
+// ===== 60 CM, E O NÚMERO SAIU DE UMA VARREDURA =====
+// A fita interpola reto entre as amostras dela; o chão desenhado interpola reto entre os vértices
+// DELE, que ficam noutro lugar. Onde as duas grades se cruzam sobra uma quina do chão acima da fita —
+// terra aparecendo por cima do asfalto. Medi o pior caso ao longo da via para vários espaçamentos:
+//   0,90 m -> 4,6 cm de furo, 2.832 triângulos
+//   0,60 m -> 3,0 cm,          5.830
+//   0,45 m -> 2,0 cm,          9.912
+//   0,30 m -> 1,2 cm,         20.140
+//   0,20 m -> 1,0 cm,         44.576
+// O furo cai devagar e o custo explode: perseguir zero por subdivisão é briga perdida (o bairro
+// INTEIRO tem 78 mil triângulos). 0,60 m é onde a curva ainda paga — corta o furo pela metade por
+// 3 mil triângulos — e o resto fica pra folga de 2 mm mais o `polygonOffset` do material.
+const PASSO_LARGURA=.6;
+// ===== QUANTO ESTE VÉRTICE PRECISA SUBIR PRA CORDA NÃO PASSAR POR DENTRO DO CHÃO =====
+// A primeira tentativa aqui foi pegar o PONTO MAIS ALTO da vizinhança. Errado, e o teste mostrou na
+// hora: a via principal sobe o morro, e numa rampa o ponto mais alto a 30 cm de distância está 30 cm
+// x a inclinação acima — a fita subiu 12,8 cm em média e 30 cm no pior caso, virando uma passarela
+// flutuando sobre a rua. O máximo mede a INCLINAÇÃO, e inclinação não é o problema: a fita acompanha
+// rampa sem dificuldade nenhuma, porque interpola reto entre os vértices e rampa é reta.
+//
+// O que fura é a QUINA — a dobra entre dois triângulos do chão. Numa dobra pra cima, a corda da fita
+// passa POR DENTRO do terreno e ele aparece por cima do asfalto. Isso se mede como "barriga": o
+// quanto o chão no meio do caminho sobe acima da reta que liga as duas pontas. Em rampa plana,
+// qualquer que seja a inclinação, a barriga é exatamente ZERO.
+//
+// As direções são os eixos e as diagonais porque a malha do chão é alinhada aos eixos e cada quadrado
+// dela é cortado por uma diagonal: as dobras correm nessas direções e em nenhuma outra.
+//
+// O RAIO É A DISTÂNCIA ATÉ O VIZINHO, não metade dela. Sondei com meio passo primeiro e sobrou furo
+// de 4,2 cm: a corda que precisa ser coberta vai de um vértice ATÉ O OUTRO, e o meio do caminho — que
+// é onde a barriga é maior — ficava fora do alcance da sonda.
+const DIRECOES_QUINA=[[1,0],[0,1],[1,1],[1,-1]];
+function levanteContraQuina(x,z,r){
+  const h0=alturaDoChaoDesenhado(x,z);
+  let levante=0;
+  for(const[ux,uz]of DIRECOES_QUINA)for(const s of[1,-1]){
+    const dx=ux*r*s,dz=uz*r*s;
+    const h1=alturaDoChaoDesenhado(x+dx,z+dz);
+    for(const t of[.25,.5,.75]){
+      const barriga=alturaDoChaoDesenhado(x+dx*t,z+dz*t)-(h0+(h1-h0)*t);
+      if(barriga>levante)levante=barriga;
+    }
+  }
+  return h0+levante;
+}
 function fitaDaVia(curva,largura,terra=false){
-  const total=curva.getLength(),n=Math.max(4,Math.round(total/1));
+  const total=curva.getLength(),n=Math.max(4,Math.round(total/PASSO_LARGURA));
   const pos=[],nor=[],uv=[],cor=[],idx=[];
   // Meia-largura de cada coluna, de uma beira à outra, e o quanto cada uma puxa pra cor de terra.
   const nInternas=Math.max(2,Math.round(largura/PASSO_LARGURA)+1);
@@ -1243,9 +1287,26 @@ function fitaDaVia(curva,largura,terra=false){
     const nx=-t.z,nz=t.x;
     for(const c of colunas){
       const x=p.x+nx*c.m,z=p.z+nz*c.m;
-      // A sanga desce 4 cm: a beira do asfalto é mais baixa que o miolo (é por ali que a água corre),
-      // e sem isso a emenda pintada continuaria plana e leria como decalque.
-      pos.push(x,obterElevacao(x,z)+.05-c.t*.04,z);
+      // ===== A FITA ASSENTA NO CHÃO DESENHADO, RENTE =====
+      // Estava em `obterElevacao(x,z)+.05` — a curva analítica, cinco centímetros acima. O carro
+      // apoia NA CURVA, então a roda ficava 5 cm abaixo do asfalto e parecia enterrada nele, tocando
+      // só a terra da beira. Foi o que ele viu e reclamou.
+      // `alturaDoChaoDesenhado` é a altura da malha que a placa de vídeo realmente desenha (ver o
+      // comentário longo em Terrain.js). Colada nela, a fita fica exatamente onde a terra estava, e a
+      // roda toca o asfalto do mesmo jeito que tocava o barro antes.
+      // ===== O MÁXIMO LOCAL, NÃO O VALOR NO PONTO =====
+      // Assentar a fita na altura exata do chão no vértice não basta, e a foto provou: a fita
+      // interpola reto entre AS AMOSTRAS DELA, o chão interpola reto entre OS VÉRTICES DELE, e nas
+      // quinas onde as duas grades se cruzam o chão sobe acima da corda da fita. O resultado na tela
+      // foram manchas TRIANGULARES de terra por cima do asfalto — grandes, porque 3 cm de furo num
+      // plano quase horizontal expõe muita ÁREA, e área é o que o olho vê.
+      //
+      // Levantar a fita inteira resolveria e traria de volta a queixa original (roda enterrada).
+      // Subdividir mais também resolveria, e eu medi: o furo cai devagar e o custo explode.
+      // O que resolve sem pagar nenhum dos dois preços é olhar a VIZINHANÇA: cada vértice da fita
+      // sobe até o ponto mais alto do chão dentro de meia célula em volta dele. Onde a rua é lisa isso
+      // é zero e a roda encosta rente; onde há quina, a fita sobe só ali, só o quanto a quina pede.
+      pos.push(x,levanteContraQuina(x,z,PASSO_LARGURA)+.002,z);
       nor.push(0,1,0);
       uv.push((c.m+largura/2)/2,u*total/2);
       const k=1-c.t*.85;// 1 = asfalto puro; na ponta da sanga sobra 15% dele sob a terra
@@ -1293,7 +1354,8 @@ function meioFioDaVia(curva,largura){
       // O topo é NIVELADO pelo ponto de dentro: um meio-fio de verdade é uma peça reta assentada, não
       // uma fita que copia cada ondulação do barranco. Amostrar a altura nas duas beiras deixava a
       // guia torcida onde o terreno cai de lado.
-      const yTopo=obterElevacao(xi,zi)+.05+MEIOFIO_ALT;
+      // Assenta no chão DESENHADO, igual à fita — senão a guia flutuaria sobre o próprio asfalto.
+      const yTopo=levanteContraQuina(xi,zi,PASSO_LARGURA)+.002+MEIOFIO_ALT;
       const v=u*total/2;
       emp(xi,yTopo-MEIOFIO_ALT,zi,nx*lado,0,nz*lado,0,v);   // pé da testa, no asfalto
       emp(xi,yTopo,zi,          nx*lado,0,nz*lado,1,v);     // topo da testa
