@@ -36,6 +36,10 @@ const carro=criarVeiculo({
   // A moto não recebe nenhuma das duas: ela tem duas rodas em linha (não há quatro folgas pra
   // plantar) e a rolagem dela é o piloto deitando, que PRECISA do atraso pra ler como peso.
   plantarAsQuatroRodas:true,
+  // O modelo do carro traz os quatro pneus e as quatro calotas como ILHAS de geometria separadas
+  // (medido: 8 ilhas nas quinas, simétricas), então dá pra recortá-las e girar. A moto não tem: a
+  // roda dela é um corpo só com o quadro, e por isso a ficha dela não liga isto.
+  rodasQueGiram:true,
   rolagemDoTerrenoDireta:true,
   alturaAssento:-.02,
   raioMontar:4,

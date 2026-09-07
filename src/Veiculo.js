@@ -17,6 +17,7 @@ import{GLTFLoader}from'three/addons/loaders/GLTFLoader.js';
 import{player}from'./Player.js';
 import{scene}from'./core.js';
 import{obterElevacao,alturaDoChaoDesenhado}from'./Terrain.js';
+import{separarRodas}from'./Rodas.js';
 import{colideObstaculoXZ,registrarCaixa,marcarObstaculoMovel,buscarPosicaoLivre}from'./Physics.js';
 import{PLAYER_LIMIT}from'./WorldBounds.js';
 
@@ -30,6 +31,10 @@ const LIMITE_MUNDO=PLAYER_LIMIT,ZONA_MORTA=.12;
 // nenhum. Não é o tamanho do passo, é o teto do RESULTADO — ver o
 // comentário em `assentar`, que essa distinção já custou uma medida errada.
 const TETO_AFUNDAR=.14;
+// O quanto a roda da frente vira na tela, no esterço cheio. É VISUAL: quem faz o carro curvar é o
+// `esterco` da ficha, e este ângulo só precisa LER como volante virado. 32° é o batente de um carro
+// de rua; mais que isso lê como kart.
+const ESTERCO_VISUAL=.56;
 // ===== SÓ SE DIRIGE UM DE CADA VEZ =====
 // Com dois veículos no mapa, nada impedia entrar no carro e depois montar na moto: os dois passariam
 // a mover o `player` no mesmo quadro, cada um com a sua velocidade, e o jogador sairia arrastado numa
@@ -60,6 +65,9 @@ export function criarVeiculo(cfg){
   // A parcela de CURVA da rolagem, guardada à parte pra poder ser amortecida sozinha, sem arrastar a
   // do terreno junto (ver o fim do `atualizar`). Só o veículo com `rolagemDoTerrenoDireta` usa.
   let inclinacaoDeCurva=0;
+  // As quatro rodas, se o modelo permitir separá-las (ver `Rodas.js`). `null` = modelo sem recorte,
+  // e aí o veículo anda como sempre andou, com a roda desenhada parada — que é o caso da moto.
+  let rodas=null,anguloDaRoda=0;
 
   // ===== O CORPO PRECISA GIRAR COM O VEÍCULO =====
   // A física do jogo é AABB pura (`Physics.js`): uma caixa fixa mede sempre o mesmo nos eixos do
@@ -223,6 +231,9 @@ export function criarVeiculo(cfg){
   }
   new GLTFLoader().load(cfg.arquivo,gltf=>{
     ajustarModelo(gltf.scene);grupo.add(gltf.scene);carregado=true;
+    // DEPOIS do `ajustarModelo`: ele escala, centra e gira a raiz, e as rodas entram como filhas da
+    // malha, herdando tudo isso. Separar antes daria peças na escala crua do arquivo.
+    if(cfg.rodasQueGiram)rodas=separarRodas(gltf.scene);
     assentar(player.position.x+cfg.nascePerto,player.position.z+cfg.nascePerto,0);
     atualizarCaixa();// já nasce sendo obstáculo: chega parado, e parado ele tem corpo
     grupo.visible=true;
@@ -392,6 +403,24 @@ export function criarVeiculo(cfg){
       // Perde quase toda a inércia, como bater de verdade. Sobra um resto pra não ficar grudado na
       // parede — com zero, um toque de raspão deixaria o veículo morto encostado no muro.
       if(andou<pedido*.35)velocidade*=.15;
+    }
+
+    // ===== AS RODAS GIRAM E AS DA FRENTE ESTERÇAM =====
+    // O giro sai da distância percorrida, não de um número inventado: `distância / raio` é o ângulo
+    // que uma roda que NÃO PATINA percorre. Assim a roda acompanha a velocidade sozinha, inclusive na
+    // ré (distância negativa gira ao contrário) e na freada.
+    //
+    // O sinal foi deduzido e conferido: o pneu roda em torno do eixo mais fino dele, e um ponto no
+    // FUNDO da roda tem que andar pra TRÁS em relação ao carro — é isso que "rolar sem patinar"
+    // quer dizer. Com a frente do modelo no lado negativo do eixo comprido, isso dá ângulo crescente.
+    if(rodas){
+      anguloDaRoda+=distancia/Math.max(.05,rodas[0].raio);
+      const esterco=direcao*ESTERCO_VISUAL;
+      for(const r of rodas){
+        r.malha.rotation[r.eixoGiro]=anguloDaRoda;
+        // Só as da frente esterçam; as de trás ficam retas, como em qualquer carro.
+        if(r.dianteira)r.pivo.rotation.y=esterco;
+      }
     }
 
     const rolamentoDoChao=assentar(player.position.x,player.position.z,player.rotation.y);
