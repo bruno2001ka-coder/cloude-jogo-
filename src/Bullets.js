@@ -13,27 +13,61 @@ const VELOCIDADE=95,VIDA_MAX=1.6,RAIO_BALA=.045;
 // ajustar o balanceamento — e a divergência apareceria como pontaria misteriosamente pior.
 export const VELOCIDADE_BALA=VELOCIDADE;
 
-const balaGeo=new THREE.SphereGeometry(RAIO_BALA,6,5);
-const balaMatJogador=new THREE.MeshBasicMaterial({color:0x9be6ff});
-const balaMatPolicia=new THREE.MeshBasicMaterial({color:0xffcf6b});
-// Rastro curto atrás da bala, pra leitura do tiro em movimento (a bala sozinha é pequena demais pra ver).
-const rastroMatJogador=new THREE.LineBasicMaterial({color:0x9be6ff,transparent:true,opacity:.65});
-const rastroMatPolicia=new THREE.LineBasicMaterial({color:0xffcf6b,transparent:true,opacity:.65});
+// ===== A BALA É UM RISCO, NÃO UMA BOLINHA =====
+// "os projéteis dos tiros estão feio."
+//
+// Era uma ESFERA de 4,5 cm de raio. A bala anda a 95 m/s, ou seja 1,58 m POR QUADRO a 60 fps: o olho
+// via uma bolinha se teletransportando em saltos de um metro e meio, com um vão preto entre um
+// quadro e o outro. Nenhum tamanho de esfera conserta isso — o problema é a forma.
+//
+// Agora é um cilindro deitado NA DIREÇÃO do tiro, com 1,8 m de comprimento: ele cobre o vão do
+// quadro, então o que se vê é um risco contínuo, que é como tracejante se parece de verdade.
+// `AdditiveBlending` porque tracejante é luz: ele SOMA com o fundo em vez de tapar, e é isso que faz
+// aparecer à noite sem ficar um adesivo cinza de dia.
+const COMPRIMENTO_BALA=1.8;
+// Cilindro nasce deitado no Y; girar a geometria uma vez põe o eixo no Z, que é o que o
+// `setFromUnitVectors` espera lá embaixo. Feito na geometria (uma vez) e não por bala.
+const balaGeo=new THREE.CylinderGeometry(RAIO_BALA*.6,RAIO_BALA*.9,COMPRIMENTO_BALA,5,1,true);
+balaGeo.rotateX(Math.PI/2);
+const balaMatJogador=new THREE.MeshBasicMaterial({color:0xbdf0ff,transparent:true,opacity:.95,blending:THREE.AdditiveBlending,depthWrite:false});
+const balaMatPolicia=new THREE.MeshBasicMaterial({color:0xffd98a,transparent:true,opacity:.95,blending:THREE.AdditiveBlending,depthWrite:false});
+// Rastro atrás do risco: mais longo que ele e mais fraco, pra dar o sentido da trajetória.
+const rastroMatJogador=new THREE.LineBasicMaterial({color:0x7fd8ff,transparent:true,opacity:.45,blending:THREE.AdditiveBlending,depthWrite:false});
+const rastroMatPolicia=new THREE.LineBasicMaterial({color:0xffbf5e,transparent:true,opacity:.45,blending:THREE.AdditiveBlending,depthWrite:false});
 
+const _eixoZ=new THREE.Vector3(0,0,1),_dirNorm=new THREE.Vector3();
 const balas=[];
 const impactos=[];
 const impactoGeo=new THREE.SphereGeometry(.07,6,5);
 const impactoMat=new THREE.MeshBasicMaterial({color:0xffe9b0,transparent:true,opacity:.9});
 
 // deDoJogador: define quem pode ser atingido (o tiro do jogador não acerta o próprio jogador e vice-versa).
-export function dispararBala(origem,direcao,deDoJogador){
+// ===== A BALA VOA PELA MIRA; O CANO É SÓ DE ONDE ELA APARECE =====
+// `origemVisual` é opcional e não tem efeito nenhum na física: o projétil é desenhado saindo dali e
+// converge pra trajetória de verdade em `CONVERGE` segundos.
+//
+// Isto conserta uma imprecisão MEDIDA. A câmera é de terceira pessoa e o cano fica ~1,3 m abaixo
+// dela; fazendo a bala sair do cano em direção ao ponto visado, as duas retas só se encontram NAQUELA
+// distância. Medido, com o ponto visado a ~12 m: a bala passava a 48 cm da mira num alvo a 10 m,
+// 112 cm a 30 m e 273 cm a 50 m. Não era defeito de conta — é o que acontece quando se atira de um
+// lugar e se mira de outro.
+//
+// Agora a reta da bala É a reta da mira, então ela acerta onde a mira aponta em QUALQUER distância.
+// O risco continua saindo do cano, que é o que o olho espera ver.
+const CONVERGE=.12;
+export function dispararBala(origem,direcao,deDoJogador,origemVisual=null){
   const mesh=new THREE.Mesh(balaGeo,deDoJogador?balaMatJogador:balaMatPolicia);
-  mesh.position.copy(origem);scene.add(mesh);
+  mesh.position.copy(origemVisual||origem);
+  // Deita o risco na direção do tiro. A direção não muda ao longo do voo, então isto é uma vez só.
+  mesh.quaternion.setFromUnitVectors(_eixoZ,_dirNorm.copy(direcao).normalize());
+  mesh.frustumCulled=false;// a caixa de corte de um cilindro girado nasce errada e some com o risco
+  scene.add(mesh);
   const rastro=new THREE.Line(
-    new THREE.BufferGeometry().setFromPoints([origem.clone(),origem.clone()]),
+    new THREE.BufferGeometry().setFromPoints([mesh.position.clone(),mesh.position.clone()]),
     deDoJogador?rastroMatJogador:rastroMatPolicia);
   scene.add(rastro);
-  balas.push({mesh,rastro,pos:origem.clone(),dir:direcao.clone().normalize(),vida:0,deDoJogador});
+  balas.push({mesh,rastro,pos:origem.clone(),dir:direcao.clone().normalize(),vida:0,deDoJogador,
+    desvio:origemVisual?origemVisual.clone().sub(origem):null});
 }
 
 function criarImpacto(x,y,z){
@@ -79,9 +113,14 @@ export function atualizarBalas(dt,obterAlvos){
     }
 
     b.pos.set(bx,by,bz);
-    b.mesh.position.copy(b.pos);
-    const cauda=b.pos.clone().addScaledVector(b.dir,-Math.min(2.2,passo));
-    b.rastro.geometry.setFromPoints([cauda,b.pos.clone()]);
+    // O desvio do cano some ao longo de CONVERGE: no primeiro quadro o risco sai da arma, e logo
+    // depois ele está em cima da trajetória real. A física NUNCA vê este desvio.
+    const f=b.desvio?Math.max(0,1-b.vida/CONVERGE):0;
+    if(f>0)b.mesh.position.copy(b.pos).addScaledVector(b.desvio,f);
+    else b.mesh.position.copy(b.pos);
+    // O rastro começa ATRÁS do risco (não no meio dele) e cobre o resto do vão do quadro.
+    const cauda=b.mesh.position.clone().addScaledVector(b.dir,-(COMPRIMENTO_BALA*.5+Math.min(4,passo)));
+    b.rastro.geometry.setFromPoints([cauda,b.mesh.position.clone()]);
   }
 
   for(let i=impactos.length-1;i>=0;i--){

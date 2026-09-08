@@ -35,7 +35,7 @@
 //                       └─────────┘                            └──────────────┘
 import*as THREE from'three';
 import{scene,camera}from'./core.js';
-import{obterElevacao}from'./Terrain.js';
+import{obterElevacao,alturaDoChaoDesenhado}from'./Terrain.js';
 import{primeiroImpactoNoSegmento,intersectarSegmentoCaixa,buscarPosicaoLivre}from'./Physics.js';
 import{encontrarCaminho,visaoHorizontalLivre,pontoNavegavel}from'./NavMesh.js';
 import{player,zonasDeAcertoJogador,PLAYER_HEIGHT,encararDirecao,definirAnimacaoTiro}from'./Player.js';
@@ -1153,11 +1153,46 @@ function resolverPontoVisado(alcance){
       if(t!==null&&t<melhorT){melhorT=t;miraNoAlvo=true}
     }
   }
+  // ===== O CHÃO TAMBÉM É ALVO =====
+  // Faltava ele, e a falta tinha um custo medido: quando o raio não achava NADA — nem parede nem
+  // policial — o ponto visado ia pro alcance máximo da arma (120 m na pistola). Como a bala nasce no
+  // cano e a mira é da câmera, as duas retas só se encontram NESSE ponto; em qualquer distância
+  // menor sobra ângulo. Medido, mirando no vazio: 0,61°, que é 32 cm fora da mira a 30 m e 53 cm a
+  // 50 m — mais que a largura de um tronco.
+  //
+  // O pior não era o erro em si, era o PULO. Basta a mira escorregar do policial pra fora da caixa
+  // dele e o ponto visado salta de 30 m pra 120 m de um quadro pro outro, e a bala muda 32 cm de
+  // lugar. Movimento mínimo da mira, mudança enorme no tiro: é isso que se sente como "sem
+  // precisão".
+  //
+  // Com o chão entrando na conta, quase todo tiro tem um alvo real atrás do que se mira — e o ponto
+  // visado passa a andar de forma contínua em vez de pular. A busca é uma varredura simples: anda
+  // pelo raio e para no primeiro passo abaixo do chão, depois refina por bisseção. Contra o chão
+  // DESENHADO, que é a superfície que o jogador vê (ver Terrain.js).
+  if(_dirCamera.y<0){
+    const PASSO=2;
+    let anterior=0;
+    for(let d=PASSO;d<=melhorT*alcance;d+=PASSO){
+      const px=ox+_dirCamera.x*d,py=oy+_dirCamera.y*d,pz=oz+_dirCamera.z*d;
+      if(py<=alturaDoChaoDesenhado(px,pz)){
+        // Bisseção entre o último passo acima do chão e este, que já está abaixo.
+        let lo=anterior,hi=d;
+        for(let i=0;i<12;i++){
+          const m=(lo+hi)/2;
+          const mx=ox+_dirCamera.x*m,my=oy+_dirCamera.y*m,mz=oz+_dirCamera.z*m;
+          if(my<=alturaDoChaoDesenhado(mx,mz))hi=m;else lo=m;
+        }
+        melhorT=Math.min(melhorT,hi/alcance);
+        break;
+      }
+      anterior=d;
+    }
+  }
   // Piso de 2 m: com o jogador de nariz na parede, um t minúsculo inverteria a direção da bala.
   const distancia=Math.max(2,melhorT*alcance);
   return _visado.set(ox+_dirCamera.x*distancia,oy+_dirCamera.y*distancia,oz+_dirCamera.z*distancia);
 }
-const _dirTiro=new THREE.Vector3(),_dirChumbo=new THREE.Vector3();
+const _dirTiro=new THREE.Vector3(),_dirChumbo=new THREE.Vector3(),_origemTiro=new THREE.Vector3();
 let avisouSemMunicao=false;
 export function atirar(){
   const agora=performance.now()/1000;
@@ -1187,7 +1222,15 @@ export function atirar(){
   // atirando andando. A escopeta continua espalhando (30% de 5° ainda é 1,5°), só que muito mais
   // fechada — o que a torna utilizável a média distância sem deixar de ser escopeta.
   const cone=arma.dispersao*(1-.7*miraState.fator);
-  for(let i=0;i<arma.projeteis;i++)dispararBala(boca,direcaoComDispersao(_dirTiro,cone,_dirChumbo),true);
+  // ===== A BALA NASCE NA RETA DA MIRA, NA ALTURA DO JOGADOR =====
+  // Não na câmera (ela fica ATRÁS do ombro, e a bala nasceria do outro lado da parede em que ele
+  // está encostado) e não no cano (aí volta a paralaxe que este conserto veio tirar). O ponto certo
+  // é a projeção do jogador SOBRE a reta da mira: está junto do corpo dele e já na linha certa.
+  // A direção passa a ser a da CÂMERA — é ela que a mira desenha na tela.
+  const aoJogador=_origemTiro.copy(player.position).sub(camera.position).dot(_dirCamera);
+  _origemTiro.copy(camera.position).addScaledVector(_dirCamera,Math.max(.5,aoJogador));
+  for(let i=0;i<arma.projeteis;i++)
+    dispararBala(_origemTiro,direcaoComDispersao(_dirCamera,cone,_dirChumbo),true,boca);
 }
 // ===== Gatilho segurado =====
 // Antes era um tiro por toque: com cooldown de 0,28 s (e 0,11 s da metralhadora) isso exigia martelar

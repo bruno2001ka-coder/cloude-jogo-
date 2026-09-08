@@ -33,7 +33,16 @@ Isto aconteceu **muitas** vezes. Antes de acreditar num número ruim, desconfie 
 - `renderer.info` lido depois do pós-processamento: devolveu "1 desenho, 1 triângulo";
 - esquecer `updateWorldMatrix` num teste que não renderiza — as matrizes ficam velhas;
 - cobrar **distância** da viatura quando o que importa é ela **parar** (ela chega perto de ronda, por
-  acaso).
+  acaso);
+- e o caso recorde, **quatro réguas erradas seguidas** medindo a pontaria da bala:
+  1. contar mortes — depende de dano, munição (começa em 24) e cadência; deu 0/8 até a 4 m;
+  2. mirar numa altura absoluta fixa — o chão não é plano, o alvo estava noutro nível;
+  3. medir o **ângulo** entre a mira e a bala — parece a medida óbvia e não é: as duas retas não saem
+     do mesmo ponto, então formam ângulo e mesmo assim se encontram no alvo;
+  4. ler a posição da **malha** da bala depois de eu ter feito a malha sair do cano e convergir —
+     estava medindo o desenho, não a trajetória.
+  A régua que finalmente valeu: *pega o ponto da mira a X metros e mede a distância perpendicular
+  dele até a reta da bala*. Ou seja, escreva a régua na forma da PERGUNTA que o jogador faz.
 
 Quando um teste reprova, a primeira pergunta é *"a régua ainda vale?"* — não *"como eu faço passar?"*.
 
@@ -264,6 +273,34 @@ E meça **ao longo do clipe inteiro**, não só no primeiro quadro: o tronco bal
 **Nem tudo é pra resolver.** Com o quadril já no selim, o erro do pé até a pedaleira ficou: clipe
 8,2 cm · `POSE_MOTO` 51,1 cm · **busca 50,9 cm — pior que não mexer**. Ângulos resolvidos pra outra
 moto não transferem, e a busca partindo deles só afundou.
+
+---
+
+## Tiro: som e projétil
+
+**O som** era uma senoide de 185 Hz com envelope, mais um estalo com modulação a 90 Hz. Senoide com
+envelope o ouvido lê como **sino** — tem altura, dá pra cantar junto. Tiro é explosão: ruído de banda
+larga moldado. A régua é a **planura espectral** (tom → 0, ruído → 1), medida no buffer que o jogo
+toca. Instrumentei o código antigo pra ter o número real em vez de chutar:
+
+```
+corpo      antes    agora        ataque: 2,0-2,8 ms -> 0,7-1,0 ms
+pistola    0,1225   0,6973
+rifle      0,1966   0,5813
+escopeta   0,2507   0,5500
+```
+
+**A precisão** tinha causa estrutural: câmera em terceira pessoa mira, cano dispara, e as duas retas
+só se encontram no ponto visado — então a bala acerta a mira em **uma única distância**. Medido, com
+o ponto visado a ~12 m: 123 cm fora da mira num alvo a 5 m, 107 cm a 20 m, 75 cm a 50 m.
+
+O conserto é o que os jogos fazem: **a bala voa pela reta da mira** (origem na projeção do jogador
+sobre ela — não na câmera, que fica atrás do ombro, nem no cano) e o **cano é só de onde o risco é
+desenhado**, convergindo em 0,12 s. Depois: **0 cm em toda distância.**
+
+**O desenho** era uma esfera de 4,5 cm a 95 m/s — 1,58 m por quadro, uma bolinha se teletransportando
+com vão preto entre quadros. Nenhum tamanho de esfera conserta: o problema é a forma. Virou cilindro
+de 1,8 m deitado na direção do tiro, aditivo, que cobre o vão e lê como risco.
 
 ---
 
