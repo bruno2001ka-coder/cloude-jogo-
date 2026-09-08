@@ -34,6 +34,11 @@ Isto aconteceu **muitas** vezes. Antes de acreditar num número ruim, desconfie 
 - esquecer `updateWorldMatrix` num teste que não renderiza — as matrizes ficam velhas;
 - cobrar **distância** da viatura quando o que importa é ela **parar** (ela chega perto de ronda, por
   acaso);
+- **duas seguidas** medindo se a polícia segura a estrela: o teste disse *"com policial vendo, a
+  ficha cai igual"* — e (1) não havia policial em campo, porque `__manterPolicialParado` mexe em
+  `policiais[0]` e eu não tinha plantado ninguém; (2) plantado, ele ainda não via — pregado no lugar
+  ele fica com o `olharY` do próprio pé, olhando pra +Z, e um alvo a **3 m de lado** cai fora do
+  cone. Era policial de costas, e eu quase concluí que a mecânica não funcionava;
 - e o caso recorde, **quatro réguas erradas seguidas** medindo a pontaria da bala:
   1. contar mortes — depende de dano, munição (começa em 24) e cadência; deu 0/8 até a 4 m;
   2. mirar numa altura absoluta fixa — o chão não é plano, o alvo estava noutro nível;
@@ -173,6 +178,13 @@ sessão anterior — o sintoma foi *"corrigi e continua igual"*.
   `THREE.Quaternion` ou **aninhe objetos** (um Grupo que esterça, dentro dele a malha que gira).
 - **O sinal do esterço é a armadilha que mais mordeu.** A derivação estava seis linhas acima do erro:
   `player.rotation.y -= direcao*taxa` quer dizer que virar pra direita é yaw **negativo**.
+  **E eu caí nela de novo depois de escrever isto aqui:** `toldo.rotation.x=-.28` num mesh que já
+  tinha `rotation.y=l.giro` tombou o toldo no eixo X **do mundo**, e na foto ele virou uma viga
+  amarela diagonal atravessando a rua. Ler a regra não basta — o remédio é não ter a opção: grupo
+  que gira em Y, peça que tomba dentro dele.
+- **Deslocamento contra parede é medido da FACE, não do eixo.** A vitrine do comércio nasceu 0,05 à
+  frente de `prof/2` — mas `ESP_PAREDE=0,18` é **centrada** ali, então a face de fora está em 0,09 e
+  a vitrine ficou enterrada no tijolo, invisível em foto nenhuma. Passou pra 0,14.
 - **Raio da roda sai em unidades do ARQUIVO.** Converta com `getWorldScale` — sem isso um pneu de
   18 cm virou 48.
 - **Uma malha só nunca é cortada.** Nem por distância, nem pelo tronco de visão. Ver "peso".
@@ -313,6 +325,28 @@ de 1,8 m deitado na direção do tiro, aditivo, que cobre o vão e lê como risc
   variação é se o policial ferido chega a ver o jogador.
 - `motocabe.mjs` — 4 pontos de 1.086 onde a moto trava em beco. Idêntico no código de antes.
 
+**O ESCONDERIJO SAIU DO JOGO** (a pedido dele: *"tira esconderijos, vai ser só procurando mesmo,
+passou um tempo não achou vai sumindo as estrelas"*). O que substituiu:
+
+- a ficha cai com o **tempo sem nenhum policial vivo te ver** — 8 s pra perderem o rastro, 10 s por
+  estrela depois disso. A régua é `pol.viu`, a MESMA que decide se atiram em você; qualquer outra
+  (distância, por exemplo) deixaria limpar ficha com um policial de frente atirando.
+  Medido: ficha 3 zera em **38,1 s** sozinho, e **não cai em 60 s** com um policial de olho;
+- os **9 lotes de esconderijo viraram comércio** — 3 botecos, 3 lojas de roupa, 3 de eletrônicos,
+  com placa colorida, toldo e vitrine acesa. Mesma casca oca, mesma porta: mudou o **papel**;
+- **5 clientes** (eram 4), em casas da fileira marcadas antes de construir e erguidas OCAS. É o
+  *"abrir a porta das casas que já existe"*: a casa comum é fundida em blocos de 100 m e a porta
+  dela não existe mais como peça — quem tem porta que gira é a casca oca;
+- o **cliente da laje saiu**: o teste de alcance media só o terreno em volta e, quando nenhuma laje
+  passava, caía num `lajesAlcancaveis=casasPos` que devolvia o morro inteiro, telhado sem acesso
+  incluído. Era *"cliente em cima do telhado que não tem nem como eu entregar"*;
+- **abastecer a biqueira não chama mais a polícia.** Estava literal: `venderNaBiqueira` chamava
+  `ganchosPolicia.denunciar()` → `somarProcurado(1)`. Uma estrela por venda.
+
+Renomes que vieram junto: `refugios`→`casasOcas`, `refugioEmQueEsta`→`casaOcaEmQueEsta`,
+`alternarPortaRefugio`→`alternarPorta`, `atualizarRefugios`→`atualizarPortas`. `estaEscondido` não
+existe mais, e **`Police.js` não importa mais nada do `WorldGenerator`**.
+
 **As 4 paredes do fim do mapa saíram** (a pedido dele: *"não tem nada a ver elas"*). Eram muros de
 terra de **28 m de altura e 520 m de comprimento** em volta do mapa inteiro. Só a MALHA saiu; as 4
 caixas de colisão ficaram, invisíveis — sem elas veículo e polícia sairiam do mundo. Provado nos
@@ -327,3 +361,6 @@ quatro lados por `scratchpad/barreira.mjs`. Sem o muro, quem chega na borda vê 
 - o **rifle apontado pra cima** enquanto pilota (a arma é presa ao osso da mão, e a mão mudou de
   orientação com o clipe): esconder pilotando, ou deitar no guidão?
 - encolher as texturas listadas em "o que ainda está gordo".
+
+**Combinado como próximo passo** (palavras dele): *"depois agente vai começar a criar minha casa, em
+cima daquele morro que agente criou"*.
