@@ -62,3 +62,6 @@ export function alternarCarro(){carro.alternar()}
 export function atualizarCarro(dt,keys,joyX=0,joyY=0,alavanca=0,re=false){return carro.atualizar(dt,keys,joyX,joyY,alavanca,re)}
 // Teto em m/s, pra alavanca de acelerador saber até onde vai a escada de km/h.
 export function maxVelCarro(){return carro.maxVel()}
+// Onde ele está parado, pro radar (null enquanto não carregou, e null quando o jogador está
+// montado nele — ver `marcaNoMapa` em Veiculo.js).
+export function marcaCarro(){return carro.marcaNoMapa()}

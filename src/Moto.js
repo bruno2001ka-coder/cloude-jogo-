@@ -70,3 +70,6 @@ export function alternarMoto(){moto.alternar()}
 export function atualizarMoto(dt,keys,joyX=0,joyY=0,alavanca=0,re=false){return moto.atualizar(dt,keys,joyX,joyY,alavanca,re)}
 // Teto em m/s, pra alavanca de acelerador saber até onde vai a escada de km/h.
 export function maxVelMoto(){return moto.maxVel()}
+// Onde ele está parado, pro radar (null enquanto não carregou, e null quando o jogador está
+// montado nele — ver `marcaNoMapa` em Veiculo.js).
+export function marcaMoto(){return moto.marcaNoMapa()}

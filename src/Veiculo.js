@@ -540,7 +540,17 @@ export function criarVeiculo(cfg){
   });
   atualizarBotao();
 
-  return{grupo,alternar,atualizar,montado:()=>montado,velocidade:()=>velocidade,
+  // ===== ONDE ELE ESTÁ, PRO RADAR =====
+  // "marque o carro e a moto no mapa também, quando fico longe custo achar eles."
+  // Mora AQUI, na mecânica compartilhada, e não em Carro.js/Moto.js: os dois arquivos são fichas, e
+  // regra de veículo escrita duas vezes é regra que diverge no primeiro ajuste.
+  // Devolve null em dois casos, e os dois importam:
+  //   · ANTES DO GLB CARREGAR o grupo está em (0,0,0) e invisível — marcar ali poria uma bolinha
+  //     falsa no meio do mapa, apontando pra um carro que ainda não existe em lugar nenhum;
+  //   · MONTADO, porque aí o veículo está debaixo do jogador. Marca em cima do próprio jogador não
+  //     informa nada e ainda tapa o ponto dele. O OUTRO veículo continua marcado, que é o que serve.
+  const marcaNoMapa=()=>carregado&&!montado?{x:grupo.position.x,z:grupo.position.z}:null;
+  return{grupo,alternar,atualizar,montado:()=>montado,velocidade:()=>velocidade,marcaNoMapa,
     // O teto em m/s. Quem precisa é a alavanca de acelerador: as marcas dela são em km/h e a escada
     // é filtrada pelo teto do veículo que está sendo dirigido (o carro chega a 50, a moto a 40).
     maxVel:()=>cfg.maxVel};

@@ -6,6 +6,8 @@ import{obstaculos,superficiesAndaveis,contarColisores}from'./Physics.js';
 import{casasPos,casasOcas,BAR,BIQUEIRA}from'./WorldGenerator.js';
 import{plantas,lojaPos,receptadorPos,fazendaPos,armasPos}from'./Economy.js';
 import{POLOS}from'./Poles.js';
+import{marcaCarro}from'./Carro.js';
+import{marcaMoto}from'./Moto.js';
 import{corredores}from'./Favela.js';
 import{npcs}from'./NPCs.js';
 import{ALT_CANO,ALT_TORSO}from'./Combate.js';
@@ -62,17 +64,33 @@ function paraTela(x,z){
 // rótulo que cairia em cima de outro simplesmente não é escrito. A ORDEM de desenho vira prioridade —
 // os polos e a delegacia vêm primeiro, porque são os que o jogador procura de longe.
 let rotulosNoQuadro=[];
+// ===== E ANTES DE DESISTIR, TENTA OUTRO LUGAR =====
+// A regra era "cai em cima de outro, não escreve". Simples e boa contra o borrão, mas ela DESISTIA
+// no primeiro conflito — e num canto cheio isso apaga justamente o rótulo que importa. Medido na
+// foto: com o jogador no canto sudeste, tudo colapsa no mesmo pedaço da borda e o MOTO ficou uma
+// bolinha branca sem nome atrás do "DP 107m".
+// Agora ele tenta o outro lado do ponto e alguns degraus pra cima e pra baixo antes de desistir. A
+// proteção contra borrão continua inteira: quem não acha lugar nenhum continua sem escrever.
+const DESVIOS=[0,-9,9,-18,18];
 function rotulo(txt,x,y,cor,tamanho=8){
   radarCtx.font=`800 ${tamanho}px ui-sans-serif,system-ui,sans-serif`;
   radarCtx.textBaseline='middle';
   const larg=radarCtx.measureText(txt).width;
   // Se não cabe à direita do ponto, escreve à esquerda — senão a sigla sai pela borda do disco.
-  const alinhaEsquerda=x+larg+6>RADAR_TAM-2;
-  const tx=alinhaEsquerda?x-5:x+5;
-  const caixa={x0:alinhaEsquerda?tx-larg:tx,y0:y-tamanho/2-1,
-               x1:alinhaEsquerda?tx:tx+larg,y1:y+tamanho/2+1};
-  for(const c of rotulosNoQuadro)
-    if(caixa.x0<c.x1&&caixa.x1>c.x0&&caixa.y0<c.y1&&caixa.y1>c.y0)return;
+  const preferida=x+larg+6>RADAR_TAM-2;
+  const bate=c1=>rotulosNoQuadro.some(c=>c1.x0<c.x1&&c1.x1>c.x0&&c1.y0<c.y1&&c1.y1>c.y0);
+  let alinhaEsquerda=preferida,tx=0,caixa=null;
+  busca:
+  for(const dy of DESVIOS)for(const esq of[preferida,!preferida]){
+    const px=esq?x-5:x+5;
+    // O outro lado não vale se o texto sair pelo disco: rótulo cortado é pior que rótulo ausente.
+    if(!esq&&px+larg+2>RADAR_TAM)continue;
+    if(esq&&px-larg-2<0)continue;
+    const c1={x0:esq?px-larg:px,y0:y+dy-tamanho/2-1,x1:esq?px:px+larg,y1:y+dy+tamanho/2+1};
+    if(bate(c1))continue;
+    alinhaEsquerda=esq;tx=px;caixa=c1;y=y+dy;break busca;
+  }
+  if(!caixa)return;// não coube em lugar nenhum: melhor sem sigla do que por cima de outra
   rotulosNoQuadro.push(caixa);
   radarCtx.textAlign=alinhaEsquerda?'right':'left';
   radarCtx.lineWidth=2.5;radarCtx.strokeStyle='rgba(0,0,0,.85)';radarCtx.strokeText(txt,tx,y);
@@ -85,14 +103,18 @@ function rotulo(txt,x,y,cor,tamanho=8){
 // 114m" com uma bolinha amarela em cima do 1). Pontos primeiro, rótulos por último, e nenhum texto
 // fica escondido atrás de bolinha.
 const filaDeRotulos=[];
-function desenharPontoRadar(x,z,cor,raio,sempreVisivel,sigla){
+// `limite` é o raio em que a marca gruda quando está fora do alcance. Existe porque TUDO que está
+// longe colapsa no mesmo anel: o carro parado a 71 m caiu exatamente em cima do MERC e do DEP, ficou
+// escondido atrás deles e ainda perdeu a sigla pra anticolisão — está na foto. Quem tem anel próprio
+// não disputa espaço com ninguém.
+function desenharPontoRadar(x,z,cor,raio,sempreVisivel,sigla,limite=RADAR_LIMITE){
   let{x:px,y:py}=paraTela(x,z);
   let dx=px-RADAR_CX,dy=py-RADAR_CY;
   const dist=Math.hypot(dx,dy);
   let naBorda=false;
-  if(dist>RADAR_LIMITE){
+  if(dist>limite){
     if(!sempreVisivel)return;
-    const fator=RADAR_LIMITE/dist;dx*=fator;dy*=fator;
+    const fator=limite/dist;dx*=fator;dy*=fator;
     px=RADAR_CX+dx;py=RADAR_CY+dy;naBorda=true;
     radarCtx.strokeStyle=cor;radarCtx.lineWidth=2;
     radarCtx.beginPath();radarCtx.arc(px,py,raio+2,0,Math.PI*2);radarCtx.stroke();
@@ -141,6 +163,27 @@ export function atualizarRadar(){
   // ===== AS MARCAS =====
   radarCtx.save();
   radarCtx.beginPath();radarCtx.arc(RADAR_CX,RADAR_CY,RADAR_TAM/2-3,0,Math.PI*2);radarCtx.clip();
+  // ===== O CARRO E A MOTO VÊM ANTES DOS POLOS, E NUM ANEL SÓ DELES =====
+  // "marque o carro e a moto no mapa também, quando fico longe custo achar eles."
+  // Duas decisões, e as duas saíram da foto do radar em que eu já tinha "resolvido" isto:
+  //
+  //  · ANEL PRÓPRIO (9 px pra dentro do dos polos). Tudo que está longe gruda no mesmo raio, e o
+  //    carro a 71 m caiu bem em cima do MERC e do DEP — a bolinha branca ficou espremida atrás das
+  //    deles. Marca que existe mas não se vê não resolve o pedido dele.
+  //  · PRIMEIRO NA FILA. A ordem de desenho é a prioridade do rótulo (ver `rotulo`), e desenhando
+  //    depois dos polos as siglas CAR e MOTO eram simplesmente descartadas por colisão: sobrava um
+  //    ponto branco sem nome nem distância, que é quase o mesmo que nada.
+  //    O polo perde a vez sem prejuízo: ele não anda, fica sempre no mesmo canto e o jogador já sabe
+  //    de cor onde é. O veículo é o que ele está PROCURANDO, e é o único que muda de lugar.
+  //
+  // Branco-gelo nos dois, sigla pra separar: nenhuma outra marca do radar é branca.
+  // E UM ANEL PARA CADA UM DOS DOIS, não um anel para os dois. Os dois nascem perto do ponto de
+  // partida, então de longe eles ficam quase no MESMO RUMO: com um anel só, o CAR comeu o rótulo do
+  // MOTO exatamente como os polos tinham comido os dois. Separados em raio, empilham um sobre o
+  // outro em vez de um DENTRO do outro, e os dois nomes cabem.
+  const CAR=marcaCarro(),MOT=marcaMoto();
+  if(CAR)desenharPontoRadar(CAR.x,CAR.z,'#eef2f5',4.5,true,'CAR',RADAR_LIMITE-9);
+  if(MOT)desenharPontoRadar(MOT.x,MOT.z,'#eef2f5',4.5,true,'MOTO',RADAR_LIMITE-20);
   // Os quatro polos econômicos e a delegacia grudam na borda: são eles que ficam FORA do bairro, e
   // saber onde a polícia mora é o que deixa o jogador desviar dela em vez de só reagir.
   desenharPontoRadar(lojaPos.x,lojaPos.z,POLOS.sementes.cor,5,true,SIGLAS.sementes);
