@@ -38,9 +38,26 @@ export const AJUSTE={
 const ANIM={andar:'Walking',correr:'Running',andarAtirando:'Walk_Forward_While_Shooting',atirandoParado:'Shooting_Still'};
 const TRANSICAO=.16;// segundos de mistura entre uma animação e outra
 
-// Velocidade (em unidades de mundo por segundo) a partir da qual o passo vira corrida. O jogador anda a
-// PLAYER_HEIGHT*4.6 ≈ 4,1 e corre a 1,7x isso ≈ 7,0 — o corte no meio separa bem os dois.
-const VEL_CORRIDA=5.4;
+// ===== A VELOCIDADE QUE CADA CLIPE PEDE, MEDIDA NO CLIPE =====
+// "está andando deslizando." Estava, e o motivo não era a velocidade — era este número aqui embaixo,
+// que antes era um `4.1` solto no `timeScale` e não correspondia a clipe nenhum.
+//
+// A régua: durante o APOIO o pé anda pra trás no corpo a uma velocidade `vPe`. Se o corpo anda pra
+// frente exatamente a `vPe`, o pé fica parado no mundo — isso é não deslizar. Medido no jogo rodando,
+// com o clipe no ritmo dele (timeScale 1), e conferido em quatro velocidades diferentes pra provar
+// que a medida é do CLIPE e não do meu número:
+//
+//     andar   0,628 · 0,627 · 0,634 · 0,617   ->  0,62 m/s
+//     correr  2,387 · 2,315 · 2,300           ->  2,33 m/s
+//
+// O jogo fazia `timeScale = velocidade/4.1`. Com o boneco a 4,14 m/s no clipe de ANDAR, o corpo
+// andava 6,7x mais rápido que o pé; correndo a 7,04 no clipe de correr, 3,0x. Era isso na tela.
+// Com o divisor certo POR CLIPE o deslize é zero em qualquer velocidade — inclusive na corrida.
+const VEL_CLIPE_ANDAR=.62,VEL_CLIPE_CORRER=2.33;
+// Onde um clipe entrega o passo pro outro. Não é o meio do caminho: é o ponto em que esticar o clipe
+// de andar (2,2x) começa a ficar frenético e o de correr (0,58x) ainda não virou câmera lenta. Os
+// dois clipes estão 3,75x distantes um do outro, então alguma esticada é inevitável dos dois lados.
+const VEL_CORRIDA=1.35;
 // Abaixo disto ele está parado de fato. O lerp de velocidade nunca zera exatamente, e sem este piso a
 // animação de andar ficaria tremendo pra sempre depois que o jogador solta o controle.
 const VEL_PARADO=.35;
@@ -463,7 +480,10 @@ export function atualizarAnimacaoPersonagem(dt,velocidade,atirando,agachado=fals
       atual.paused=false;
       // Ritmo proporcional à velocidade: sem isso o pé patina no chão quando o jogador corre, que é o
       // que mais denuncia animação colada em jogo de terceira pessoa.
-      atual.timeScale=THREE.MathUtils.clamp(velocidade/4.1,.6,2.2);
+      // O DIVISOR É O DO CLIPE QUE ESTÁ TOCANDO, não um número único pros dois. Com um só, um dos
+      // dois clipes ia deslizar por definição — eles pedem velocidades 3,75x diferentes.
+      const natural=alvo===ANIM.correr?VEL_CLIPE_CORRER:VEL_CLIPE_ANDAR;
+      atual.timeScale=THREE.MathUtils.clamp(velocidade/natural,.55,2.4);
     }
   }
   mixer.update(dt);

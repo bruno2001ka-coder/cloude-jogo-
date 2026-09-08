@@ -259,9 +259,17 @@ export function vigiarTravamento(dt,querendoAndar){
 }
 
 // Movimento horizontal relativo à câmera (yaw), com colisão resolvida por eixo, e animação de andar.
-// Velocidade proporcional à altura do corpo (4,6 alturas por segundo): com o número solto de antes,
-// encolher o personagem transformava a mesma caminhada numa corrida desproporcional.
-const VELOCIDADE=PLAYER_HEIGHT*4.6;
+// Velocidade proporcional à altura do corpo: com o número solto de antes, encolher o personagem
+// transformava a mesma caminhada numa corrida desproporcional.
+//
+// ERA 4,6 ALTURAS POR SEGUNDO — 4,14 m/s num corpo de 90 cm. Traduzindo pra gente de 1,75 m, é
+// 8 m/s: velocidade de atleta de 100 m, com o clipe de ANDAR tocando. Foi ele quem viu: "diminui um
+// pouco a velocidade, está andando deslizando".
+// O deslize em si estava no `timeScale` do Personagem.js (divisor errado) e já foi consertado lá —
+// com aquilo, deslize é zero em qualquer velocidade. Este número é a outra metade do pedido, a
+// aparência: 3,2 alturas = 2,88 m/s, e correndo (1,7x) 4,90 m/s. Se ficar lerdo no dedo dele, é aqui
+// que se mexe, e mexer NÃO traz o deslize de volta.
+const VELOCIDADE=PLAYER_HEIGHT*3.2;
 let walk=0;const velocity=new THREE.Vector3(),desired=new THREE.Vector3();
 let agachado=false;
 const _frente=new THREE.Vector3(),_lado=new THREE.Vector3();

@@ -288,6 +288,46 @@ moto não transferem, e a busca partindo deles só afundou.
 
 ---
 
+## O passo: por que o boneco deslizava
+
+*"diminui um pouco a velocidade do meu personagem, está andando deslizando."*
+
+A causa **não era a velocidade** — era o `timeScale` da animação, que fazia `velocidade/4.1` com um
+`4.1` que não correspondia a clipe nenhum.
+
+A régua está na forma da pergunta dele: **durante o apoio, o pé anda pra trás no corpo a uma
+velocidade `vPe`; se o corpo anda pra frente exatamente a `vPe`, o pé fica parado no mundo.** Razão
+corpo/pé = 1,00 é não deslizar. Medida no jogo rodando, em quatro velocidades diferentes, pra provar
+que mede o CLIPE e não o número que eu escolhi:
+
+```
+andar   0,628 · 0,627 · 0,634 · 0,617  ->  0,62 m/s
+correr  2,387 · 2,315 · 2,300          ->  2,33 m/s
+```
+
+Com o divisor certo **por clipe**, o deslize é zero em qualquer velocidade:
+
+```
+              antes   depois
+dedo metade    6,5     1,03
+dedo cheio     6,5     1,00
+correndo       3,0     1,00
+```
+
+A velocidade caiu junto porque ele pediu (4,14 → 2,88 m/s; correndo 7,04 → 4,90). Eram **4,6 alturas
+por segundo** num corpo de 90 cm — 8 m/s traduzido pra gente de 1,75 m, velocidade de atleta de 100
+metros, com o clipe de ANDAR tocando. Mexer nesse número **não traz o deslize de volta**.
+
+**Duas vezes a régua atrapalhou aqui, e as duas eram grossura de medida:**
+
+1. a primeira versão media deslize em **cm por apoio** — e em velocidade alta o apoio dura menos
+   tempo, então acumulava menos centímetros: o número CAÍA enquanto o defeito piorava. Razão, não
+   distância;
+2. amostrando a 60 Hz, correndo o apoio passou a durar menos que os 5 quadros mínimos do detector e o
+   teste devolveu `null`. Quase li como "a corrida desliza infinito". 240 Hz resolveu.
+
+---
+
 ## Tiro: som e projétil
 
 **O som** era uma senoide de 185 Hz com envelope, mais um estalo com modulação a 90 Hz. Senoide com
