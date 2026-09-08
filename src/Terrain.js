@@ -71,15 +71,48 @@ export function obterElevacao(x,z){
 // Chão de terra com PBR: a mesma textura tileável do resto do bairro, repetida a cada 4 m. O normal é
 // o que faz o sol raspante revelar o relevo do chão em vez de deixar uma mancha lisa.
 const groundMat=matChao();
-for(const t of[groundMat.map,groundMat.normalMap,groundMat.roughnessMap])t.repeat.set(MAP_SIZE/4,MAP_SIZE/4);
 // Mantemos aproximadamente 1,55 m por quadrado, a mesma leitura de platôs do mapa anterior.
-// Mesmo com o dobro da área, continua sendo UMA malha e UM draw call; a expansão não duplica
-// materiais, objetos ou sombras.
 const GROUND_SEGMENTS=Math.round(MAP_SIZE/1.55);
-const groundGeometry=new THREE.PlaneGeometry(MAP_SIZE,MAP_SIZE,GROUND_SEGMENTS,GROUND_SEGMENTS);
-const groundPositions=groundGeometry.attributes.position;
-for(let i=0;i<groundPositions.count;i++){const x=groundPositions.getX(i),localY=groundPositions.getY(i),worldZ=-localY;groundPositions.setZ(i,obterElevacao(x,worldZ))}
-groundGeometry.computeVertexNormals();
+
+// ===== O CHÃO EM PEDAÇOS, PRA PODER DEIXAR DE DESENHAR O QUE NINGUÉM VÊ =====
+// "pra deixar o jogo leve deve ser igual o GTA San Andreas: mapa gigante, mas vai aparecer conforme
+// vai andando."
+//
+// O comentário que estava aqui se gabava de ser "UMA malha e UM draw call". Era verdade, e era
+// justamente o problema — MEDIDO: 389.428 triângulos por quadro, dos quais 224.450 (58%) eram desta
+// única malha de 520 m. Malha única não pode ser cortada por nada: nem pela distância, nem pelo
+// tronco de visão. Ela é sempre desenhada inteira, e o mapa tem 520 m de lado.
+//
+// E quase tudo isso é desenhado PRA NINGUÉM VER. A neblina é `FogExp2(0.013)`, ou seja
+// exp(-(d*0.013)²): a 165 m um objeto já aparece com 1% de opacidade e a 200 m com 0,1%. O jogador
+// enxerga uns 165 m; o mapa tem 520.
+//
+// Em pedaços, duas coisas passam a funcionar sozinhas:
+//   · o Three.js corta por TRONCO DE VISÃO o que está atrás e ao lado da câmera, de graça;
+//   · e o `atualizarChaoVisivel` corta o que está além da neblina.
+//
+// O CORTE TEM QUE CAIR EM CIMA DA GRADE — o espaçamento de 1,55 m entre vértices não pode mudar.
+// Isso não é detalhe: o `alturaDoChaoDesenhado` logo abaixo replica a triangulação desta malha, e é
+// nele que carro, moto, fita de asfalto e meio-fio se apoiam. Mexer no espaçamento moveria o chão
+// debaixo de todo esse trabalho. (A malha em si ele NÃO lê — é função analítica —, então cortar em
+// pedaços não muda nenhum apoio.)
+//
+// Cada pedaço tem um número INTEIRO de segmentos, e o último de cada fila fica menor com o que
+// sobrar: 335 = 9x34 + 29. Assim o corte cai sempre em cima de uma linha da grade sem exigir que o
+// tamanho do pedaço divida 335 (que só aceita 5 e 67 — 5 dá pedaços grandes demais pra cortar bem,
+// e 67 daria 4.489 pedaços).
+//
+// MEDIDO com pedaços de 104 m (5x5): 389.428 -> 228.208 triângulos por quadro. Quase todo esse ganho
+// veio do corte por TRONCO DE VISÃO, não da distância: do centro do mapa nenhum pedaço de 104 m
+// chega a passar dos 190 m. Pedaço menor corta os dois jeitos.
+const SEG_CHUNK=48;
+const CHUNKS=Math.ceil(GROUND_SEGMENTS/SEG_CHUNK);
+// ===== UV EM COORDENADA DE MUNDO =====
+// Com pedaços de tamanhos diferentes, UV 0..1 por pedaço exigiria uma repetição diferente em cada um
+// — ou seja, um material por tamanho. Escrevendo a UV direto em metros do MUNDO (dividido pelos 4 m
+// do ladrilho), todos os pedaços dividem o MESMO material e o desenho atravessa a costura como se a
+// malha fosse uma só.
+for(const t of[groundMat.map,groundMat.normalMap,groundMat.roughnessMap])t.repeat.set(1,1);
 
 // ===== A ALTURA DO CHÃO QUE SE VÊ, NÃO A DA CURVA =====
 // `obterElevacao` é a curva ANALÍTICA. O chão DESENHADO é esta malha de quadrados de ~1,55 m, que
@@ -111,9 +144,55 @@ export function alturaDoChaoDesenhado(x,z){
     ? ha+v*(hb-ha)+u*(hd-ha)
     : hc+(1-u)*(hb-hc)+(1-v)*(hd-hc);
 }
-groundGeometry.setAttribute('uv1',groundGeometry.attributes.uv);// aoMap lê o 2º canal de UV
-export const ground=new THREE.Mesh(groundGeometry,groundMat);
-ground.rotation.x=-Math.PI/2;ground.castShadow=true;ground.receiveShadow=true;scene.add(ground);
+// `ground` continua sendo UMA coisa só pra quem usa de fora — virou Grupo em vez de Malha. O único
+// uso externo é o raycast da mira de plantio (`Economy.js`), que já é recursivo e atravessa o grupo
+// sem precisar de mudança nenhuma.
+export const ground=new THREE.Group();
+const pedacosDoChao=[];
+for(let cz=0;cz<CHUNKS;cz++)for(let cx=0;cx<CHUNKS;cx++){
+  // Quantos segmentos cabem neste pedaço: os cheios têm SEG_CHUNK, o último de cada fila leva o resto.
+  const segX=Math.min(SEG_CHUNK,GROUND_SEGMENTS-cx*SEG_CHUNK);
+  const segZ=Math.min(SEG_CHUNK,GROUND_SEGMENTS-cz*SEG_CHUNK);
+  const ladoX=segX*CHAO_PASSO,ladoZ=segZ*CHAO_PASSO;
+  const centroX=-MAP_HALF_SIZE+cx*SEG_CHUNK*CHAO_PASSO+ladoX/2;
+  const centroZ=-MAP_HALF_SIZE+cz*SEG_CHUNK*CHAO_PASSO+ladoZ/2;
+  const geo=new THREE.PlaneGeometry(ladoX,ladoZ,segX,segZ);
+  const pos=geo.attributes.position,uv=geo.attributes.uv;
+  // A altura vem da MESMA função analítica de sempre, avaliada na coordenada de MUNDO do vértice.
+  // É isso que garante que dois pedaços vizinhos fechem sem degrau: a borda de um e a do outro são
+  // o mesmo ponto do mundo, então recebem a mesma altura — e o mesmo vale pra UV.
+  for(let i=0;i<pos.count;i++){
+    const wx=centroX+pos.getX(i),wz=centroZ-pos.getY(i);// worldZ = -localY, como no original
+    pos.setZ(i,obterElevacao(wx,wz));
+    uv.setXY(i,wx/4,wz/4);// ladrilho de 4 m, contado do mundo
+  }
+  geo.computeVertexNormals();
+  geo.setAttribute('uv1',geo.attributes.uv);// aoMap lê o 2º canal de UV
+  const m=new THREE.Mesh(geo,groundMat);
+  m.rotation.x=-Math.PI/2;
+  m.position.set(centroX,0,centroZ);
+  m.castShadow=true;m.receiveShadow=true;
+  ground.add(m);
+  pedacosDoChao.push({malha:m,cx:centroX,cz:centroZ,meioX:ladoX/2,meioZ:ladoZ/2});
+}
+scene.add(ground);
+
+// ===== ATÉ ONDE VALE DESENHAR O CHÃO =====
+// Da neblina: exp(-(d*0.013)²) dá 1% de opacidade a 165 m. 190 m é essa conta com folga — quem
+// estiver além disso não aparece, e deixar de desenhar não muda um pixel.
+const ALCANCE_CHAO=190;
+// Distância do ponto até o QUADRADO do pedaço (não até o centro dele): usar o centro cortaria pedaço
+// que ainda tem uma quina dentro do alcance.
+export function atualizarChaoVisivel(x,z){
+  for(const p of pedacosDoChao){
+    const dx=Math.max(0,Math.abs(x-p.cx)-p.meioX);
+    const dz=Math.max(0,Math.abs(z-p.cz)-p.meioZ);
+    p.malha.visible=dx*dx+dz*dz<=ALCANCE_CHAO*ALCANCE_CHAO;
+  }
+}
+export function __pedacosDoChaoParaTeste(){
+  return pedacosDoChao.map(p=>({x:p.cx,z:p.cz,visivel:p.malha.visible}));
+}
 
 // ===== FECHAMENTO FÍSICO DO MAPA =====
 // O terreno foi ampliado, então não basta limitar a posição do jogador: veículos, NPCs e câmera
