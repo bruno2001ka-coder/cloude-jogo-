@@ -3,7 +3,7 @@ import*as THREE from'three';
 import{scene}from'./core.js';
 import{player,jogadorBoxDebugTemp}from'./Player.js';
 import{obstaculos,superficiesAndaveis,contarColisores}from'./Physics.js';
-import{casasPos,refugios,BAR,BIQUEIRA,clienteLaje}from'./WorldGenerator.js';
+import{casasPos,casasOcas,BAR,BIQUEIRA}from'./WorldGenerator.js';
 import{plantas,lojaPos,receptadorPos,fazendaPos,armasPos}from'./Economy.js';
 import{POLOS}from'./Poles.js';
 import{corredores}from'./Favela.js';
@@ -151,11 +151,16 @@ export function atualizarRadar(){
   // Os do morro não grudam na borda: encher a borda de marca tira a leitura dos que ficam longe.
   desenharPontoRadar(BIQUEIRA.x,BIQUEIRA.z,'#c86bff',4.5,false,'BIQ');
   desenharPontoRadar(BAR.x,BAR.z,'#ffc14d',4.5,false,'BAR');
-  // Refúgio SEM sigla: são oito espalhados pelo morro, e oito "ESC" tapavam o mapa inteiro (está na
-  // foto que motivou esta linha). O ponto vermelho continua, e a legenda da tela inicial explica.
-  for(const r of refugios)desenharPontoRadar(r.x,r.z,'#c23a3a',4,false);
-  // O cliente da laje é um PRAZO: gruda na borda porque o jogador precisa saber pra onde correr.
-  if(clienteLaje.ativo)desenharPontoRadar(clienteLaje.x,clienteLaje.z,'#63d16a',5.5,true,'CLI');
+  // AS CASAS OCAS, E CADA PAPEL NA SUA COR. Antes era um ponto vermelho igual pros treze — o mesmo
+  // vermelho de esconderijo desenhado por cima das casas de cliente, que não eram esconderijo
+  // nenhum. Agora: comércio na cor da placa da fachada (é a mesma cor no radar e no prédio, que é o
+  // que liga uma coisa na outra), cliente no verde da zona de entrega.
+  // SEM SIGLA: são catorze espalhadas pelo morro, e catorze etiquetas tapavam o mapa inteiro — está
+  // na foto que motivou esta linha.
+  const CORES_CASA_OCA={boteco:'#ffb43c',roupas:'#e0559c',eletronicos:'#3f8fe0'};
+  for(const r of casasOcas)
+    desenharPontoRadar(r.x,r.z,r.papel==='cliente'?'#63d16a':(CORES_CASA_OCA[r.comercio]||'#c23a3a'),
+      r.papel==='cliente'?4.5:4,false);
   // Muda sem sigla: são muitas, e o ponto verde já diz tudo. Sigla em cada pé viraria borrão.
   for(const pl of plantas)if(!pl.colhida)desenharPontoRadar(pl.x,pl.z,'#7cfc00',3.5,false);
   // Helicóptero e polícia só acendem quando estão de olho em alguma coisa.

@@ -76,11 +76,12 @@ export const PRECOS={
   // 34) e rende 2-3 pacotes. A R$26, dois pacotes dão R$52: lucro de R$4, o mínimo que ainda é lucro.
   // Subir isso mataria o Receptador, que é o pagamento de verdade e o que obriga a travessia.
   biqueiraPacote:26,
-  // ===== ENTREGA NA LAJE =====
-  // Paga MAIS que o Receptador porque o preço é o risco: pra entregar você fica de pé em cima de um
-  // telhado, no lugar mais visível do morro, exatamente onde o helicóptero enxerga. É o que dá função
-  // aos telhados agora que eles viraram laje contínua.
-  entregaLaje:58,
+  // ===== ENTREGA NO CLIENTE =====
+  // Paga MAIS que o Receptador porque o preço é o risco: pra entregar você atravessa o morro com a
+  // mochila na mão e entra numa casa no meio da fileira, com a polícia patrulhando a viela.
+  // Era `entregaLaje`, do cliente que nascia em cima de um telhado sem acesso; o preço ficou, o
+  // telhado saiu (ver WorldGenerator.js).
+  entregaCliente:58,
   // O bar cura por inteiro. R$30 é acima da diária da roça (R$25) de propósito: apanhar tem que
   // custar mais que um turno de trabalho, senão levar tiro vira só um pedágio.
   barDose:30,

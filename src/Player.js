@@ -176,7 +176,7 @@ export function zonasDeAcertoJogador(){
 const raycasterVertical=new THREE.Raycaster();const direcaoBaixo=new THREE.Vector3(0,-1,0);const origemVertical=new THREE.Vector3();
 // ===== A MESMA CONSULTA SERVE PRO VEÍCULO =====
 // Exportada porque o carro precisa EXATAMENTE disto e não tinha: o `assentar` do Veiculo.js só
-// conhecia o terreno, então no escadão, no piso do esconderijo e no chão do hospital o carro afundava
+// conhecia o terreno, então no escadão, no piso da casa oca e no chão do hospital o carro afundava
 // até o nível do morro enquanto o jogador a pé andava por cima. ("no hospital ele entra pra dentro")
 // Compartilhar em vez de copiar: duas versões da mesma pergunta divergem no primeiro ajuste.
 //

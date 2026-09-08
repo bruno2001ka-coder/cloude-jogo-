@@ -28,7 +28,7 @@ export const obstaculosPedestres=[];
 //   · CARIMBO em vez de Set. Um Uint32Array com o número da consulta marca o que já entrou: é acesso
 //     direto por índice, sem hash e sem lixo pro coletor.
 //
-// As caixas que MUDAM de conteúdo (as 8 portas de esconderijo e a porteira da fazenda alternam entre a
+// As caixas que MUDAM de conteúdo (as portas de casa oca e a porteira da fazenda alternam entre a
 // caixa fechada e uma caixa enterrada a 10 km) ficam FORA da grade, numa lista varrida linearmente:
 // indexá-las daria uma célula errada no instante em que alguém abrisse uma porta. São 9, é irrelevante.
 const GRADE_CELULA=COLLISION_CELL_SIZE,GRADE_DIM=COLLISION_GRID_DIM,GRADE_OFFSET=COLLISION_GRID_OFFSET;// cobre ±276 m; o mapa vai a ±260

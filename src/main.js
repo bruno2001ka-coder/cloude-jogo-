@@ -5,7 +5,7 @@ import{camera,renderer,composer}from'./core.js';
 import{EYE_HEIGHT,player,atualizarMovimentoJogador,vigiarTravamento,destravarJogador,definirColeteVisivel,definirMochilaVisivel}from'./Player.js';
 import{droneState,alternarDrone,atualizarCameraDrone,atualizarCameraSeguidora}from'./Camera.js';
 import{atualizarAmbiente,obterBandaFase}from'./Environment.js';
-import{atualizarAnimais,atualizarRefugios,atualizarClienteLaje}from'./WorldGenerator.js';
+import{atualizarAnimais,atualizarPortas}from'./WorldGenerator.js';
 import{atualizarNPCs}from'./NPCs.js';
 import{atualizarPlantas,atualizarMiraPlantio,isInventarioAberto,renderizarInventario,contextoAtual,chaveContexto,getUltimoContextoTipo,renderizarAcoes}from'./Economy.js';
 import{atualizarRadar,atualizarDebugNavMesh}from'./UI.js';
@@ -57,7 +57,7 @@ document.getElementById('destravarBtn').addEventListener('click',()=>destravarJo
 // Marca de versão na tela inicial. Existe por um motivo prático: quando uma novidade "não aparece",
 // a primeira pergunta é se o navegador está servindo o build novo ou um cache velho — e sem isso não
 // há como responder olhando a tela. O segundo campo diz se o boneco 3D entrou.
-const VERSAO_JOGO='2026-09-08-semmuro';
+const VERSAO_JOGO='2026-09-08-comercio';
 {const el=document.getElementById('versaoJogo');
  if(el){el.textContent=`versão ${VERSAO_JOGO} · boneco 3D: carregando…`;
    const marcar=()=>{el.textContent=`versão ${VERSAO_JOGO} · boneco 3D: ${personagemCarregado()?'ok':'não carregou'}`};
@@ -238,7 +238,7 @@ function quadro(){
   // atualizarBalas que roda lá dentro, com os alvos deste frame. Depois, ela ficaria um frame parada
   // no cano. Fica no loop principal, e não dentro da máquina de estados da polícia, porque é leitura
   // de input, não IA.
-  atualizarPlantas();atualizarRadar();atualizarNPCs(dt);atualizarAnimais(dt);atualizarRefugios(dt);atualizarClienteLaje(dt,player.position);atualizarTiroContinuo();atualizarEfeitos(dt);atualizarRecuoArmas(dt);atualizarPortasHospital(dt);atualizarHospital(dt);atualizarLuzesEmergencia(dt);atualizarPolicia(dt);atualizarDebugNavMesh();
+  atualizarPlantas();atualizarRadar();atualizarNPCs(dt);atualizarAnimais(dt);atualizarPortas(dt);atualizarTiroContinuo();atualizarEfeitos(dt);atualizarRecuoArmas(dt);atualizarPortasHospital(dt);atualizarHospital(dt);atualizarLuzesEmergencia(dt);atualizarPolicia(dt);atualizarDebugNavMesh();
   // As viaturas leem a ocorrência DEPOIS do atualizarPolicia, pra pegar o canteiro deste quadro e não
   // o do anterior. Fora do if/else do drone de propósito: a ronda não pode congelar só porque o
   // jogador subiu a câmera — quem olha de cima tem que ver a rua viva.

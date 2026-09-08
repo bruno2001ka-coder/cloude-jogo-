@@ -5,7 +5,7 @@ import{scene,camera}from'./core.js';
 import{ground}from'./Terrain.js';
 import{obstaculos,superficiesAndaveis}from'./Physics.js';
 import{criarSombraContato,folhaMat,folhaClara}from'./Materials.js';
-import{criarEsconderijo,refugioEmQueEsta,alternarPortaRefugio,porteiraFazenda,alternarPorteira,pertoDaPorteira,BAR,BIQUEIRA,clienteLaje,pertoDoCliente,entregouAoCliente}from'./WorldGenerator.js';
+import{criarEsconderijo,casaOcaEmQueEsta,alternarPorta,porteiraFazenda,alternarPorteira,pertoDaPorteira,BAR,BIQUEIRA}from'./WorldGenerator.js';
 import{player}from'./Player.js';
 import{POLOS,PRECOS}from'./Poles.js';
 import{ARMAS,ORDEM_ARMAS,equiparArma}from'./Weapons.js';
@@ -124,7 +124,7 @@ export function atualizarMiraPlantio(){
 export function acaoPrimaria(){
   const ctx=contextoAtual();
   if(!ctx)return null;
-  if(ctx.tipo==='refugio'){const aberta=alternarPortaRefugio(ctx.refugio);renderizarAcoes();return aberta?'porta-aberta':'porta-fechada'}
+  if(ctx.tipo==='casa'){const aberta=alternarPorta(ctx.casa);renderizarAcoes();return aberta?'porta-aberta':'porta-fechada'}
   if(ctx.tipo==='porteira'){const aberta=alternarPorteira();renderizarAcoes();return aberta?'porteira-aberta':'porteira-fechada'}
   if(ctx.tipo==='planta'&&ctx.planta.estagio===2){colher(ctx.planta);return 'colheu'}
   return null;
@@ -134,29 +134,29 @@ export function acaoPrimaria(){
 const LOTES_ENTREGA=[1,2,3,5,7,10,12,15,20];
 export function contextoAtual(){
   const p=player.position;
-  // O refúgio vem PRIMEIRO: dentro da casa, a única ação que importa é a porta. `chave` inclui o
-  // estado dela porque o painel só se redesenha quando a chave muda — sem isso o botão continuaria
-  // escrito "Fechar" depois de fechar.
-  // A CASA DE CLIENTE ENTRA POR AQUI TAMBÉM. Ela tem a mesma casca e a mesma porta do esconderijo,
-  // então `refugioEmQueEsta` acha as duas — e como este teste vem PRIMEIRO, sem tratar o papel a
+  // A CASA OCA VEM PRIMEIRO: lá dentro, a ação que sempre existe é a porta. `chave` inclui o estado
+  // dela porque o painel só se redesenha quando a chave muda — sem isso o botão continuaria escrito
+  // "Fechar" depois de fechar.
+  // COMÉRCIO E CASA DE CLIENTE CAEM OS DOIS AQUI. Eles têm a mesma casca e a mesma porta, então
+  // `casaOcaEmQueEsta` acha os dois — e como este teste vem PRIMEIRO, sem tratar o papel a
   // entrega dentro da casa nunca apareceria no painel: o jogador entraria, veria só "fechar a porta"
   // e não teria como entregar. A chave carrega o papel e a quantidade pelo mesmo motivo de sempre:
   // o painel só se redesenha quando ela muda.
-  const refugio=refugioEmQueEsta(p);
-  if(refugio){
+  const casa=casaOcaEmQueEsta(p);
+  if(casa){
     // A ENTREGA É RESOLVIDA AQUI, onde a posição do jogador existe. Eu tinha chamado
     // `pontoDeEntregaAtual(p)` lá dentro de `renderizarAcoes`, e `p` é local DESTA função: dava
     // `ReferenceError: p is not defined` a cada quadro em que o jogador estivesse dentro da casa do
     // cliente. O laço do jogo captura o erro e segue, então não aparecia tela vermelha — aparecia o
     // jogo travando e um aviso, que foi exatamente o que o Bruno viu.
-    const entrega=refugio.papel==='cliente'?pontoDeEntregaAtual(p):null;
+    const entrega=casa.papel==='cliente'?pontoDeEntregaAtual(p):null;
     // O LOTE TAMBÉM SAI DAQUI. Sorteado dentro do `renderizarAcoes`, ele mudava a cada redesenho do
     // painel — o preço dançava na tela enquanto o jogador olhava pro botão. Aqui ele é sorteado uma
     // vez por CHAVE, ou seja, uma vez por visita, e fica firme até algo mudar de verdade.
     const lote=entrega&&inventario.pacote>0
       ?Math.min(inventario.pacote,LOTES_ENTREGA[Math.floor(Math.random()*LOTES_ENTREGA.length)]):0;
-    return{tipo:'refugio',refugio,entrega,lote,
-      chave:`refugio${refugio.papel}${refugio.aberta?'A':'F'}x${inventario.pacote}`};
+    return{tipo:'casa',casa,entrega,lote,
+      chave:`casa${casa.papel}${casa.aberta?'A':'F'}x${inventario.pacote}`};
   }
   // A porteira vem antes dos polos: ela fica a 21 m do Depósito Rural, então não disputam contexto —
   // a ordem aqui é só pra deixar as duas ações de abrir/fechar juntas no topo.
@@ -175,7 +175,6 @@ export function contextoAtual(){
   // A chave do bar carrega a vida porque o botão muda de "cheio" pra vendável quando o jogador apanha.
   if(distXZ(p,{x:BAR.x,z:BAR.z})<BAR.raio)return{tipo:'bar',chave:'bar'+(jogadorPrecisaCurar()?'F':'C')};
   if(distXZ(p,{x:BIQUEIRA.x,z:BIQUEIRA.z})<BIQUEIRA.raio)return{tipo:'biqueira',chave:'biqueira'+inventario.pacote};
-  if(pertoDoCliente(p))return{tipo:'entrega',chave:'entrega'+inventario.pacote+'x'+clienteLaje.pacotesPedidos};
   const plantaProxima=plantas.find(pl=>!pl.colhida&&Math.hypot(pl.x-p.x,pl.z-p.z)<1.6);
   if(plantaProxima)return{tipo:'planta',planta:plantaProxima};
   return null;
@@ -230,14 +229,24 @@ export function trabalharNaRoca(){
 }
 export function venderPacotes(){if(inventario.pacote>0){dinheiro+=inventario.pacote*PRECOS.receptadorPacote;inventario.pacote=0;atualizarStatusEconomia();renderizarAcoes();renderizarInventario()}}
 // ===== BIQUEIRA: vender no morro =====
-// Paga menos que o Receptador E sobe o procurado. É venda na rua, à vista: a polícia fica sabendo.
-// A conta está em PRECOS — a R$26 dois pacotes cobrem o ciclo de R$48 com R$4 de sobra, que é o
-// mínimo que ainda é lucro. O Receptador continua sendo o pagamento de verdade, e é o que mantém a
-// travessia do mapa (que é o miolo do risco do jogo) valendo a pena.
+// ===== A BIQUEIRA É DELE. ABASTECER NÃO CHAMA POLÍCIA =====
+// "eu vou vender a biqueira, aí vem polícia. Parece que a biqueira trampa pra polícia, isso aí não
+//  vira não. Eu vou vender na biqueira não tem que acontecer nada, vou abastecer ela."
+//
+// Ele leu certo, e era literal: esta função chamava `ganchosPolicia.denunciar()`, que é o
+// `denunciarBoca` do Police.js — `somarProcurado(1)` mais o aviso "Venderam na tua cara. A polícia
+// soube.". Ou seja, a boca dele entregava ele, +1 estrela por venda.
+//
+// O enquadramento estava errado desde o começo. O comentário antigo aqui dizia "é venda na rua, à
+// vista: a polícia fica sabendo" — mas ele não está vendendo na rua pra estranho, está ABASTECENDO a
+// própria biqueira. Quem abastece o próprio ponto não se denuncia.
+//
+// A troca continua existindo, e agora é honesta: a biqueira paga R$26 contra R$40 do Receptador. É
+// "menos dinheiro, do lado de casa" contra "mais dinheiro, atravessando o mapa" — que é o risco de
+// verdade do jogo. Não precisa de estrela pra ter escolha.
 export function venderNaBiqueira(){
   if(inventario.pacote<=0)return;
   dinheiro+=inventario.pacote*PRECOS.biqueiraPacote;inventario.pacote=0;
-  ganchosPolicia.denunciar();
   atualizarStatusEconomia();renderizarAcoes();renderizarInventario();
 }
 // ===== BAR: a única cura instantânea =====
@@ -245,14 +254,6 @@ export function venderNaBiqueira(){
 // perseguição não tem como sarar. R$30 é acima da diária da roça de propósito: apanhar precisa
 // custar mais que um turno de trabalho, senão levar tiro vira pedágio.
 // Comida e água do Mercado: cura parcial, pelo mesmo caminho de cura que o bar usa.
-// Entrega na laje: paga mais que o Receptador, e o cliente só leva o que pediu.
-export function entregarNaLaje(){
-  const quantos=Math.min(inventario.pacote,clienteLaje.pacotesPedidos);
-  if(quantos<=0)return;
-  inventario.pacote-=quantos;dinheiro+=quantos*PRECOS.entregaLaje;
-  entregouAoCliente(quantos);
-  atualizarStatusEconomia();renderizarAcoes();renderizarInventario();
-}
 export function comer(preco,cura){
   if(dinheiro<preco||!jogadorPrecisaCurar())return;
   if(!ganchosPolicia.curar(cura))return;
@@ -369,22 +370,22 @@ function botaoLoja(rotulo,preco,aoClicar){
 export function renderizarAcoes(){
   const ctx=contextoAtual(),tipo=ctx?ctx.tipo:null;
   acaoPanel.innerHTML='';
-  if(tipo==='refugio'){
-    const r=ctx.refugio;
+  if(tipo==='casa'){
+    const r=ctx.casa;
     const cliente=r.papel==='cliente';
     const b=document.createElement('button');
-    // O texto não pode prometer o que a casa não faz: só o esconderijo esconde (ver `estaEscondido`).
-    b.textContent=r.aberta
-      ?(cliente?'🚪 Fechar a porta':'🚪 Fechar a porta e se esconder')
-      :'🚪 Abrir a porta e sair';
-    b.onclick=()=>{alternarPortaRefugio(r);renderizarAcoes()};
+    // O texto não pode prometer o que a casa não faz. Ele já disse "🚪 Fechar a porta e se esconder"
+    // quando fechar a porta escondia de verdade; hoje não esconde mais ninguém (ver Police.js), e
+    // deixar a promessa na tela seria mentir pra ele no momento em que ele mais precisa da verdade.
+    b.textContent=r.aberta?'🚪 Fechar a porta':'🚪 Abrir a porta e sair';
+    b.onclick=()=>{alternarPorta(r);renderizarAcoes()};
     acaoPanel.appendChild(b);
     // Dentro da casa do cliente, a entrega vem JUNTO com a porta — senão entrar seria um beco sem
     // saída de interface: a única ação disponível seria sair.
     if(cliente){
       const quantidade=ctx.lote;
       if(quantidade>0){
-        const valor=quantidade*PRECOS.receptadorPacote;
+        const valor=quantidade*PRECOS.entregaCliente;
         const e=document.createElement('button');
         e.textContent=`📦 Entregar ${quantidade} pacote(s) (+R$${valor})`;
         e.onclick=()=>{dinheiro+=valor;inventario.pacote-=quantidade;
@@ -457,21 +458,13 @@ export function renderizarAcoes(){
     botaoLoja(`🌱 Comprar Semente (R$${PRECOS.biqueiraSemente})`,PRECOS.biqueiraSemente,
       ()=>comprar('semente',PRECOS.biqueiraSemente));
     const b=document.createElement('button');
-    b.textContent=`📦 Vender ${inventario.pacote} na boca (+R$${inventario.pacote*PRECOS.biqueiraPacote}) ⚠`;
+    b.textContent=`📦 Abastecer a boca com ${inventario.pacote} (+R$${inventario.pacote*PRECOS.biqueiraPacote})`;
     b.disabled=inventario.pacote<=0;
     b.onclick=venderNaBiqueira;acaoPanel.appendChild(b);
     const aviso=document.createElement('span');
-    aviso.textContent=`Paga menos que o receptador (R$${PRECOS.receptadorPacote}) e a polícia fica sabendo.`;
+    aviso.textContent=`Paga menos que o receptador (R$${PRECOS.receptadorPacote}), mas é aqui do lado.`;
     aviso.style.cssText='font-size:11px;opacity:.75;align-self:center';
     acaoPanel.appendChild(aviso);
-    acaoPanel.style.display='flex';
-  }else if(tipo==='entrega'){
-    const quantos=Math.min(inventario.pacote,clienteLaje.pacotesPedidos);
-    const b=document.createElement('button');
-    b.textContent=quantos>0
-      ?`📦 Entregar ${quantos} (+R$${quantos*PRECOS.entregaLaje})`
-      :`Ele quer ${clienteLaje.pacotesPedidos} pacote(s) — você tem ${inventario.pacote}`;
-    b.disabled=quantos<=0;b.onclick=entregarNaLaje;acaoPanel.appendChild(b);
     acaoPanel.style.display='flex';
   }else if(tipo==='planta'){
     const nomes=['Broto','Vegetativa','Flora (pronta)'],pronta=ctx.planta.estagio===2;

@@ -74,10 +74,10 @@ function criarPonto(casa,indice){
 // do bar e da biqueira — porque o papel do lote MUDA O QUE SE CONSTRÓI nele: a casa de cliente é uma
 // casca oca com porta que abre, não uma casa maciça com alguém plantado na calçada.
 //
-// O que havia aqui era uma peneira sobre `refugios` (o comentário dizia "evita refúgios" e a linha
+// O que havia aqui era uma peneira sobre `casasOcas` (o comentário dizia "evita refúgios" e a linha
 // PREFERIA refúgios), e os quatro clientes acabaram a 68 cm da porta de um esconderijo, com zona de
 // raio 2,15 m — engolindo a porta. A causa raiz era `casasPos` não trazer `giro`: sem o giro não dá
-// pra achar a FRENTE de uma casa girada, e `refugios` era a única lista que tinha esse campo.
+// pra achar a FRENTE de uma casa girada, e `casasOcas` era a única lista que tinha esse campo.
 for(const casa of casasCliente)criarPonto(casa,deliveryPoints.length);
 
 export function pontoDeEntregaAtual(pos){return deliveryPoints.find(p=>p.ativo&&Math.hypot(pos.x-p.x,pos.z-p.z)<=p.raio&&Math.abs((pos.y??0)-p.y)<1.8)||null}

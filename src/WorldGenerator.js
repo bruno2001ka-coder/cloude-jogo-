@@ -1,5 +1,5 @@
 // Mundo construído FORA do morro: a FAZENDA (porteira, curral, canteiros, bichos), as duas lojas e o
-// esconderijo do Receptador — mais o cliente da laje, que é regra de jogo e não geometria de bairro.
+// esconderijo do Receptador.
 // A favela em si mora em `Favela.js` e é só reexportada daqui (ver o bloco logo abaixo).
 import*as THREE from'three';
 import{scene}from'./core.js';
@@ -39,11 +39,11 @@ function bloco(geo,material,x,y,z,parent=bairro){if(material&&material.map)uvPor
 // foi. Cinco módulos (Economy, Police, NPCs, UI e main) importam a favela DAQUI; em vez de mandar os
 // cinco mudarem de endereço, este arquivo reexporta. É uma linha de indireção contra cinco de
 // mudança espalhada.
-import{favela,casasPos,casasCliente,BECOS,refugios,BAR,BIQUEIRA,sumirCaixa,alternarPortaRefugio,
-  refugioEmQueEsta,estaEscondido,atualizarRefugios}from'./Favela.js';
+import{favela,casasPos,casasCliente,BECOS,casasOcas,BAR,BIQUEIRA,sumirCaixa,alternarPorta,
+  casaOcaEmQueEsta,atualizarPortas}from'./Favela.js';
 bairro.add(favela);
-export{casasPos,casasCliente,BECOS,refugios,BAR,BIQUEIRA,sumirCaixa,alternarPortaRefugio,
-  refugioEmQueEsta,estaEscondido,atualizarRefugios};
+export{casasPos,casasCliente,BECOS,casasOcas,BAR,BIQUEIRA,sumirCaixa,alternarPorta,
+  casaOcaEmQueEsta,atualizarPortas};
 
 // ===== ÁREA NIVELADA 10 x 8 =====
 // Posição indicada pelo HUD da referência enviada: o platô fica no lado leste do mapa e não depende
@@ -115,95 +115,12 @@ function arvore(x,z,s=1){const g=new THREE.Group();g.position.set(x,obterElevaca
   return g}
 
 
-// ===== CLIENTE NA LAJE: a entrega =====
-// De tempos em tempos um cliente aparece EM CIMA de uma laje e o radar marca. Entregar paga mais que
-// o Receptador (PRECOS.entregaLaje) porque o preço é o risco: pra chegar nele você atravessa os
-// telhados e fica de pé no lugar mais visível do morro, que é onde o helicóptero enxerga. É o que dá
-// função ao telhado — sem isso a laje é só um lugar por onde dá pra andar.
-export const clienteLaje={ativo:false,x:0,y:0,z:0,raio:2.6,pacotesPedidos:0};
-const CLIENTE_ESPERA_MIN=40,CLIENTE_ESPERA_MAX=85,CLIENTE_DURACAO=80,CLIENTE_DIST_MIN=25;
-let grupoCliente=null,esperaCliente=18,tempoCliente=0;
-function corpoDoCliente(){
-  // Corpo simples e PARADO: o cliente não anda, então não precisa das pernas animadas do morador.
-  // Criado UMA vez e reposicionado — criar e descartar a cada aparição vazaria geometria na GPU.
-  const g=new THREE.Group();bairro.add(g);
-  const pele=bmat(0xc79067),roupa=bmat(0x2e4a6b),calca=bmat(0x2a2a26);
-  bloco(new THREE.BoxGeometry(.5,.72,.3),roupa,0,.78,0,g);
-  bloco(new THREE.BoxGeometry(.34,.34,.32),pele,0,1.32,0,g);
-  bloco(new THREE.BoxGeometry(.36,.09,.33),bmat(0x171712),0,1.52,0,g);
-  // Braços completos e destacados do tronco: manga azul no alto, antebraço e mão de pele na ponta.
-  // O pequeno ângulo para fora evita que os braços desapareçam dentro do corpo quando vistos da rua.
-  for(const lado of[-1,1]){
-    const braco=bloco(new THREE.CapsuleGeometry(.075,.27,4,8),roupa,lado*.31,.87,0,g);
-    braco.rotation.z=lado*.12;
-    const mao=bloco(new THREE.SphereGeometry(.085,8,6),pele,lado*.35,.56,0,g);
-    mao.scale.set(.85,1.1,.9);
-  }
-  for(const lx of[-.13,.13])bloco(new THREE.BoxGeometry(.12,.5,.15),calca,lx,.26,0,g);
-  g.scale.setScalar(.52);
-  criarSombraContato(.5,g);
-  // Marcador vertical: sem ele o cliente some entre as caixas d'água quando visto do chão.
-  bloco(new THREE.BoxGeometry(.14,.5,.14),bmat(0x63d16a),0,2.3,0,g);
-  return g;
-}
-// ===== O CLIENTE SÓ NASCE EM LAJE QUE DÁ PRA ALCANÇAR =====
-// A entrega depende de o jogador CHEGAR no telhado. Mandar o cliente pra uma laje inalcançável é dar
-// uma missão impossível sem nenhum aviso — pior que não ter a missão. A lista é montada UMA vez, no
-// carregamento: ~110 casas x 48 amostras de terreno, caro demais pra refazer a cada cliente.
-const PULO_ALCANCE=1.40;// v²/2g com VELOCIDADE_PULO=8,2 e GRAVIDADE=-24 (Player.js)
-let lajesAlcancaveis=null;
-function montarLajesAlcancaveis(){
-  lajesAlcancaveis=casasPos.filter(c=>{
-    let maisAlto=-99;
-    for(let a=0;a<16;a++)for(const raio of[1.6,2.6,4]){
-      const ang=a/16*Math.PI*2;
-      maisAlto=Math.max(maisAlto,obterElevacao(c.x+Math.cos(ang)*raio,c.z+Math.sin(ang)*raio));
-    }
-    return c.laje-maisAlto<=PULO_ALCANCE;
-  });
-  // Se o relevo mudar e nenhuma laje passar no teste, é melhor o cliente aparecer em qualquer uma do
-  // que a entrega sumir do jogo sem ninguém notar.
-  if(!lajesAlcancaveis.length)lajesAlcancaveis=casasPos;
-}
-function sortearLaje(jogador){
-  if(!lajesAlcancaveis)montarLajesAlcancaveis();
-  if(!lajesAlcancaveis.length)return null;
-  // Longe do jogador na hora de nascer, pelo mesmo motivo do spawn da polícia: cliente que aparece do
-  // lado não lê como cliente, lê como bug.
-  for(let t=0;t<24;t++){
-    const c=lajesAlcancaveis[Math.floor(Math.random()*lajesAlcancaveis.length)];
-    if(Math.hypot(c.x-jogador.x,c.z-jogador.z)<CLIENTE_DIST_MIN)continue;
-    return c;
-  }
-  return null;
-}
-export function atualizarClienteLaje(dt,jogador){
-  if(clienteLaje.ativo){
-    tempoCliente-=dt;
-    if(tempoCliente<=0||clienteLaje.pacotesPedidos<=0){
-      clienteLaje.ativo=false;
-      if(grupoCliente)grupoCliente.visible=false;
-      esperaCliente=CLIENTE_ESPERA_MIN+Math.random()*(CLIENTE_ESPERA_MAX-CLIENTE_ESPERA_MIN);
-    }
-    return;
-  }
-  esperaCliente-=dt;
-  if(esperaCliente>0)return;
-  const c=sortearLaje(jogador);
-  if(!c){esperaCliente=6;return}// nenhuma laje longe o bastante: tenta de novo daqui a pouco
-  if(!grupoCliente)grupoCliente=corpoDoCliente();
-  clienteLaje.x=c.x;clienteLaje.z=c.z;clienteLaje.y=c.laje;
-  clienteLaje.pacotesPedidos=2+Math.floor(Math.random()*3);
-  clienteLaje.ativo=true;tempoCliente=CLIENTE_DURACAO;
-  grupoCliente.position.set(c.x,c.laje,c.z);grupoCliente.visible=true;
-}
-export function pertoDoCliente(pos){
-  return clienteLaje.ativo&&Math.hypot(pos.x-clienteLaje.x,pos.z-clienteLaje.z)<clienteLaje.raio
-    // Tem que estar EM CIMA da laje, não embaixo: sem a checagem de altura dava pra entregar da rua, e
-    // aí a entrega deixava de custar a subida, que é a coisa toda.
-    &&Math.abs(pos.y-clienteLaje.y)<1.6;
-}
-export function entregouAoCliente(n){clienteLaje.pacotesPedidos=Math.max(0,clienteLaje.pacotesPedidos-n)}
+// O CLIENTE DA LAJE SAIU DAQUI, a pedido dele: "tem que arrumar cliente em cima do telhado que não
+// tem nem como eu entregar". O sistema sorteava uma laje e punha o cliente em cima; o teste de
+// alcance media só o TERRENO em volta (não se dava pra subir de verdade) e, quando nenhuma laje
+// passava, caía num `lajesAlcancaveis=casasPos` que devolvia o morro inteiro — inclusive telhado sem
+// acesso nenhum. A entrega agora acontece onde dá pra chegar andando: dentro das casas de cliente,
+// que têm porta (ver `casasCliente` e DeliveryPoints.js).
 
 export const porteiraFazenda={x:0,y:0,z:0,aberta:true,raio:3.6,pivos:[],caixa:null,caixaFechada:null};
 const PORTEIRA_ABERTA_RAD=Math.PI*.55;// abre pra dentro do sítio, encostando na cerca

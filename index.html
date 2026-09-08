@@ -210,7 +210,7 @@ body.debug #debugBtn{display:block}
 </style>
 </head>
 <body>
-<div id="startScreen"><div class="brandMark">Q3D</div><div class="startKicker">BAIRRO · CULTIVO · FUGA</div><h1>QUINTAL <span>3D</span></h1><p>Plante, atravesse o bairro, faça negócio e volte para o esconderijo antes que a polícia encontre você.</p><div class="startSteps" aria-label="Primeiros passos"><span><b>1</b> Compre insumos</span><span><b>2</b> Plante e colha</span><span><b>3</b> Venda e se esconda</span></div><button id="playBtn">JOGAR AGORA</button><button id="recomecarBtn">APAGAR TUDO E RECOMEÇAR</button><small>gráficos web · progresso salvo neste dispositivo<br><span id="versaoJogo">—</span></small></div>
+<div id="startScreen"><div class="brandMark">Q3D</div><div class="startKicker">BAIRRO · CULTIVO · FUGA</div><h1>QUINTAL <span>3D</span></h1><p>Plante, atravesse o bairro, entregue no cliente e suma da vista da polícia até a ficha esfriar.</p><div class="startSteps" aria-label="Primeiros passos"><span><b>1</b> Compre insumos</span><span><b>2</b> Plante e colha</span><span><b>3</b> Entregue e suma</span></div><button id="playBtn">JOGAR AGORA</button><button id="recomecarBtn">APAGAR TUDO E RECOMEÇAR</button><small>gráficos web · progresso salvo neste dispositivo<br><span id="versaoJogo">—</span></small></div>
 <div id="hud"><span id="faseIcone">🌞</span> <span id="statusEconomia"></span> · <span id="municaoHud">🔫 24</span><div id="barraVidaTrilho"><div id="barraVida"></div><div id="barraArmadura"></div><div id="textoVida">100 ❤</div></div><span id="pos" style="font-size:10px;opacity:.7">x 0.0 · z 0.0</span></div>
 <button id="menuBtn" aria-label="Menu" title="Menu">☰</button><div id="menuPanel" role="menu" aria-label="Menu do jogo"><button id="droneBtn" aria-label="Modo drone">🚁 Drone</button><button id="hudEditBtn" aria-label="Editar HUD" title="Editar HUD">⚙ Editar HUD</button><button id="debugBtn" aria-label="Alternar caixas de colisão">DEBUG</button></div><div id="hudEditPanel" role="dialog" aria-modal="true" aria-label="Editor da HUD"><h2>Editar HUD</h2><p>Arraste qualquer elemento para reorganizar a tela. O jogo fica pausado enquanto você edita.</p><div id="hudEditStatus">Arraste qualquer elemento para reorganizar a HUD</div><div class="hudEditActions"><button id="hudEditSave">Salvar layout</button><button id="hudEditReset" class="secondary">Restaurar padrão</button><button id="hudEditCancel" class="secondary">Cancelar</button><button id="hudEditClose" class="secondary">Fechar</button></div></div>
 <div id="acaoPanel"></div>
@@ -222,10 +222,10 @@ body.debug #debugBtn{display:block}
 <button id="motoBtn" aria-label="Montar ou desmontar da moto">MOTO</button>
 <button id="carroBtn" aria-label="Entrar ou sair do carro">CARRO</button>
 <button id="destravarBtn" aria-label="Destravar personagem">DESTRAVAR</button>
-<div id="hint"><span id="hintPC">WASD andar · Shift correr · Espaço pular · Mouse olhar · Botão esq. atirar · Botão dir. mirar · E colher/porta · Q inventário · Tab/X ou rodinha trocar arma · 1-4 arma · F rajada</span><span id="hintTouch">Joystick esquerdo andar · empurre até o fim pra CORRER · arraste o lado direito para mirar · segure 🔫 para atirar · toque na arma pra trocar</span><br><span style="opacity:.8">No GPS: MERC mercadinho · ARM armas · DEP depósito · REC receptador · DP delegacia · BIQ biqueira · ESC refúgio · 🟢 sua muda</span></div>
+<div id="hint"><span id="hintPC">WASD andar · Shift correr · Espaço pular · Mouse olhar · Botão esq. atirar · Botão dir. mirar · E colher/porta · Q inventário · Tab/X ou rodinha trocar arma · 1-4 arma · F rajada</span><span id="hintTouch">Joystick esquerdo andar · empurre até o fim pra CORRER · arraste o lado direito para mirar · segure 🔫 para atirar · toque na arma pra trocar</span><br><span style="opacity:.8">No GPS: MERC mercadinho · ARM armas · DEP depósito · REC receptador · DP delegacia · BIQ biqueira · 🟢 sua muda · pontos coloridos: comércio e cliente</span></div>
 <div id="alertaPolicia">🚁 ALERTA POLICIAL</div>
 <div id="atencaoPolicia"></div>
-<div id="refugioIndicador">🫥 ESCONDIDO</div>
+<div id="refugioIndicador">🫥 DESPISTOU</div>
 <div id="avisoPolicia"></div>
 <div id="miraCombate"></div>
 

@@ -145,7 +145,7 @@ export function criarVeiculo(cfg){
   //     terreno cru — ou seja, ABAIXO do asfalto que ele vê. "no asfalto tem vários lugares que ele
   //     entra dentro." A mesma regra da fita, aplicada aqui, faz os dois concordarem por construção.
   //     Fora da rua ela vale zero em chão plano e uns centímetros na quina, que não se vê.
-  //  3. A SUPERFÍCIE ANDÁVEL. Escadão, laje, piso de esconderijo, chão de hospital — tudo que o
+  //  3. A SUPERFÍCIE ANDÁVEL. Escadão, laje, piso de casa oca, chão de hospital — tudo que o
   //     jogador a pé pisa e o carro atravessava como se não existisse. "no hospital ele entra pra
   //     dentro." É a MESMA consulta do jogador (`topoAndavelAbaixo`), compartilhada e não copiada.
   //

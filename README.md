@@ -31,7 +31,7 @@ instalar dependências para executar esses comandos; use Node.js 20 ou superior.
   `Set`. O que resolveu foi **margem na inserção** (cada caixa entra nas células que toca mais uma de
   folga, então a consulta olha uma célula só) e **carimbo** num `Uint32Array` no lugar do `Set`
   (acesso por índice, sem hash e sem lixo pro coletor). As 9 caixas que mudam de conteúdo (portas de
-  esconderijo e porteira) ficam fora da grade, numa lista varrida linearmente: indexá-las daria uma
+  casa oca e porteira) ficam fora da grade, numa lista varrida linearmente: indexá-las daria uma
   célula errada no instante em que alguém abrisse uma porta.
 - **NavMesh + A\*** (`src/NavMesh.js`) — grade de navegação de 463×463 células construída por
   rasterização dos obstáculos (14 ms, preguiçosa), A\* com heurística octile e anti-corner-cutting,
@@ -90,10 +90,10 @@ instalar dependências para executar esses comandos; use Node.js 20 ou superior.
   1 draw call, pra a fazenda ter tom próprio em vez de ficar montada na mesma areia clara do bairro.
   A cor dos pés de planta varia por instância (`setColorAt`), o que custa zero draw call a mais.
   A entrada é uma **porteira de duas folhas** no lado leste (o lado virado pro bairro), que abre e fecha
-  com a mesma tecla `E` do refúgio. Ela usa o truque já provado da porta do esconderijo: **uma** `Box3`
+  com a mesma tecla `E` da casa oca. Ela usa o truque já provado da porta dela: **uma** `Box3`
   fica na lista de obstáculos pra sempre e o que muda é o CONTEÚDO dela — trocar de lista a cada
   abre/fecha invalidaria os índices que a NavMesh já rasterizou. E ela **nasce aberta** pelo mesmo
-  motivo que as casas-refúgio: a NavMesh é construída uma vez, depois que todos os obstáculos entraram;
+  motivo que as casas ocas: a NavMesh é construída uma vez, depois que todos os obstáculos entraram;
   com o vão fechado nessa hora, a polícia nunca mais acharia caminho pra dentro do sítio.
   Armadilha anotada no código: `setHSL` do three assume o espaço de cor **de trabalho (linear)** quando
   não se diz nada — ao contrário de `setHex` —, então um verde "escuro" entrava claro e, com o sol a
@@ -102,14 +102,20 @@ instalar dependências para executar esses comandos; use Node.js 20 ou superior.
   travessia do bairro patrulhado: Fazenda (oeste) é a única fonte de vaso e terra, Mercado (centro) a
   única de semente, Loja de Armas (nordeste) vende armas/munição/colete e o Receptador (sudeste) só
   escoa os pacotes.
-- **Procurado e esconderijo** (`src/Police.js`, `src/WorldGenerator.js`) — a ficha (★ até 5 no HUD)
-  sobe quando a abordagem avança e **+1 por policial morto**, e o nível dimensiona a próxima
-  guarnição: 2 policiais com a ficha limpa, até 6 no topo. Abater todos é o caminho mais rápido pra
-  trazer mais gente. **Fora do esconderijo nada limpa a ficha** — nem fugir, nem vencer o tiroteio.
-  Esconder-se são 8 casas comuns da favela, ocas e com porta que abre e fecha: **entrar e fechar**,
-  as duas condições juntas. Aos 3 s escondido a guarnição perde o rastro e recua; a cada 18 s cai uma
-  estrela. Sair antes de zerar deixa ficha, e com ficha a polícia recomeça — agora numa **caçada**
-  atrás do jogador (sem plantação envolvida), com o holofote seguindo ele.
+- **Procurado** (`src/Police.js`) — a ficha (★ até 5 no HUD) sobe quando a abordagem avança e **+1
+  por policial morto**, e o nível dimensiona a próxima guarnição: 2 policiais com a ficha limpa, até
+  6 no topo. Abater todos é o caminho mais rápido pra trazer mais gente. **A ficha cai com o tempo em
+  que ninguém te acha**: nenhum policial vivo enxergando o jogador por **8 s** e a guarnição em campo
+  perde o rastro e recua; **a cada 10 s depois disso cai uma estrela**. Voltar a aparecer zera os dois
+  relógios e a caçada recomeça. O HUD mostra os dois estados (`👁 ★★★ · te acham há Ns` enquanto
+  enxergam, `🫥 DESPISTOU · ★★★ cai em Ns` depois). Medido: ficha 3 zera em **38,1 s** sozinho, e com
+  um policial de olho ela **não cai** em 60 s.
+  O **esconderijo saiu** — os 9 lotes viraram comércio (boteco, roupas, eletrônicos).
+- **Clientes e entrega** (`src/Favela.js`, `src/DeliveryPoints.js`, `src/Economy.js`) — **5 casas** da
+  fileira, escolhidas antes da construção e erguidas como casca oca: por fora são casas iguais às
+  outras, mas a porta abre de verdade (`E`). Entra, e o painel oferece entregar (R$58 por pacote,
+  acima do Receptador). O cliente **em cima da laje saiu**: a laje sorteada podia não ter acesso
+  nenhum, e a entrega virava missão impossível sem aviso.
   ⚠️ **Divergência conhecida:** `PROCURADO_HELI_ATIVO` (3★) governa só o *regime de patrulha* do
   helicóptero — altitude e raio de detecção de plantação. A **caçada** dispara em `procurado > 0`, ou
   seja, com 1 estrela o helicóptero já vem atrás do jogador e desce guarnição. O comentário ao lado da
@@ -119,7 +125,7 @@ instalar dependências para executar esses comandos; use Node.js 20 ou superior.
 - **Polícia de rua** (`src/Police.js`) — duplas que aparecem de tempos em tempos (a cada 70–140 s, no
   máximo 2 ao mesmo tempo, 75 s de ronda cada) e vão embora sozinhas. Não é vigilância 24 h: com a
   ficha limpa elas rondam pontos aleatórios do bairro, e com ficha aberta 60% das rondas passam a
-  mirar os **esconderijos** — é a polícia batendo nas casas onde você costuma se enfiar.
+  mirar **o último lugar onde ele foi visto** — é a polícia batendo o quarteirão em que ele sumiu.
 - **Busca** (`src/Police.js`) — o estado que separa "estão em cima de você" de "estão te procurando".
   Antes eram dois modos só: ou o policial via o jogador, ou (passados os 9 s de rastro do rádio)
   sorteava um ponto no **mapa inteiro** — quem acabava de te perder podia sair andando pro outro lado
@@ -219,7 +225,7 @@ acontecia, justamente na hora em que um cache offline seria mais útil.
 
 Esta versão carrega o Three.js e os addons de pós-processamento por CDN (unpkg), então **precisa de internet na primeira visita** — em troca, ganha:
 
-- Pós-processamento real (`EffectComposer` + `UnrealBloomPass`) — bloom nas janelas acesas e no lampião do esconderijo.
+- Pós-processamento real (`EffectComposer` + `UnrealBloomPass`) — bloom nas janelas acesas, nas vitrines do comércio e no lampião do receptador.
 - Iluminação de ambiente via HDRI (`assets/ceu.hdr`, CC0 / [Poly Haven](https://polyhaven.com/a/kloofendal_48d_partly_cloudy_puresky)) — reflexo mais real em vidro e metal.
 
 A versão single-file 100% offline (sem internet, sem CDN) continua existindo separada — essa aqui é a versão "gráficos web".

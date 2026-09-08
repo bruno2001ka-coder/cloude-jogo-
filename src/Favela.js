@@ -393,7 +393,7 @@ for(const beco of becos){
 // Sem isso o parkour seria sorte, e sorte que falha em silêncio é o pior tipo de defeito.
 const ANDAR_ALT=2.55,RECUO_ANDAR=1.15;
 export function alturaDaLaje(l){return l.baseY+l.andares*ANDAR_ALT+.12}
-// A soleira precisa ser recalculada sempre que o lote muda de orientação. Os esconderijos são
+// A soleira precisa ser recalculada sempre que o lote muda de orientação. As casas ocas são
 // alinhados a um eixo cardeal depois da primeira seleção; usar a cota calculada antes dessa rotação
 // deixa a porta numa cota antiga e faz a casa parecer flutuar ou afundar no barranco.
 function baseYDaSoleira(l){
@@ -1125,63 +1125,84 @@ function construirCasa(l){
   // empurrou tudo pro fundo; sem gravar isso, a passada de enfeite penduraria antena e varal no
   // tamanho do TÉRREO e as peças ficariam boiando fora da laje numa casa de três andares.
   // A caixa d'água saiu daqui: quem põe todas as peças de telhado agora é `enfeitarLaje`, num lugar
-  // só, e por isso ela vale também pro esconderijo, pro bar e pra biqueira — que antes não tinham
+  // só, e por isso ela vale também pra casa oca, pro bar e pra biqueira — que antes não tinham
   // nada em cima.
   l.topoLarg=larg;l.topoProf=prof;l.topoRecuo=recuoAcumulado;
 }
 
-// ===== LOTES COM PAPEL: refúgio, bar, biqueira =====
+// ===== LOTES COM PAPEL: comércio, cliente, bar, biqueira =====
 // Escolhidos ANTES de construir, porque o papel muda o que se constrói e o que vira colisor.
 //
-// O REFÚGIO É ALINHADO AOS EIXOS DO MUNDO, DE PROPÓSITO. A física do jogo é AABB pura (Physics.js:
-// só Box3, sem OBB). Uma parede fina de 5 m girada 40° tem AABB de 3,9 x 3,4 m — quase um cubo
-// sólido. Foi assim que a geração anterior "abriu" nove esconderijos que na prática eram blocos
-// maciços, e é literalmente o "não tô conseguindo entrar nas portas dos esconderijos".
+// AQUI MORAVAM OS NOVE ESCONDERIJOS, E ELES SAÍRAM A PEDIDO DELE: "tira esconderijos, vai ser só
+// procurando mesmo, passou um tempo não achou vai sumindo as estrelas". O lugar continua bom — nove
+// casas OCAS, com porta que abre de verdade, espalhadas pelo morro — então elas viraram COMÉRCIO:
+// boteco, loja de roupas e eletrônicos, três de cada. É o "os esconderijos faça Bar, loja de roupas,
+// eletrônicos, tem vários lugares".
 //
-// Então o refúgio só sai de lote que JÁ está a menos de 0,30 rad (17°) de um eixo cardeal, e recebe o
-// alinhamento exato. São 9 casas entre ~110: no meio de uma fileira torta ninguém percebe 17° a
+// A CASA OCA É ALINHADA AOS EIXOS DO MUNDO, DE PROPÓSITO. A física do jogo é AABB pura (Physics.js:
+// só Box3, sem OBB). Uma parede fina de 5 m girada 40° tem AABB de 3,9 x 3,4 m — quase um cubo
+// sólido. Foi assim que a geração anterior "abriu" nove casas que na prática eram blocos maciços, e
+// é literalmente o "não tô conseguindo entrar nas portas".
+//
+// Então a casa oca só sai de lote que JÁ está a menos de 0,30 rad (17°) de um eixo cardeal, e recebe
+// o alinhamento exato. São 14 casas entre ~110: no meio de uma fileira torta ninguém percebe 17° a
 // menos, e em troca a casa é oca de verdade e a porta é uma porta.
-const REFUGIO_ALVO=9,REFUGIO_DIST_MIN=16;
-const lotesRefugio=[];
-for(const l of lotes){
-  if(lotesRefugio.length>=REFUGIO_ALVO)break;
+const TIPOS_COMERCIO=['boteco','roupas','eletronicos'];
+const COMERCIO_ALVO=9,COMERCIO_DIST_MIN=16;
+// Um lote serve de casa oca? É a mesma pergunta pro comércio e pro cliente, e ela tem que ser feita
+// num lugar só: quando estava escrita duas vezes, mudar a regra num lado deixava o outro para trás.
+function serveDeCasaOca(l){
+  if(l.papel)return false;
+  if(l.larg<4.3)return false;// menos que isso e a casa oca não tem interior utilizável
   const k=Math.round(l.giro/(Math.PI/2));
-  if(Math.abs(l.giro-k*Math.PI/2)>.30)continue;
-  if(l.larg<4.3)continue;// menos que isso e a casa oca não tem interior utilizável
-  if(lotesRefugio.some(o=>Math.hypot(o.x-l.x,o.z-l.z)<REFUGIO_DIST_MIN))continue;
-  l.giro=k*Math.PI/2;
-  // O giro foi normalizado para abrir o refúgio de verdade; a base precisa acompanhar a nova fachada.
+  return Math.abs(l.giro-k*Math.PI/2)<=.30;
+}
+// Alinha o lote ao eixo cardeal mais próximo e recalcula o que depende do giro.
+function alinharCasaOca(l){
+  l.giro=Math.round(l.giro/(Math.PI/2))*(Math.PI/2);
+  // O giro foi normalizado para abrir a casa de verdade; a base precisa acompanhar a nova fachada.
   l.baseY=baseYDaSoleira(l);
   const ab=aabbGirada(l.larg,l.prof,l.giro);l.W=ab.W;l.D=ab.D;
-  l.papel='refugio';lotesRefugio.push(l);
+}
+const lotesComercio=[];
+for(const l of lotes){
+  if(lotesComercio.length>=COMERCIO_ALVO)break;
+  if(!serveDeCasaOca(l))continue;
+  if(lotesComercio.some(o=>Math.hypot(o.x-l.x,o.z-l.z)<COMERCIO_DIST_MIN))continue;
+  alinharCasaOca(l);
+  l.papel='comercio';l.comercio=TIPOS_COMERCIO[lotesComercio.length%TIPOS_COMERCIO.length];
+  lotesComercio.push(l);
 }
 // ===== AS CASAS DE CLIENTE =====
-// Mesma casca oca do refúgio, papel diferente: o cliente mora DENTRO, e a porta abre e fecha. Foi o
-// pedido dele, e a razão é concreta — a entrega na laje existe mas a laje não tem acesso, então o
-// jogador ficava pulando pra tentar entregar. Entrega tem que ser um lugar em que se ENTRA.
+// SÃO CINCO, e o pedido foi literal: "os clientes vão pras casas que já existe, vc vai abrir a porta
+// delas pra ficar funcional, quero só 5 clientes".
 //
-// As mesmas duas exigências geométricas do refúgio valem aqui, e pelo mesmo motivo (física é AABB
-// pura): a casa precisa estar perto de um eixo cardeal, senão a parede girada vira bloco maciço e a
-// porta não abre; e precisa ter largura pra ter interior.
+// "Abrir a porta de uma casa que já existe" é o que este bloco faz, e vale explicar por quê ele é o
+// lugar certo: a casa comum da favela é FUNDIDA em blocos de 100 m (é o que segura o peso no celular)
+// e a porta dela é geometria dentro dessa fusão — não existe mais como peça, não tem dobradiça e não
+// há como girar. A porta que abre é a da casa OCA. Então marcar o lote aqui, antes de construir, é
+// literalmente escolher casas da fileira e dar porta de verdade a elas; do lado de fora é a mesma
+// casa da rua, só que essa entra.
 //
-// A terceira exigência é de jogo: LONGE DAS PORTAS DE ESCONDERIJO. A Manus tinha posto os quatro
-// clientes a 68 cm da porta de um refúgio, com zona de raio 2,15 — a zona engolia a porta. Entregar
-// dispara `alertarEntregaIlegal`, ou seja, dava motivo pra polícia olhar exatamente a porta em que o
-// jogador precisa entrar pra se salvar.
-const CLIENTE_ALVO=4,CLIENTE_DIST_MIN=18,CLIENTE_LONGE_DO_REFUGIO=16;
+// As mesmas duas exigências geométricas do comércio valem aqui, e pelo mesmo motivo (física é AABB
+// pura). A terceira é de jogo: LONGE DAS PORTAS DE COMÉRCIO, pra a zona de entrega (raio 2,15) não
+// engolir a porta do vizinho — foi esse o defeito de quando os quatro clientes nasceram a 68 cm de
+// uma porta alheia.
+const CLIENTE_ALVO=5,CLIENTE_DIST_MIN=18,CLIENTE_LONGE_DO_COMERCIO=16;
 const lotesCliente=[];
-for(const l of lotes){
+// DUAS PASSADAS, E A SEGUNDA É O QUE GARANTE OS CINCO. O comércio serve primeiro e come os melhores
+// lotes; com o espaçamento de 18 m fixo, o quinto cliente podia simplesmente não existir e ninguém
+// veria — sumiria uma entrega do jogo sem erro nenhum. Se faltar, o espaçamento afrouxa até achar.
+for(const folga of[1,.75,.5,.3]){
   if(lotesCliente.length>=CLIENTE_ALVO)break;
-  if(l.papel)continue;
-  const k=Math.round(l.giro/(Math.PI/2));
-  if(Math.abs(l.giro-k*Math.PI/2)>.30)continue;
-  if(l.larg<4.3)continue;
-  if(lotesRefugio.some(o=>Math.hypot(o.x-l.x,o.z-l.z)<CLIENTE_LONGE_DO_REFUGIO))continue;
-  if(lotesCliente.some(o=>Math.hypot(o.x-l.x,o.z-l.z)<CLIENTE_DIST_MIN))continue;
-  l.giro=k*Math.PI/2;
-  l.baseY=baseYDaSoleira(l);
-  const ab=aabbGirada(l.larg,l.prof,l.giro);l.W=ab.W;l.D=ab.D;
-  l.papel='cliente';lotesCliente.push(l);
+  for(const l of lotes){
+    if(lotesCliente.length>=CLIENTE_ALVO)break;
+    if(!serveDeCasaOca(l))continue;
+    if(lotesComercio.some(o=>Math.hypot(o.x-l.x,o.z-l.z)<CLIENTE_LONGE_DO_COMERCIO*folga))continue;
+    if(lotesCliente.some(o=>Math.hypot(o.x-l.x,o.z-l.z)<CLIENTE_DIST_MIN*folga))continue;
+    alinharCasaOca(l);
+    l.papel='cliente';lotesCliente.push(l);
+  }
 }
 
 // Bar e biqueira na via principal, longe um do outro: são os dois destinos do morro e ter os dois na
@@ -1492,15 +1513,23 @@ function puxarGatos(){
   }
 }
 
-// ===== O REFÚGIO: casa oca com porta que abre e fecha =====
-// A regra é ENTRAR E FECHAR: com a porta fechada e o jogador dentro, polícia e helicóptero perdem
-// ele (Police.js). Por isso o refúgio é a única construção da favela que NÃO é fundida — a folha da
-// porta gira, e geometria fundida não gira.
+// ===== A CASA OCA: entra, e a porta abre e fecha =====
+// Serve pro COMÉRCIO (boteco, roupas, eletrônicos) e pra CASA DE CLIENTE. É a única construção da
+// favela que NÃO é fundida — a folha da porta gira, e geometria fundida não gira.
+//
+// ELA JÁ FOI O ESCONDERIJO, e não é mais: entrar e fechar a porta não baixa mais a ficha em lugar
+// nenhum do jogo. Quem baixa a ficha agora é o tempo sem a polícia te achar (Police.js).
 import{registrarObstaculo,registrarCaixa,marcarSemFusao,marcarObstaculoMovel,superficiesAndaveis}from'./Physics.js';
 
 export const ESP_PAREDE=.18,PORTA_ALTURA=2.55,VAO_PORTA=1.8,PORTA_ABERTA_RAD=1.9;
-export const refugios=[];
-const refugioMat=new THREE.MeshStandardMaterial({color:0xb5342a,roughness:.7,emissive:0x5a1712,emissiveIntensity:.35});
+export const casasOcas=[];
+// A PLACA É O QUE DIZ O QUE A CASA É, de longe e sem tutorial. Uma cor por papel, todas emissivas
+// (elas precisam ser legíveis à noite, que é quando o morro fica preto).
+const PLACA={
+  boteco:     new THREE.MeshStandardMaterial({color:0xffb43c,roughness:.7,emissive:0x6a3f04,emissiveIntensity:.45}),
+  roupas:     new THREE.MeshStandardMaterial({color:0xe0559c,roughness:.7,emissive:0x5c1740,emissiveIntensity:.45}),
+  eletronicos:new THREE.MeshStandardMaterial({color:0x3f8fe0,roughness:.7,emissive:0x0f3560,emissiveIntensity:.45}),
+};
 // Verde da casa de cliente, na mesma cor da zona de entrega (DeliveryPoints): é o que liga a placa
 // na fachada ao círculo no chão sem precisar de tutorial.
 const clienteMat=new THREE.MeshStandardMaterial({color:0x2f9c6e,roughness:.7,emissive:0x11402c,emissiveIntensity:.35});
@@ -1518,9 +1547,9 @@ function pecaSolta(geo,material,x,y,z,giro,pai,sombra=true){
   m.castShadow=sombra;m.receiveShadow=true;
   pai.add(m);return m;
 }
-// Casca oca com porta que abre: serve pro ESCONDERIJO e pra CASA DE CLIENTE. A diferença entre os
-// dois é papel, não geometria — o que muda é a placa na fachada e o que o jogo deixa fazer lá dentro
-// (só o esconderijo baixa a ficha; ver `estaEscondido`).
+// Casca oca com porta que abre: serve pro COMÉRCIO e pra CASA DE CLIENTE. A diferença entre eles é
+// papel, não geometria — o que muda é a placa na fachada, o toldo do comércio e o que o jogo deixa
+// fazer lá dentro (só na casa de cliente existe entrega).
 function construirCasaOca(l){
   const g=new THREE.Group();favela.add(g);
   const cor=CORES_PAREDE[l.sem%CORES_PAREDE.length];
@@ -1567,11 +1596,36 @@ function construirCasaOca(l){
                             [larg/2,0,ESP_MURETA,prof+.14],[-larg/2,0,ESP_MURETA,prof+.14]]){
     const p=P(dx,dz);pecaSolta(new THREE.BoxGeometry(mw,ALT_MURETA,md),telha,p.x,y0+alt+.12+ALT_MURETA/2,p.z,l.giro,g);
   }
-  // A PLACA É O QUE DIFERENCIA OS DOIS DE LONGE. Vermelha = esconderijo; verde = casa de cliente, na
-  // mesma cor da zona de entrega, pra o jogador ligar uma coisa na outra sem precisar de tutorial.
+  // A PLACA É O QUE DIFERENCIA AS CASAS DE LONGE, uma cor por papel (ver `PLACA`). O verde do cliente
+  // é o mesmo verde da zona de entrega no chão, pra o jogador ligar uma coisa na outra sem tutorial.
   const ehCliente=l.papel==='cliente';
+  const tipo=ehCliente?null:(l.comercio||'boteco');
   {const p=P(0,prof/2+.32);
-   pecaSolta(new THREE.BoxGeometry(1.5,.12,.5),ehCliente?clienteMat:refugioMat,p.x,y0+2.3,p.z,l.giro,g,false)}
+   pecaSolta(new THREE.BoxGeometry(1.5,.12,.5),ehCliente?clienteMat:PLACA[tipo],p.x,y0+2.3,p.z,l.giro,g,false)}
+  // O TOLDO E A VITRINE SÓ NO COMÉRCIO. Sem eles a loja é uma casa igual às outras com uma placa
+  // colorida, e o morro perde justamente o que ele ganhou quando o esconderijo saiu: lugar que se
+  // reconhece de longe. Duas peças, nenhuma delas caixa vazia — toldo listrado inclinado e um vidro
+  // aceso ao lado da porta.
+  if(!ehCliente){
+    const aba=(larg-VAO_PORTA)/2;
+    // O TOLDO INCLINA POR ANINHAMENTO, NUNCA POR EULER SOLTO. Eu escrevi `toldo.rotation.x=-.28` num
+    // mesh que já tinha `rotation.y=l.giro`, e na foto o toldo virou uma VIGA AMARELA DIAGONAL
+    // atravessando a rua: com a ordem XYZ o tombo aconteceu no eixo X DO MUNDO, não no da fachada.
+    // É a armadilha que já está escrita no CLAUDE.md, e caí nela de novo. Um grupo que gira em Y,
+    // com a peça tombando dentro dele, não tem como errar.
+    {const p=P(0,prof/2+.34);
+     const eixo=new THREE.Group();eixo.position.set(p.x,y0+PORTA_ALTURA+.16,p.z);eixo.rotation.y=l.giro;g.add(eixo);
+     const geo=new THREE.BoxGeometry(larg+.16,.07,.9);uvPorMetro(geo);pintarSujeira(geo,p.x,y0+2.7,p.z);
+     const toldo=new THREE.Mesh(geo,PLACA[tipo]);
+     toldo.position.set(0,.13,.42);toldo.rotation.x=-.30;// tomba pra frente NO EIXO DA FACHADA
+     toldo.castShadow=true;toldo.receiveShadow=true;eixo.add(toldo);}
+    // A vitrine vai na aba da fachada; com aba estreita ela invadiria o vão da porta.
+    // O DESLOCAMENTO É 0,14, NÃO 0,05: a parede tem ESP_PAREDE=0,18 CENTRADA em prof/2, ou seja, a
+    // face de fora está em +0,09. Com 0,05 a vitrine nascia DENTRO do tijolo e não aparecia em foto
+    // nenhuma — eu tinha escrito o número olhando pro eixo da parede em vez da face dela.
+    if(aba>.7){const p=P((larg+VAO_PORTA)/4,prof/2+.14);
+      pecaSolta(new THREE.BoxGeometry(Math.min(aba-.3,1.3),.9,.06),janelaAcesa,p.x,y0+1.45,p.z,l.giro,g,false)}
+  }
 
   // A PORTA. Pivô na quina do vão, folha deslocada meia-largura: girar o pivô gira a folha em torno
   // da dobradiça, que é o único jeito de uma porta parecer porta.
@@ -1606,28 +1660,28 @@ function construirCasaOca(l){
   // porta ali prendia o jogador no próprio colisor.
   const recuo=ESP_PAREDE+.25;
   const r={x:l.x,z:l.z,y:y0,giro:l.giro,pivo,folha,caixa:cx,caixaFechada,aberta:true,
-    papel:ehCliente?'cliente':'esconderijo',
+    papel:ehCliente?'cliente':'comercio',comercio:tipo,
     fechadaRad:l.giro,abertaRad:l.giro+PORTA_ABERTA_RAD,
     meiaLarg:larg/2-recuo,meiaProf:prof/2-recuo,larg,prof,alt,
     // O piso interno é plano e fica um pouco abaixo da soleira. A fundação continua descendo por fora
-    // para cobrir o barranco, mas isso não altera a cota de caminhada dentro do esconderijo.
+    // para cobrir o barranco, mas isso não altera a cota de caminhada dentro da casa.
     piso:y0-PISO_REBAIXO};
-  refugios.push(r);
+  casasOcas.push(r);
   l.lajeY=y0+alt+.12;
   return r;
 }
 // A caixa da porta ABERTA não pode ser Box3 vazia: vazio em three é ±Infinity, e Infinity entra na
 // rasterização da NavMesh e no slab test das balas virando NaN. Caixa minúscula a 10 km é finita.
 export function sumirCaixa(b){b.min.set(0,-9999,0);b.max.set(.01,-9998.99,.01)}
-export function alternarPortaRefugio(r){
+export function alternarPorta(r){
   r.aberta=!r.aberta;
   if(r.aberta)sumirCaixa(r.caixa);else r.caixa.copy(r.caixaFechada);
   return r.aberta;
 }
-// Em qual refúgio o ponto está (ou null). É o teste do INTERIOR, não de proximidade: antes bastava
-// chegar a 2,8 m da casa, o que fazia o esconderijo valer também na viela e na calçada.
-export function refugioEmQueEsta(pos){
-  for(const r of refugios){
+// Em qual casa oca o ponto está (ou null). É o teste do INTERIOR, não de proximidade: antes bastava
+// chegar a 2,8 m da casa, o que fazia a casa valer também na viela e na calçada.
+export function casaOcaEmQueEsta(pos){
+  for(const r of casasOcas){
     const dx=pos.x-r.x,dz=pos.z-r.z,c=Math.cos(r.giro),sn=Math.sin(r.giro);
     const lx=dx*c-dz*sn,lz=dx*sn+dz*c;
     if(Math.abs(lx)>r.meiaLarg||Math.abs(lz)>r.meiaProf)continue;
@@ -1644,19 +1698,12 @@ export function refugioEmQueEsta(pos){
   }
   return null;
 }
-// SÓ O ESCONDERIJO ESCONDE. A casa de cliente tem a mesma casca e a mesma porta, mas se ela também
-// baixasse a ficha o jogador entregaria e ficaria limpo no mesmo cômodo — a entrega deixaria de ter
-// risco, que é a única coisa que a torna uma decisão.
-export function estaEscondido(pos){
-  const r=refugioEmQueEsta(pos);
-  return !!r&&!r.aberta&&r.papel==='esconderijo';
-}
 // Só as casas de cliente, pra quem monta os pontos de entrega. Preenchida logo depois da construção
-// (ver o laço que chama `construirCasaOca`), porque `refugios` só existe cheia depois dela.
+// (ver o laço que chama `construirCasaOca`), porque `casasOcas` só existe cheia depois dela.
 export const casasCliente=[];
-export function atualizarRefugios(dt){
+export function atualizarPortas(dt){
   const k=1-Math.exp(-9*dt);
-  for(const r of refugios){
+  for(const r of casasOcas){
     const alvo=r.aberta?r.abertaRad:r.fechadaRad;
     if(Math.abs(r.pivo.rotation.y-alvo)>.001)r.pivo.rotation.y+=(alvo-r.pivo.rotation.y)*k;
   }
@@ -1964,7 +2011,7 @@ function canoDePVC(l,lajeY,larg,prof,recuo,semente){
 
 // ===== A PASSADA DE ENFEITE =====
 // Roda DEPOIS de construída cada casa, e serve pros quatro construtores (casa comum, casca oca do
-// esconderijo e da casa de cliente, bar e biqueira) — todos gravam `l.lajeY`. Os que encolhem por
+// casa oca, bar e biqueira) — todos gravam `l.lajeY`. Os que encolhem por
 // andar gravam também `topoLarg`/`topoProf`/`topoRecuo`; quem não encolhe cai no tamanho do lote.
 //
 // NADA AQUI VIRA COLISOR. Antena, roupa, ferro e cano são decoração pura: registrar qualquer um deles
@@ -2076,15 +2123,15 @@ function coberturaDeZinco(l,lajeY,larg,prof,recuo){
 
 // ===== CONSTRÓI O MORRO =====
 for(const l of lotes){
-  if(l.papel==='refugio'||l.papel==='cliente')construirCasaOca(l);
+  if(l.papel==='comercio'||l.papel==='cliente')construirCasaOca(l);
   else if(l.papel==='bar')construirBar(l);
   else if(l.papel==='biqueira')construirBiqueira(l);
   else construirCasa(l);
   enfeitarLaje(l);
 }
-// A lista de casas de cliente só pode ser montada AQUI: `refugios` recebe os dois papéis durante a
+// A lista de casas de cliente só pode ser montada AQUI: `casasOcas` recebe os dois papéis durante a
 // construção, e antes deste laço ela está vazia.
-for(const r of refugios)if(r.papel==='cliente')casasCliente.push(r);
+for(const r of casasOcas)if(r.papel==='cliente')casasCliente.push(r);
 // AS VIAS SÃO ASFALTO; OS BECOS, NÃO. Era tudo `concreto`, o mesmo material, e por isso a rua
 // principal lia como uma rampa cinza-clara lisa atravessando o morro. Agora a via tem massa de
 // asfalto, emenda desbotada pro barro (`terra=true`) e meio-fio dos dois lados; o beco continua
@@ -2236,9 +2283,9 @@ function fatiarRetangulo(cx,cz,w,d,giro){
 // `l.larg` e `l.prof` são as dimensões do lote/casa; `l.giro` é aplicado antes da divisão em fatias.
 // Assim, cada caixa representa uma faixa do volume real e não a AABB de uma geometria agregada.
 export function calcularColisoresCasa(l){
-  // Casca oca (refúgio e casa de cliente) registra as próprias paredes: um bloco maciço aqui lacraria
-  // a casa por fora, e foi assim que os nove esconderijos já ficaram fechados uma vez.
-  if(l.papel==='refugio'||l.papel==='cliente')return [];
+  // Casca oca (comércio e casa de cliente) registra as próprias paredes: um bloco maciço aqui lacraria
+  // a casa por fora, e foi assim que as nove casas ocas já ficaram fechadas uma vez.
+  if(l.papel==='comercio'||l.papel==='cliente')return [];
   const yBaixo=l.baseY-CHAO_PROFUNDIDADE;
   const yAlto=(l.lajeY??l.baseY+2.5)-.02;
   return fatiarRetangulo(l.x,l.z,l.larg,l.prof,l.giro).map(f=>
@@ -2274,6 +2321,6 @@ export const casasPos=lotes.map(l=>({x:l.x,z:l.z,w:l.W,d:l.D,
 // Ronda de morador e polícia: os pontos saem das CURVAS DE VERDADE (ver `pontosDeRonda`).
 export const BECOS=pontosDeRonda;
 
-console.info('[favela] lotes=%d becos=%d escadoes=%d refugios=%d | malhas fundidas=%d instanciadas=%d | colisores de casa=%d',
-  lotes.length,becos.length,escadoes.length,refugios.length,
+console.info('[favela] lotes=%d becos=%d escadoes=%d casasOcas=%d | malhas fundidas=%d instanciadas=%d | colisores de casa=%d',
+  lotes.length,becos.length,escadoes.length,casasOcas.length,
   malhasFundidas.length,totalInstanciadas,colisoresCasa);
