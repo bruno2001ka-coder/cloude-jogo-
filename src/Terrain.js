@@ -1,6 +1,6 @@
 // Relevo procedural do terreno + a malha de chão (única superfície de chão; vielas ficam expostas entre as casas).
 import*as THREE from'three';
-import{matChao,matTerraBatida,uvPorMetro}from'./Materials.js';
+import{matChao}from'./Materials.js';
 import{scene}from'./core.js';
 import{MAP_HALF_SIZE,MAP_SIZE}from'./WorldBounds.js';
 import{registrarCaixa}from'./Physics.js';
@@ -194,26 +194,29 @@ export function __pedacosDoChaoParaTeste(){
   return pedacosDoChao.map(p=>({x:p.cx,z:p.cz,visivel:p.malha.visible}));
 }
 
-// ===== FECHAMENTO FÍSICO DO MAPA =====
-// O terreno foi ampliado, então não basta limitar a posição do jogador: veículos, NPCs e câmera
-// também precisam encontrar uma fronteira real. Quatro paredes longas substituem centenas de pedras
-// individuais: são 4 meshes, 4 AABBs e nenhum custo de busca adicional além do broadphase existente.
+// ===== FECHAMENTO FÍSICO DO MAPA — A BARREIRA FICA, A PAREDE SAI =====
+// "tira essas 4 paredes do final do mapa, não tem nada a ver elas."
+//
+// Ele estava vendo quatro paredes de terra de 28 m de ALTURA e 520 m de comprimento em pé em volta
+// do mapa inteiro. O jogo é uma favela num morro; um muro de terra de dez andares fechando o
+// horizonte não é parte de lugar nenhum.
+//
+// A parede tinha duas coisas grudadas que são independentes: a MALHA (o que se vê) e a CAIXA de
+// colisão (o que impede carro, NPC e câmera de sair do mundo). Só a malha sai. A barreira continua
+// exatamente onde estava, invisível — sem ela, veículo e polícia andariam pra fora do terreno.
+//
+// `mapaBordas` continua exportado e agora fica vazio. Conferido antes de mexer: ninguém importa esse
+// nome em lugar nenhum do `src/`.
 const BORDA_ESPESSURA=1.2,BORDA_ALTURA=28,BORDA_BASE=-4;
 const BORDA_CENTRO_Y=BORDA_BASE+BORDA_ALTURA/2;
-const materialBorda=matTerraBatida();
+// (o material da parede saiu junto com a parede: ele carregava um conjunto de texturas de terra
+//  batida que agora não pintaria nada — textura carregada à toa é peso no celular.)
 const mapaBordas=[];
 function criarBorda(largura,profundidade,x,z,categoria){
-  const geo=new THREE.BoxGeometry(largura,BORDA_ALTURA,profundidade);
-  uvPorMetro(geo,2);
-  const mesh=new THREE.Mesh(geo,materialBorda);
-  mesh.position.set(x,BORDA_CENTRO_Y,z);
-  // A borda fica sempre fora do campo de visão próximo e não deve duplicar o passe de sombras.
-  mesh.castShadow=false;mesh.receiveShadow=true;
-  scene.add(mesh);
+  // Sem malha: nada é desenhado aqui. Só a caixa, que é o que segura quem tenta sair do mapa.
   registrarCaixa(new THREE.Box3(
     new THREE.Vector3(x-largura/2,BORDA_BASE,z-profundidade/2),
     new THREE.Vector3(x+largura/2,BORDA_BASE+BORDA_ALTURA,z+profundidade/2)),categoria);
-  mapaBordas.push(mesh);
 }
 // A parede começa exatamente depois de ±260 m. Ela fecha o cenário sem se projetar para dentro
 // do terreno; o jogador pode chegar praticamente até a última faixa de chão.

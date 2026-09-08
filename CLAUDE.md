@@ -313,6 +313,12 @@ de 1,8 m deitado na direção do tiro, aditivo, que cobre o vão e lê como risc
   variação é se o policial ferido chega a ver o jogador.
 - `motocabe.mjs` — 4 pontos de 1.086 onde a moto trava em beco. Idêntico no código de antes.
 
+**As 4 paredes do fim do mapa saíram** (a pedido dele: *"não tem nada a ver elas"*). Eram muros de
+terra de **28 m de altura e 520 m de comprimento** em volta do mapa inteiro. Só a MALHA saiu; as 4
+caixas de colisão ficaram, invisíveis — sem elas veículo e polícia sairiam do mundo. Provado nos
+quatro lados por `scratchpad/barreira.mjs`. Sem o muro, quem chega na borda vê o horizonte pintado
+(morros, baía e a cidade ao fundo), não um buraco.
+
 **Sobra encontrada e deixada no lugar** (a pedido dele): em `Viatura.js`, `ocorrenciaAtendida` nunca
 é posta como `true` em lugar nenhum — só declarada e zerada.
 
