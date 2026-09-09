@@ -76,6 +76,8 @@ export const DIST_PAPEL = {
 export const ECONOMIA = {
   DINHEIRO_INICIAL: 10000,  // Saldo inicial para testes
   TEMPO_ESTAGIO_PLANTA: 22, // Segundos por estágio de crescimento da planta
+  MAX_ESTAGIO_PLANTA: 5,    // Seis imagens: índices 0 a 5; os três últimos são a evolução da genética roxa
+  CHANCE_GENETICA_ROXA: .25,// Parte das sementes nasce com a genética roxa
   ALCANCE_MIRA_PLANTIO: 14, // Alcance máximo da mira de plantio (m)
   LOTES_ENTREGA: [1, 2, 3, 5, 7, 10, 12, 15, 20], // Tamanhos de lote para entrega
   MAX_PLANTAS: 40,          // Limite máximo de plantas simultâneas

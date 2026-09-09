@@ -36,7 +36,10 @@ const potMat=new THREE.MeshStandardMaterial({color:0x8a5a3a,roughness:.85});
 const floraMat=new THREE.MeshStandardMaterial({color:0x9fc75c,roughness:.8});
 const floraAcentoMat=new THREE.MeshStandardMaterial({color:0xf3e9b8,roughness:.6,emissive:0xc9b878,emissiveIntensity:.15});
 const caulePlantaMat=new THREE.MeshStandardMaterial({color:0x5a7a3c,roughness:.85});
-const TEMPO_ESTAGIO=CONFIG_ECONOMIA.TEMPO_ESTAGIO_PLANTA;// segundos por estágio (broto→vegetativa→flora): ritmo de jogo casual, não é guia real de cultivo
+const TEMPO_ESTAGIO=CONFIG_ECONOMIA.TEMPO_ESTAGIO_PLANTA;// ritmo de jogo casual, não é guia real de cultivo
+const MAX_ESTAGIO=CONFIG_ECONOMIA.MAX_ESTAGIO_PLANTA;
+const MAX_ESTAGIO_VERDE=2;
+const CHANCE_GENETICA_ROXA=CONFIG_ECONOMIA.CHANCE_GENETICA_ROXA;
 export const plantas=[];
 function distXZ(a,b){return Math.hypot(a.x-b.x,a.z-b.z)}
 function bloco(geo,material,x,y,z,parent){const m=new THREE.Mesh(geo,material);m.position.set(x,y,z);m.castShadow=true;m.receiveShadow=true;parent.add(m);return m}
@@ -51,13 +54,17 @@ export const fazendaPos=new THREE.Vector3(POLOS.fazenda.x,0,POLOS.fazenda.z);
 export const armasPos=new THREE.Vector3(POLOS.armas.x,0,POLOS.armas.z);
 criarEsconderijo(receptadorPos.x,receptadorPos.z);
 
-// Planta em vaso com três estágios visuais usando assets fotorealistas transparentes.
-// Cada sprite já inclui vaso e solo; assim não há uma segunda geometria procedural sobreposta.
+// Planta em vaso com seis estágios visuais usando assets fotorealistas transparentes.
+// A linhagem verde encerra no terceiro estágio; a linhagem roxa compartilha os três primeiros
+// e continua por mais três imagens de floração roxa. Cada sprite já inclui vaso e solo.
 const carregadorTexturaPlanta=new THREE.TextureLoader();
-const TEXTURAS_PLANTA=['assets/planta_estagio_1_muda.png','assets/planta_estagio_2_vegetativa.png','assets/planta_estagio_3_madura.png'].map(url=>carregadorTexturaPlanta.load(url,
+function carregarTexturaPlanta(url){return carregadorTexturaPlanta.load(url,
   textura=>{textura.colorSpace=THREE.SRGBColorSpace;textura.needsUpdate=true},
   undefined,
-  erro=>console.warn('Quintal 3D: falha ao carregar asset de planta',url,erro)));
+  erro=>console.warn('Quintal 3D: falha ao carregar asset de planta',url,erro))}
+const TEXTURAS_BASE=['assets/planta_estagio_1_muda.png','assets/planta_estagio_2_vegetativa.png','assets/planta_estagio_3_madura.png'].map(carregarTexturaPlanta);
+const TEXTURAS_ROXAS=['assets/planta_estagio_4_pre-floracao_roxa.png','assets/planta_estagio_5_floracao_roxa.png','assets/planta_estagio_6_madura_roxa.png'].map(carregarTexturaPlanta);
+const ESCALAS_ESTAGIO=[.82,1.18,1.42,1.52,1.67,1.82];
 function spritePlanta(parent,texture,escala,estagio){
   const material=new THREE.SpriteMaterial({map:texture,transparent:true,alphaTest:.05,depthWrite:false});
   const sprite=new THREE.Sprite(material);
@@ -68,24 +75,30 @@ function spritePlanta(parent,texture,escala,estagio){
   sprite.castShadow=true;sprite.receiveShadow=true;sprite.userData.estagio=estagio;
   parent.add(sprite);return sprite;
 }
-function criarPlanta(x,y,z){
+function criarPlanta(x,y,z,genetica){
+  const tipo=genetica==='roxa'||genetica==='verde'?genetica:(Math.random()<CHANCE_GENETICA_ROXA?'roxa':'verde');
   const g=new THREE.Group();g.position.set(x,y,z);scene.add(g);
-  const revelaEm=[
-    [spritePlanta(g,TEXTURAS_PLANTA[0],.82,0),0],
-    [spritePlanta(g,TEXTURAS_PLANTA[1],1.18,1),1],
-    [spritePlanta(g,TEXTURAS_PLANTA[2],1.42,2),2],
-  ];
+  const fontes=tipo==='roxa'?[...TEXTURAS_BASE,...TEXTURAS_ROXAS]:TEXTURAS_BASE;
+  const revelaEm=fontes.map((texture,estagio)=>[spritePlanta(g,texture,ESCALAS_ESTAGIO[estagio],estagio),estagio]);
   revelaEm.forEach(([m,estagio])=>m.visible=estagio===0);
   criarSombraContato(.52,g,0,.02);
-  return{grupo:g,x,y,z,plantadoEm:performance.now()/1000,estagio:0,revelaEm,colhida:false};
+  return{grupo:g,x,y,z,genetica:tipo,plantadoEm:performance.now()/1000,estagio:0,revelaEm,colhida:false};
 }
-// Crescimento cumulativo: cada parte some visível a partir do seu próprio estágio e continua visível depois (a planta não "encolhe").
-function atualizarEstagioPlanta(planta){planta.revelaEm.forEach(([m,estagioMin])=>m.visible=planta.estagio>=estagioMin)}
+// Crescimento cumulativo: cada parte troca a imagem no estágio seguinte, mantendo o vaso ancorado no chão.
+function atualizarEstagioPlanta(planta){planta.revelaEm.forEach(([m,estagioMin])=>m.visible=planta.estagio===estagioMin)}
+export function plantaPronta(planta){return planta.genetica==='roxa'?planta.estagio>=MAX_ESTAGIO:planta.estagio>=MAX_ESTAGIO_VERDE}
+export function nomeEstagio(planta){
+  const nomes=planta.genetica==='roxa'
+    ?['Broto','Vegetativa','Madura verde','Pré-floração roxa','Floração roxa','Madura roxa']
+    :['Broto','Vegetativa','Madura'];
+  return nomes[Math.min(planta.estagio,nomes.length-1)]
+}
 export function atualizarPlantas(){
   const agora=performance.now()/1000;
   for(const p of plantas){
     if(p.colhida)continue;
-    const estagioAlvo=Math.min(2,Math.floor((agora-p.plantadoEm)/TEMPO_ESTAGIO));
+    const limite= p.genetica==='roxa'?MAX_ESTAGIO:MAX_ESTAGIO_VERDE;
+    const estagioAlvo=Math.min(limite,Math.floor((agora-p.plantadoEm)/TEMPO_ESTAGIO));
     if(estagioAlvo!==p.estagio){p.estagio=estagioAlvo;atualizarEstagioPlanta(p)}
   }
 }
@@ -126,7 +139,7 @@ export function acaoPrimaria(){
   if(!ctx)return null;
   if(ctx.tipo==='casa'){const aberta=alternarPorta(ctx.casa);renderizarAcoes();return aberta?'porta-aberta':'porta-fechada'}
   if(ctx.tipo==='porteira'){const aberta=alternarPorteira();renderizarAcoes();return aberta?'porteira-aberta':'porteira-fechada'}
-  if(ctx.tipo==='planta'&&ctx.planta.estagio===2){colher(ctx.planta);return 'colheu'}
+  if(ctx.tipo==='planta'&&plantaPronta(ctx.planta)){colher(ctx.planta);return 'colheu'}
   return null;
 }
 // Tamanhos de lote que o cliente pede. Ficam aqui em cima porque o sorteio mudou de lugar: ele era
@@ -318,7 +331,7 @@ export function renderizarInventario(){
 }
 invBtn.addEventListener('click',alternarInventario);
 export function colher(planta){
-  if(planta.estagio===2&&!planta.colhida){
+  if(plantaPronta(planta)&&!planta.colhida){
     planta.colhida=true;
     inventario.pacote+=2+Math.floor(Math.random()*2);
     scene.remove(planta.grupo);
@@ -347,11 +360,11 @@ export function definirDinheiro(v){dinheiro=Math.max(0,Math.floor(Number(v)||0))
 // Recria uma muda com a IDADE que ela tinha quando foi salva, e não recém-plantada: o estágio é
 // função do tempo desde o plantio, então plantar "do zero" no load faria a plantação inteira voltar
 // pra broto e o jogador perderia os 44 s de crescimento a cada vez que abrisse o jogo.
-export function restaurarPlanta(x,y,z,idade){
-  const p=criarPlanta(x,y,z);
-  const anos=Math.max(0,Number(idade)||0);
+export function restaurarPlanta(x,y,z,idade,genetica='verde'){
+  const p=criarPlanta(x,y,z,genetica==='roxa'?'roxa':'verde');
+  const anos=Math.max(0,Number(idade)||0),limite=p.genetica==='roxa'?MAX_ESTAGIO:MAX_ESTAGIO_VERDE;
   p.plantadoEm=performance.now()/1000-anos;
-  p.estagio=Math.min(2,Math.floor(anos/TEMPO_ESTAGIO));
+  p.estagio=Math.min(limite,Math.floor(anos/TEMPO_ESTAGIO));
   atualizarEstagioPlanta(p);
   plantas.push(p);
   return p;
@@ -467,8 +480,8 @@ export function renderizarAcoes(){
     acaoPanel.appendChild(aviso);
     acaoPanel.style.display='flex';
   }else if(tipo==='planta'){
-    const nomes=['Broto','Vegetativa','Flora (pronta)'],pronta=ctx.planta.estagio===2;
-    const b1=document.createElement('button');b1.textContent=pronta?'Colher':`Crescendo: ${nomes[ctx.planta.estagio]}`;b1.disabled=!pronta;b1.onclick=()=>colher(ctx.planta);acaoPanel.appendChild(b1);
+    const pronta=plantaPronta(ctx.planta),nome=nomeEstagio(ctx.planta);
+    const b1=document.createElement('button');b1.textContent=pronta?'Colher':`Crescendo: ${nome}${ctx.planta.genetica==='roxa'?' · Genética roxa':''}`;b1.disabled=!pronta;b1.onclick=()=>colher(ctx.planta);acaoPanel.appendChild(b1);
     acaoPanel.style.display='flex';
   }else{
     acaoPanel.style.display='none';

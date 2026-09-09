@@ -23,6 +23,7 @@ import*as Jogador from'./Player.js';
 import*as Armas from'./Weapons.js';
 import*as Policia from'./Police.js';
 import{SAVE_CONFIG,ECONOMIA as CONFIG_ECONOMIA,inteiro,numero,booleano}from'./Config.js';
+import{MAP_HALF_SIZE}from'./WorldBounds.js';
 
 const CHAVE_A=SAVE_CONFIG.CHAVE_A,CHAVE_B=SAVE_CONFIG.CHAVE_B;
 const VERSAO=SAVE_CONFIG.VERSAO;
@@ -69,7 +70,7 @@ function montarEstado(){
     // Idade, e não o instante do plantio: `performance.now()` reinicia a cada carregamento da
     // página, então gravar o instante faria a muda "nascer no futuro" na sessão seguinte.
     plantas:Economia.plantas.filter(p=>!p.colhida).map(p=>({
-      x:numero(p.x),y:numero(p.y),z:numero(p.z),i:numero(Economia.idadeDaPlanta(p),0,0,1e6)})),
+      x:numero(p.x),y:numero(p.y),z:numero(p.z),i:numero(Economia.idadeDaPlanta(p),0,0,1e6),g:p.genetica==='roxa'?'roxa':'verde'})),
   };
 }
 
@@ -126,12 +127,12 @@ export function carregar(){
     Armas.equiparArma?.(inv.armas[s.arma]?s.arma:'pistola');
     Policia.aplicarEstadoPoliciaDoSave?.(s.pol);
     if(s.pos){
-      Jogador.player.position.set(numero(s.pos.x,0,-120,120),numero(s.pos.y,0,-50,200),numero(s.pos.z,8,-120,120));
+      Jogador.player.position.set(numero(s.pos.x,0,-MAP_HALF_SIZE,MAP_HALF_SIZE),numero(s.pos.y,0,-50,200),numero(s.pos.z,8,-MAP_HALF_SIZE,MAP_HALF_SIZE));
       Jogador.destravarJogador?.(true);// se a posição salva ficou dentro de geometria, sai de lá
     }
     Economia.limparPlantas();
     if(Array.isArray(s.plantas))for(const p of s.plantas.slice(0,CONFIG_ECONOMIA.MAX_PLANTAS))// teto: save adulterado com 10 mil mudas travaria o jogo
-      Economia.restaurarPlanta(numero(p.x,0,-120,120),numero(p.y,0,-50,200),numero(p.z,0,-120,120),numero(p.i,0,0,1e6));
+      Economia.restaurarPlanta(numero(p.x,0,-MAP_HALF_SIZE,MAP_HALF_SIZE),numero(p.y,0,-50,200),numero(p.z,0,-MAP_HALF_SIZE,MAP_HALF_SIZE),numero(p.i,0,0,1e6),p.g==='roxa'?'roxa':'verde');
     Economia.atualizarStatusEconomia();
     Economia.renderizarAcoes();
     return true;
