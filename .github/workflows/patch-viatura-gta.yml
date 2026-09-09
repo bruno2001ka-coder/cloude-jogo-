@@ -1,0 +1,47 @@
+name: Ajuste viatura GTA
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/patch-viatura-gta.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ajustar perseguicao das viaturas
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('src/Viatura.js')
+          s = p.read_text(encoding='utf-8')
+
+          old = """const OCORRENCIA_ANDOU=12;\n// `segurar` vem do main: é a polícia dizendo \"ainda tem serviço\" — tem canteiro sendo batido, ou a\n// guarnição ainda está em campo voltando pro carro. Enquanto for true a despachada NÃO sai do lugar.\nexport function atualizarViaturas(dt,alvo,segurar){\n  if(!modelo)return null;\n  let desembarque=null;\n"""
+          new = """const OCORRENCIA_ANDOU=12;\n// Perseguição estilo GTA: enquanto o jogador estiver sendo perseguido, a viatura não pode continuar\n// dirigindo para a coordenada onde ele estava vários segundos atrás. O destino é recalculado em pulsos\n// curtos (não todo frame, para não ficar nervoso nem desperdiçar CPU no celular).\nconst PERSEGUICAO_RECALCULA=.35;\nlet relogioPerseguicao=0;\n// `segurar` vem do main: é a polícia dizendo \"ainda tem serviço\" — tem canteiro sendo batido, ou a\n// guarnição ainda está em campo voltando pro carro. Enquanto for true a despachada NÃO sai do lugar.\nexport function atualizarViaturas(dt,alvo,segurar){\n  if(!modelo)return null;\n  let desembarque=null;\n  relogioPerseguicao=Math.max(0,relogioPerseguicao-dt);\n"""
+          if old not in s:
+              raise SystemExit('marcador 1 nao encontrado; nada alterado')
+          s = s.replace(old, new, 1)
+
+          old2 = """  if(alvo&&despachadas.length<querem&&!ocorrenciaAtendida){\n    const destino=uMaisPerto(alvo);\n    let melhor=Infinity,escolhida=null;\n"""
+          new2 = """  // PERSEGUIÇÃO MÓVEL: atualiza continuamente o ponto de interceptação das viaturas já\n  // despachadas. Antes elas perseguiam a primeira posição conhecida e podiam estacionar ali enquanto\n  // o jogador já estava longe. Em GTA SA a sensação vem justamente do carro continuar caçando o alvo.\n  if(alvo&&alvo.perseguicao&&despachadas.length&&relogioPerseguicao<=0){\n    const novoDestino=uMaisPerto(alvo);\n    for(const v of despachadas){\n      if(!v.desvio){v.destino=novoDestino;v.desembarcou=false}\n    }\n    alvoAtendido={x:alvo.x,z:alvo.z};\n    ocorrenciaAtendida=false;\n    relogioPerseguicao=PERSEGUICAO_RECALCULA;\n  }\n  if(alvo&&despachadas.length<querem&&!ocorrenciaAtendida){\n    const destino=uMaisPerto(alvo);\n    let melhor=Infinity,escolhida=null;\n"""
+          if old2 not in s:
+              raise SystemExit('marcador 2 nao encontrado; nada alterado')
+          s = s.replace(old2, new2, 1)
+
+          p.write_text(s, encoding='utf-8')
+
+      - name: Validar sintaxe
+        run: node scripts/check-syntax.mjs
+      - name: Commit
+        run: |
+          git config user.name "OpenAI GitHub"
+          git config user.email "actions@users.noreply.github.com"
+          git add src/Viatura.js
+          git diff --cached --quiet && exit 0
+          git commit -m "fix: viaturas perseguem alvo em movimento"
+          git push
