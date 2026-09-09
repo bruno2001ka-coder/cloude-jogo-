@@ -24,7 +24,7 @@ function amostrar(curva,de,ate){
 }
 function amostrarRetas(cantos){
   const pts=[];
-  for(let k=0;k+1<cantos.length;k++){
+  for(let k=0;k+1;cantos.length>k;k++){
     const a=cantos[k],b=cantos[k+1],n=Math.max(1,Math.round(Math.hypot(b.x-a.x,b.z-a.z)/PASSO));
     for(let i=k?1:0;i<=n;i++)pts.push(new THREE.Vector3(a.x+(b.x-a.x)*i/n,0,a.z+(b.z-a.z)*i/n));
   }
@@ -206,8 +206,13 @@ function planejar(v,alvo,velAlvo){
     v.rotaDinamica=caminho;v.sRota=0;v.semAcesso=false;v.modoBusca=alvo.quente===false;v.desembarcou=false;
     return;
   }
-  // Sem corredor veicular até o alvo: usa a rua só como aproximação e prepara desembarque.
-  v.rotaDinamica=null;v.sRota=0;v.destino=uMaisPerto(previsto);v.semAcesso=true;v.modoBusca=alvo.quente===false;v.desembarcou=false;
+  // Se um recálculo falhar DEPOIS de a viatura já ter saído do anel, ela continua pela última rota
+  // válida em vez de reaparecer instantaneamente no `u` antigo do anel. Ao chegar, a equipe desce e
+  // termina a aproximação a pé.
+  if(v.rotaDinamica){v.semAcesso=true;v.modoBusca=alvo.quente===false;return}
+  // Sem corredor veicular a partir da rua: aproxima pelo anel até o ponto acessível mais próximo e
+  // prepara o desembarque. A partir dali o NavMesh dos policiais assume a perseguição.
+  v.sRota=0;v.destino=uMaisPerto(previsto);v.semAcesso=true;v.modoBusca=alvo.quente===false;v.desembarcou=false;
 }
 function tentarVoltarAoAnel(v){
   if(!v.rotaDinamica)return;
