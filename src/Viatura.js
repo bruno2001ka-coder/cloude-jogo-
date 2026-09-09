@@ -6,11 +6,12 @@ import{viaPrincipal,viaBaixa,becos}from'./Favela.js';
 import{registrarCaixa,marcarObstaculoMovel,colideParedeXZ}from'./Physics.js';
 
 const COMPRIMENTO=1.90,LARGURA=.86,ALTURA_COLISAO=.85,ENTRE_EIXOS=.70,ALTURA_ASSENTO=-.02;
-const CHEGOU=2,PERSEGUICAO_DUAS=3;
+const CHEGOU=2,PERSEGUICAO_DUAS=4;
 const VEL_CRUZEIRO=9,VEL_ATENDENDO=12.5,VEL_BUSCA=4.2,ACEL=3.2,FREIO=6.6;
 const LATERAL_RONDA=4.5,LATERAL_ATENDENDO=8;
 const MAO=1,MAO_DESVIANDO=-.6,PERTO_PRA_DESVIAR=9,TROCA_DE_FAIXA=2.5;
-const PERSEGUICAO_RECALCULA=.70,INTERCEPTA_MAX=4.0,ALVO_VEL_MAX=11;
+const PERSEGUICAO_RECALCULA=.80,INTERCEPTA_MAX=4.0,ALVO_VEL_MAX=11;
+const DESPACHO_INTERVALO=9,REPLANEJAR_ALVO_DESVIO=1.8;
 const DISTANCIA_SEGURA=4.2,RAIO_APROXIMACAO=16,VEL_APROXIMACAO=5.5,GIRO_MAX_RAD_S=2.35;
 const DESEMBARQUE_SEM_ACESSO=5.5;
 const PASSO_VALIDACAO=.45,FOLGA_ROTA=.18,INCLINACAO_MAX=Math.tan(22*Math.PI/180);
@@ -211,7 +212,8 @@ function criarViatura(u0){
   const luzes=[lampada(0x3366ff,-.18),lampada(0xff3322,.18)],caixa=new THREE.Box3(new THREE.Vector3(0,-9999,0),new THREE.Vector3(.01,-9998.99,.01));
   marcarObstaculoMovel(registrarCaixa(caixa,'viatura'));
   return{grupo,u:u0,luzes,caixa,piscaT:0,vel:0,mao:MAO,atendendo:false,desembarcou:false,destino:u0,
-    rotaDinamica:null,sRota:0,baseU:u0,semAcesso:false,modoBusca:false,retornando:false,rumoSuave:null};
+    rotaDinamica:null,sRota:0,baseU:u0,semAcesso:false,modoBusca:false,retornando:false,rumoSuave:null,
+    proximoPlano:performance.now()/1000+u0*.25,ultimoAlvoPlano:null,papelDespacho:'ronda'};
 }
 function caminhoAtual(v){
   if(v.rotaDinamica){const t=Math.min(1,Math.max(0,v.sRota/v.rotaDinamica.comp));return{curva:v.rotaDinamica.curva,t,fora:true}}
@@ -237,7 +239,7 @@ new GLTFLoader().load('assets/viatura.glb',gltf=>{
 viaturas.push(criarViatura(0),criarViatura(.5));
 
 // ===== MEMÓRIA DO ALVO + INTERCEPTAÇÃO =====
-let amostraAlvo=null,relogioPlano=0;
+let amostraAlvo=null,proximoDespacho=0;
 function atualizarVelocidadeAlvo(alvo){
   if(!alvo||alvo.quente===false)return{x:0,z:0};
   const agora=performance.now()/1000;
@@ -252,7 +254,9 @@ function atualizarVelocidadeAlvo(alvo){
 }
 function pontoInterceptacao(v,alvo,velAlvo){
   if(!alvo||alvo.quente===false)return{x:alvo.x,z:alvo.z};
-  const d=Math.hypot(alvo.x-v.grupo.position.x,alvo.z-v.grupo.position.z),lead=Math.min(INTERCEPTA_MAX,d/Math.max(6,VEL_ATENDENDO));
+  const d=Math.hypot(alvo.x-v.grupo.position.x,alvo.z-v.grupo.position.z);
+  const extra=v.papelDespacho==='bloqueio'?1.25:0;
+  const lead=Math.min(INTERCEPTA_MAX+extra,d/Math.max(6,VEL_ATENDENDO)+extra);
   return{x:THREE.MathUtils.clamp(alvo.x+velAlvo.x*lead,-MAPA_LIMITE,MAPA_LIMITE),z:THREE.MathUtils.clamp(alvo.z+velAlvo.z*lead,-MAPA_LIMITE,MAPA_LIMITE)};
 }
 function pontoAbordagem(v,alvo,velAlvo){
@@ -289,22 +293,40 @@ function tentarVoltarAoAnel(v){
 const despachadas=[];
 export function atualizarViaturas(dt,alvo,segurar){
   if(!modelo)return null;
-  let desembarque=null;relogioPlano=Math.max(0,relogioPlano-dt);
+  let desembarque=null;const agora=performance.now()/1000;
   const querem=alvo&&alvo.perseguicao&&(alvo.nivel??0)>=PERSEGUICAO_DUAS?2:1;
   if(!alvo&&!segurar){
-    amostraAlvo=null;
-    for(const v of despachadas){if(v.rotaDinamica&&!v.retornando)tentarVoltarAoAnel(v);v.atendendo=false}
+    amostraAlvo=null;proximoDespacho=0;
+    for(const v of despachadas){if(v.rotaDinamica&&!v.retornando)tentarVoltarAoAnel(v);v.atendendo=false;v.ultimoAlvoPlano=null;v.papelDespacho='ronda'}
     despachadas.length=0;
   }
-  if(alvo&&despachadas.length<querem){
+  // Não manda duas viaturas no mesmo segundo. A primeira responde; a segunda, só em ficha alta e
+  // depois de um intervalo, entra como bloqueio/interceptação em vez de formar um comboio colado.
+  if(alvo&&despachadas.length<querem&&agora>=proximoDespacho){
     const destino=uMaisPerto(alvo);let escolhida=null,melhor=Infinity;
     for(const v of viaturas){if(despachadas.includes(v))continue;const d=v.rotaDinamica?Math.hypot(v.grupo.position.x-alvo.x,v.grupo.position.z-alvo.z):faltaAte(v.u,destino);if(d<melhor){melhor=d;escolhida=v}}
-    if(escolhida){escolhida.destino=destino;escolhida.baseU=escolhida.u;escolhida.retornando=false;despachadas.push(escolhida)}
+    if(escolhida){
+      escolhida.destino=destino;escolhida.baseU=escolhida.u;escolhida.retornando=false;
+      escolhida.papelDespacho=despachadas.length?'bloqueio':'principal';
+      escolhida.proximoPlano=0;escolhida.ultimoAlvoPlano=null;
+      despachadas.push(escolhida);proximoDespacho=agora+DESPACHO_INTERVALO;
+    }
   }
   const velAlvo=atualizarVelocidadeAlvo(alvo);
-  if(alvo&&despachadas.length&&relogioPlano<=0){
-    for(const v of despachadas)planejar(v,alvo,alvo.perseguicao?velAlvo:{x:0,z:0});
-    relogioPlano=alvo.perseguicao?PERSEGUICAO_RECALCULA:.8;
+  if(alvo&&despachadas.length){
+    // No máximo UMA busca pesada de rota por quadro. Cada carro tem relógio e memória próprios; se o
+    // alvo mal saiu do lugar, mantém a rota atual em vez de refazer A* por rotina.
+    let planejou=false;
+    for(const v of despachadas){
+      if(planejou||agora<v.proximoPlano)continue;
+      const limiar=alvo.quente===false?3.5:REPLANEJAR_ALVO_DESVIO;
+      const mudou=!v.ultimoAlvoPlano||Math.hypot(v.ultimoAlvoPlano.x-alvo.x,v.ultimoAlvoPlano.z-alvo.z)>=limiar;
+      if(!mudou&&v.rotaDinamica&&!v.semAcesso)continue;
+      planejar(v,alvo,alvo.perseguicao?velAlvo:{x:0,z:0});
+      v.ultimoAlvoPlano={x:alvo.x,z:alvo.z};
+      v.proximoPlano=agora+(alvo.perseguicao?PERSEGUICAO_RECALCULA:.95);
+      planejou=true;
+    }
   }
   for(const v of viaturas){
     const atendendo=despachadas.includes(v);v.atendendo=atendendo;

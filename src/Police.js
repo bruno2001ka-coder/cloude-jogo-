@@ -170,9 +170,12 @@ const BUSCA_DESVIOS=[0,.4,-.4,.8,-.8];
 //
 // O TETO DE 8 É DE CELULAR: cada policial é malha com esqueleto (24 ossos) e mixer próprio. Oito é o
 // dobro do efetivo normal e foi o número que ele escolheu; subir disso pede medição, não opinião.
-const EFETIVO_BASE=4,POLICIAIS_MAX=8;
+const EFETIVO_BASE=3,POLICIAIS_MAX=6;
+// Teto TOTAL em campo por intensidade. Nível zero é ronda normal; batida/abordagem têm teto próprio
+// em `tetoDoNivel`. Assim a favela continua viva sem virar uma enxurrada de fardados.
+const LIMITE_POR_NIVEL=[3,5,5,6,6,6];
 // Espera entre um reforço e o seguinte saindo da porta, e quanto tempo de paz zera a conta de baixas.
-const REPOSICAO_ESPERA=12,CALMARIA=20;
+const REPOSICAO_ESPERA=18,CALMARIA=25;
 const RUA_VELOCIDADE=1.7,RUA_CHEGADA=1.6,RUA_VASCULHAR_RAIO=3.2;
 // Quanto tempo o corpo fica no chão antes de sumir.
 const CORPO_DURACAO=2.5;
@@ -1467,12 +1470,14 @@ const ESTADOS={
         heli.rotation.y=Math.atan2(dx,dz);
         heli.position.y=THREE.MathUtils.lerp(heli.position.y,HELI_ALTURA_APONTANDO,dt*2);
       }else{
+        // O helicóptero é OLHO, não transporte de tropa. Antes ele descia até o chão e ainda soltava
+        // mais dois policiais por cima da guarnição da viatura, furando qualquer teto de efetivo.
+        // Agora ele paira alto marcando a ocorrência; quem chega no chão vem pela rua.
         heli.position.x=THREE.MathUtils.lerp(heli.position.x,alvo.x,1-Math.exp(-4*dt));
         heli.position.z=THREE.MathUtils.lerp(heli.position.z,alvo.z,1-Math.exp(-4*dt));
         heli.rotation.z=THREE.MathUtils.lerp(heli.rotation.z,0,1-Math.exp(-5*dt));
-        const chao=obterElevacao(alvo.x,alvo.z);
-        heli.position.y=THREE.MathUtils.lerp(heli.position.y,chao+HELI_ALTURA_POUSO,1-Math.exp(-2.5*dt));
-        if(Math.abs(heli.position.y-(chao+HELI_ALTURA_POUSO))<.35){policia.heliPousado=true;desembarcarPoliciais(agora)}
+        heli.position.y=THREE.MathUtils.lerp(heli.position.y,HELI_ALTURA_APONTANDO,1-Math.exp(-2.5*dt));
+        policia.heliPousado=false;
       }
     }
   },
@@ -1577,7 +1582,11 @@ export function desembarcarDaViatura(ponto){
   if(!ponto||!centro)return 0;
   let saiu=0;
   pontoDaViatura={x:ponto.x,z:ponto.z};
-  for(let i=policia.equipeViatura;i<VIATURA_EQUIPE;i++){
+  // A viatura não cria gente além do teto da ocorrência. Se já há policiais suficientes na área,
+  // ela continua ajudando com o carro, mas não materializa uma nova dupla.
+  const vagas=Math.max(0,tetoDoNivel()-vivosEmCampo());
+  const limite=Math.min(VIATURA_EQUIPE,policia.equipeViatura+vagas);
+  for(let i=policia.equipeViatura;i<limite;i++){
     // Um de cada lado do carro, e não os dois no mesmo pixel.
     const ang=i?Math.PI:0;
     const pol=sairDaBase(performance.now()/1000,
@@ -1587,7 +1596,7 @@ export function desembarcarDaViatura(ponto){
     equipeDaViatura.push(pol);
     saiu++;
   }
-  policia.equipeViatura=VIATURA_EQUIPE;
+  policia.equipeViatura+=saiu;
   if(saiu)mostrarAviso(atrasDele
     ?'🚓 A viatura parou do seu lado — a guarnição desceu atrás de você.'
     :'🚓 A viatura parou na rua e a guarnição está subindo a pé.',3200);
@@ -1625,9 +1634,20 @@ function recolherEquipeDaViatura(){
   }
 }
 
-// Quantos DEVEM estar em campo. É a regra do reforço inteira: quatro sempre, mais um por policial que
-// o jogador derrubou, até o teto. Sem baixa, o efetivo não muda — reforço tem que ter causa.
-function efetivoDesejado(){return Math.min(POLICIAIS_MAX,EFETIVO_BASE+policia.baixas);}
+// Diretor de ocorrência: um único lugar decide quantos policiais podem existir.
+function vivosEmCampo(){return policiais.reduce((n,p)=>n+(p.vivo?1:0),0)}
+function tetoDoNivel(){
+  if(policia.alvoPlantacao||policia.alvoPlanta)return Math.min(POLICIAIS_MAX,5);
+  if(abordagem.ativa)return Math.min(POLICIAIS_MAX,4);
+  const nivel=Math.max(0,Math.min(PROCURADO_MAX,policia.procurado));
+  return Math.min(POLICIAIS_MAX,LIMITE_POR_NIVEL[nivel]??EFETIVO_BASE);
+}
+// A dupla da viatura conta dentro do efetivo, e baixas só podem pedir até dois substitutos.
+// Isso impede a antiga cascata: 4 da ronda + 2 do heli + 2 da viatura + reposições.
+function efetivoDesejado(){
+  const equipe=equipeDaViatura.reduce((n,p)=>n+(p.vivo&&policiais.includes(p)?1:0),0);
+  return Math.min(tetoDoNivel(),EFETIVO_BASE+equipe+Math.min(2,policia.baixas));
+}
 let turnoAberto=false;
 // Os quatro do turno inicial, espalhados pela favela mas longe do ponto onde o jogador nasce: ele não
 // pode abrir os olhos com um fardado no colo. Roda uma vez, no primeiro quadro — não no topo do
