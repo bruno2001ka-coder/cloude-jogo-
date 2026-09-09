@@ -1,6 +1,7 @@
 // Remove o visual de caixas dos animais da fazenda sem tocar na IA/movimento deles.
 import*as THREE from'three';
 import{animais}from'./WorldGenerator.js';
+import'./AnimalPens.js';
 
 const mats=new Map();
 function mat(c,rough=.86){const k=`${c}-${rough}`;if(!mats.has(k))mats.set(k,new THREE.MeshStandardMaterial({color:c,roughness:rough,metalness:0}));return mats.get(k)}
@@ -56,7 +57,7 @@ function galinha(g){
 for(const a of animais){
   const g=a.grupo;
   const p=g.children[0]?.geometry?.parameters||{};
-  const tipo=(p.width??0)>.75?'vaca':(p.width??0)>.4?'porco':'galinha';
+  const tipo=g.userData.tipoAnimal||((p.width??0)>.75?'vaca':(p.width??0)>.4?'porco':'galinha');
   g.clear();g.userData.tipoAnimal=tipo;
   if(tipo==='vaca')vaca(g);else if(tipo==='porco')porco(g);else galinha(g);
 }
