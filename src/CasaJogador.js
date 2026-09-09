@@ -1,7 +1,6 @@
 // ===== CASA DO JOGADOR =====
-// Casa própria no platô nivelado do lado leste. Ela usa o MESMO contrato das casas ocas da favela:
-// entra em `casasOcas`, então Economy reconhece o interior, a tecla/botão de ação abre e fecha a porta
-// e `atualizarPortas` anima a folha sem criar um segundo sistema de interação.
+// Casa própria do jogador no morro do sul. Ela entra no MESMO contrato das casas ocas da favela:
+// Economy reconhece o interior e o sistema normal de portas abre/fecha a folha sem criar interação paralela.
 import*as THREE from'three';
 import{scene}from'./core.js';
 import{player}from'./Player.js';
@@ -10,9 +9,9 @@ import{registrarObstaculo,registrarCaixa,marcarSemFusao,marcarObstaculoMovel,sup
 import{matReboco,matTelha,matMadeira,matConcreto,bmat,uvPorMetro,criarSombraContato}from'./Materials.js';
 import{casasOcas,sumirCaixa,ESP_PAREDE,PORTA_ALTURA,VAO_PORTA,PORTA_ABERTA_RAD}from'./Favela.js';
 
-// É exatamente a área já nivelada pelo WorldGenerator. Repetimos os quatro números aqui porque este
-// módulo não deve depender dos detalhes de construção do mundo; a cota é recalculada pela mesma regra.
-const AREA={x:65.7,z:-1.8,larg:10,prof:8};
+// IMPORTANTE: o hospital ocupa (65.7,-1.8). A casa NÃO pode reutilizar aquele platô.
+// O morro do sul foi criado em (31.3,71.7) como área vazia e caminhável, então a CJ ganha terreno próprio aqui.
+const AREA={x:31.3,z:71.7,larg:10,prof:8};
 const amostras=[];
 for(let ix=0;ix<=20;ix++)for(let iz=0;iz<=16;iz++){
   const x=AREA.x-AREA.larg/2+ix*AREA.larg/20;
@@ -20,9 +19,9 @@ for(let ix=0;ix<=20;ix++)for(let iz=0;iz<=16;iz++){
   amostras.push({x,z,h:obterElevacao(x,z)});
 }
 const COTA=Math.max(...amostras.map(a=>a.h))+.12;
+const MENOR_COTA=Math.min(...amostras.map(a=>a.h));
 
-// A frente olha para a borda mais baixa do platô — é o mesmo lado em que o WorldGenerator coloca a
-// escada. Assim a porta nunca nasce apontando para o barranco oposto ao acesso.
+// A fachada aponta para a borda mais baixa do morro. Assim a porta e a escada ficam do lado natural de acesso.
 function mediaBorda(tipo){
   const margem=.001;
   const borda=amostras.filter(a=>tipo==='norte'?a.z<AREA.z-AREA.prof/2+margem:
@@ -36,7 +35,6 @@ const bordaFrente=bordas.reduce((m,t)=>mediaBorda(t)<mediaBorda(m)?t:m,'norte');
 const GIRO=bordaFrente==='norte'?Math.PI:bordaFrente==='sul'?0:bordaFrente==='oeste'?-Math.PI/2:Math.PI/2;
 const fx=Math.sin(GIRO),fz=Math.cos(GIRO);
 
-// Deixa um pequeno quintal/varanda na frente, em direção à escada.
 const LARG=6.4,PROF=4.8,ALT=2.9;
 const CX=AREA.x-fx*.55,CZ=AREA.z-fz*.55;
 const PISO=COTA+.14;
@@ -54,13 +52,39 @@ function caixaLocal(lw,h,ld,dx,dy,dz,mat=paredeMat,colisor=true){
   return m;
 }
 
-// Piso elevado só 14 cm sobre o platô: é degrau normal, não obstáculo.
+// Terreno próprio da casa. O corpo desce até a menor cota amostrada, então nenhuma quina fica flutuando.
+const ALT_BASE=Math.max(.35,COTA-MENOR_COTA+.12);
+const base=peca(new THREE.BoxGeometry(AREA.larg,ALT_BASE,AREA.prof),concreto,
+  AREA.x,COTA-ALT_BASE/2,AREA.z,0,grupo,false);
+superficiesAndaveis.push(base);
+
+// Escada curta no lado mais baixo do terreno, ligando a encosta natural ao platô da casa.
+const cotaBaixa=mediaBorda(bordaFrente),desnivel=Math.max(0,COTA-cotaBaixa);
+if(desnivel>.18){
+  const n=Math.max(3,Math.ceil(desnivel/.18)),espelho=desnivel/n,passo=.42,largEscada=2.2;
+  for(let i=0;i<n;i++){
+    const recuo=(n-i-.5)*passo;
+    let x=AREA.x,z=AREA.z;
+    if(bordaFrente==='norte')z=AREA.z-AREA.prof/2-recuo;
+    if(bordaFrente==='sul')z=AREA.z+AREA.prof/2+recuo;
+    if(bordaFrente==='oeste')x=AREA.x-AREA.larg/2-recuo;
+    if(bordaFrente==='leste')x=AREA.x+AREA.larg/2+recuo;
+    const solo=obterElevacao(x,z),topo=Math.max(solo+.08,cotaBaixa+espelho*(i+1));
+    const h=Math.max(.14,topo-solo);
+    const geo=(bordaFrente==='norte'||bordaFrente==='sul')
+      ?new THREE.BoxGeometry(largEscada,h,passo):new THREE.BoxGeometry(passo,h,largEscada);
+    const degrau=peca(geo,concreto,x,solo+h/2,z,0,grupo,false);
+    superficiesAndaveis.push(degrau);
+  }
+}
+
+// Piso interno.
 const centro=mundo(0,0);
 const piso=peca(new THREE.BoxGeometry(LARG-ESP_PAREDE*2,.14,PROF-ESP_PAREDE*2),concreto,
   centro.x,PISO-.07,centro.z,GIRO);
 superficiesAndaveis.push(piso);
 
-// Casca oca: três paredes inteiras e fachada dividida pelo vão.
+// Casca oca: três paredes inteiras e fachada dividida pelo vão da porta.
 caixaLocal(LARG,ALT,ESP_PAREDE,0,0,-PROF/2);
 caixaLocal(ESP_PAREDE,ALT,PROF,-LARG/2,0,0);
 caixaLocal(ESP_PAREDE,ALT,PROF, LARG/2,0,0);
@@ -69,30 +93,28 @@ caixaLocal(aba,ALT,ESP_PAREDE,-(LARG+VAO_PORTA)/4,0,PROF/2);
 caixaLocal(aba,ALT,ESP_PAREDE, (LARG+VAO_PORTA)/4,0,PROF/2);
 caixaLocal(VAO_PORTA,ALT-PORTA_ALTURA,ESP_PAREDE,0,PORTA_ALTURA,PROF/2);
 
-// Laje utilizável e mureta baixa. A casa fica pronta para receber outras funções depois (guardar itens,
-// bancada de corte, upgrades), sem precisar refazer a construção.
+// Laje utilizável e mureta baixa.
 const laje=peca(new THREE.BoxGeometry(LARG+.16,.14,PROF+.16),telhadoMat,centro.x,PISO+ALT+.07,centro.z,GIRO);
 superficiesAndaveis.push(laje);
 for(const[dx,dz,w,d]of[[0,PROF/2,LARG+.16,.14],[0,-PROF/2,LARG+.16,.14],[LARG/2,0,.14,PROF+.16],[-LARG/2,0,.14,PROF+.16]]){
   const p=mundo(dx,dz);peca(new THREE.BoxGeometry(w,.38,d),telhadoMat,p.x,PISO+ALT+.26,p.z,GIRO);
 }
 
-// Janela lateral simples para a casa não parecer um galpão fechado.
+// Janela lateral.
 const vidro=new THREE.MeshPhysicalMaterial({color:0x8fc0cf,roughness:.18,metalness:.05,transparent:true,opacity:.72});
-{const p=mundo(-LARG/2-.015,-.65);peca(new THREE.BoxGeometry(.04,1.0,1.45),vidro,p.x,PISO+1.55,p.z,GIRO,grupo,false)}
+{const p=mundo(-LARG/2-.015,-.65);peca(new THREE.BoxGeometry(.04,1,1.45),vidro,p.x,PISO+1.55,p.z,GIRO,grupo,false)}
 
-// Placa CASA acima da porta. Um CanvasTexture pequeno custa um único material e deixa a casa reconhecível
-// de longe sem criar outra UI permanente na tela.
+// Placa CASA acima da entrada.
 if(typeof document!=='undefined'){
   const cv=document.createElement('canvas');cv.width=512;cv.height=128;const ctx=cv.getContext('2d');
-  ctx.fillStyle='#1d3551';ctx.fillRect(0,0,cv.width,cv.height);ctx.strokeStyle='#d7e6f4';ctx.lineWidth=10;ctx.strokeRect(5,5,502,118);
-  ctx.fillStyle='#ffffff';ctx.font='bold 70px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('CASA',256,67);
+  ctx.fillStyle='#1d3551';ctx.fillRect(0,0,512,128);ctx.strokeStyle='#d7e6f4';ctx.lineWidth=10;ctx.strokeRect(5,5,502,118);
+  ctx.fillStyle='#fff';ctx.font='bold 70px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('CASA',256,67);
   const tex=new THREE.CanvasTexture(cv);tex.colorSpace=THREE.SRGBColorSpace;
   const mat=new THREE.MeshBasicMaterial({map:tex});const p=mundo(0,PROF/2+.105);
   const placa=peca(new THREE.PlaneGeometry(1.9,.48),mat,p.x,PISO+2.57,p.z,GIRO,grupo,false);placa.renderOrder=1;
 }
 
-// Porta com dobradiça real. Nasce aberta para o primeiro spawn nunca prender o jogador.
+// Porta com dobradiça real. Nasce aberta para a nova partida nunca prender o jogador.
 const dobra=mundo(-VAO_PORTA/2,PROF/2);
 const pivo=new THREE.Group();pivo.position.set(dobra.x,PISO,dobra.z);pivo.rotation.y=GIRO;grupo.add(pivo);
 const folha=peca(new THREE.BoxGeometry(VAO_PORTA-.06,PORTA_ALTURA-.05,.07),madeira,
@@ -102,14 +124,11 @@ const caixaFechada=new THREE.Box3().setFromObject(folha);
 pivo.rotation.y=GIRO+PORTA_ABERTA_RAD;
 const caixaPorta=new THREE.Box3();sumirCaixa(caixaPorta);registrarCaixa(caixaPorta,'casa-jogador-porta');marcarObstaculoMovel(caixaPorta);
 
-// Interior básico, sem entulhar a sala que será usada pela progressão depois.
-// Colchão no fundo esquerdo.
+// Interior simples: cama e mesa, deixando espaço para a futura progressão do jogador.
 {const p=mundo(-1.55,-1.35);peca(new THREE.BoxGeometry(1.8,.18,.78),bmat(0x496c86),p.x,PISO+.12,p.z,GIRO,grupo,false);
  const q=mundo(-1.55,-1.62);peca(new THREE.BoxGeometry(.62,.12,.42),bmat(0xd9d2bd),q.x,PISO+.25,q.z,GIRO,grupo,false)}
-// Mesa de trabalho simples no fundo direito: já marca visualmente onde depois entram cortes/upgrades.
 {const p=mundo(1.45,-1.42);peca(new THREE.BoxGeometry(1.65,.12,.72),madeira,p.x,PISO+.92,p.z,GIRO,grupo,false);
  for(const sx of[-.68,.68])for(const sz of[-.24,.24]){const q=mundo(1.45+sx,-1.42+sz);peca(new THREE.BoxGeometry(.09,.86,.09),madeira,q.x,PISO+.43,q.z,GIRO,grupo,false)}}
-// Luz interna barata: sem sombra, para não multiplicar passes de render.
 {const p=mundo(0,-.2);const luz=new THREE.PointLight(0xffd79c,1.35,7);luz.position.set(p.x,PISO+2.35,p.z);luz.castShadow=false;grupo.add(luz);
  const lamp=peca(new THREE.SphereGeometry(.08,8,6),bmat(0xffd79c),p.x,PISO+2.38,p.z,0,grupo,false);lamp.material.emissive?.set?.(0xffd79c)}
 criarSombraContato(2.6,grupo,0,.02);
@@ -117,7 +136,7 @@ criarSombraContato(2.6,grupo,0,.02);
 const RECUO=ESP_PAREDE+.25;
 export const casaJogador={x:CX,z:CZ,y:PISO,giro:GIRO,pivo,folha,caixa:caixaPorta,caixaFechada,aberta:true,
   papel:'jogador',comercio:null,fechadaRad:GIRO,abertaRad:GIRO+PORTA_ABERTA_RAD,
-  meiaLarg:LARG/2-RECUO,meiaProf:PROF/2-RECUO,larg:LARG,prof:PROF,alt:ALT,piso:PISO};
+  meiaLarg:LARG/2-RECUO,meiaProf:PROF/2-RECUO,larg:LARG,prof:PROF,alt:ALT,piso:PISO,lajeY:PISO+ALT+.14};
 casasOcas.push(casaJogador);
 
 export function pontoInicialCasaJogador(){const p=mundo(0,-.55);return{x:p.x,y:PISO+.02,z:p.z}}
@@ -125,6 +144,5 @@ export function posicionarJogadorNaCasa(jogador){
   if(!jogador)return false;const p=pontoInicialCasaJogador();jogador.position.set(p.x,p.y,p.z);jogador.rotation.y=GIRO;return true;
 }
 
-// Este módulo é avaliado antes do bloco `carregar()` do main. Portanto nova partida fica aqui dentro;
-// se houver save, o próprio Save.js roda logo depois e restaura a posição salva por cima desta.
+// Nova partida começa aqui; se houver save, Save.js restaura a posição salva logo depois.
 posicionarJogadorNaCasa(player);
