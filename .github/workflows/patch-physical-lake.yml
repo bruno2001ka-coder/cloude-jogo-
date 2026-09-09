@@ -1,0 +1,71 @@
+name: Patch physical lake
+on:
+  push:
+    branches: [main]
+jobs:
+  patch:
+    if: ${{ !contains(github.event.head_commit.message, '[physical-lake-patch]') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Patch terrain and player water physics
+        shell: python
+        run: |
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p=Path(path); s=p.read_text()
+              if old not in s:
+                  raise SystemExit(f'marker not found in {path}: {old[:100]!r}')
+              if s.count(old)!=1:
+                  raise SystemExit(f'marker not unique in {path}: {s.count(old)}')
+              p.write_text(s.replace(old,new,1))
+
+          replace_once('src/Terrain.js',
+              "import{registrarCaixa}from'./Physics.js';",
+              "import{registrarCaixa}from'./Physics.js';\nimport{deformarTerrenoLago}from'./LakeConfig.js';")
+
+          replace_once('src/Terrain.js',
+              "  h-=PLATO_FORCA*Math.sin(2*Math.PI*h/PLATO_PASSO)/(2*Math.PI);\n  return THREE.MathUtils.clamp(h,-2.5,22);",
+              "  h-=PLATO_FORCA*Math.sin(2*Math.PI*h/PLATO_PASSO)/(2*Math.PI);\n  // O lago e uma ESCAVACAO do proprio terreno. Player, veiculos e malha visual leem esta mesma altura.\n  h=deformarTerrenoLago(h,x,z);\n  return THREE.MathUtils.clamp(h,-2.5,22);")
+
+          replace_once('src/Player.js',
+              "import{obterElevacao}from'./Terrain.js';",
+              "import{obterElevacao}from'./Terrain.js';\nimport{LAGO_PEIXES,estaNaAgua}from'./LakeConfig.js';")
+
+          old="export function atualizarFisicaVertical(dt){velocidadeY+=GRAVIDADE*dt;const proximoY=player.position.y+velocidadeY*dt;const origemY=Math.max(player.position.y,proximoY)+1.2;const superficieY=encontrarSuperficieAbaixo(player.position.x,player.position.z,origemY);if(proximoY<=superficieY){player.position.y=superficieY;velocidadeY=0;noChao=true}else{player.position.y=proximoY;noChao=false}}"
+          new="""export function atualizarFisicaVertical(dt){
+  velocidadeY+=GRAVIDADE*dt;
+  const proximoY=player.position.y+velocidadeY*dt;
+  const origemY=Math.max(player.position.y,proximoY)+1.2;
+  const superficieY=encontrarSuperficieAbaixo(player.position.x,player.position.z,origemY);
+  // Agua como VOLUME: em parte funda o corpo recebe empuxo e arrasto em vez de cair seco ate o fundo.
+  const naAgua=estaNaAgua(player.position.x,player.position.z);
+  const profundidadeAgua=naAgua?LAGO_PEIXES.nivelAgua-superficieY:0;
+  if(naAgua&&profundidadeAgua>PLAYER_HEIGHT*.32&&player.position.y<=LAGO_PEIXES.nivelAgua+.16){
+    const alvo=Math.max(superficieY,LAGO_PEIXES.nivelAgua-PLAYER_HEIGHT*.58);
+    player.position.y=THREE.MathUtils.lerp(player.position.y,alvo,1-Math.exp(-4.8*dt));
+    velocidadeY*=Math.exp(-7*dt);noChao=false;return;
+  }
+  if(proximoY<=superficieY){player.position.y=superficieY;velocidadeY=0;noChao=true}
+  else{player.position.y=proximoY;noChao=false}
+}"""
+          replace_once('src/Player.js',old,new)
+
+          replace_once('src/Player.js',
+              "  velocity.lerp(desired,smooth);",
+              "  // Arrasto horizontal dentro da agua: o jogador ainda se move, mas nao corre como em terra seca.\n  if(estaNaAgua(player.position.x,player.position.z)&&player.position.y<LAGO_PEIXES.nivelAgua+.05)desired.multiplyScalar(.46);\n  velocity.lerp(desired,smooth);")
+      - name: Syntax check
+        run: node --check src/Terrain.js && node --check src/Player.js && node --check src/LakeConfig.js
+      - name: Commit patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/Terrain.js src/Player.js src/LakeConfig.js
+          git diff --cached --quiet && exit 0
+          git commit -m "fix: carve real lake terrain and add water physics [physical-lake-patch]"
+          git push
