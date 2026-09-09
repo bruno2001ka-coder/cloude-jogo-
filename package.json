@@ -1,7 +1,7 @@
 {
   "name": "quintal-3d",
   "private": true,
-  "version": "0.3.7",
+  "version": "0.3.8",
   "description": "Jogo 3D web em Three.js",
   "type": "module",
   "scripts": {
