@@ -2,6 +2,7 @@
 import*as THREE from'three';
 import{animais}from'./WorldGenerator.js';
 import'./AnimalPens.js';
+import'./FishPond.js';
 
 const mats=new Map();
 function mat(c,rough=.86){const k=`${c}-${rough}`;if(!mats.has(k))mats.set(k,new THREE.MeshStandardMaterial({color:c,roughness:rough,metalness:0}));return mats.get(k)}
