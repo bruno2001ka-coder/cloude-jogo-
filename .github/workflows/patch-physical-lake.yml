@@ -13,8 +13,9 @@ jobs:
         with:
           fetch-depth: 0
       - name: Patch terrain and player water physics
-        shell: python
+        shell: bash
         run: |
+          python - <<'PY'
           from pathlib import Path
 
           def replace_once(path, old, new):
@@ -39,26 +40,27 @@ jobs:
 
           old="export function atualizarFisicaVertical(dt){velocidadeY+=GRAVIDADE*dt;const proximoY=player.position.y+velocidadeY*dt;const origemY=Math.max(player.position.y,proximoY)+1.2;const superficieY=encontrarSuperficieAbaixo(player.position.x,player.position.z,origemY);if(proximoY<=superficieY){player.position.y=superficieY;velocidadeY=0;noChao=true}else{player.position.y=proximoY;noChao=false}}"
           new="""export function atualizarFisicaVertical(dt){
-  velocidadeY+=GRAVIDADE*dt;
-  const proximoY=player.position.y+velocidadeY*dt;
-  const origemY=Math.max(player.position.y,proximoY)+1.2;
-  const superficieY=encontrarSuperficieAbaixo(player.position.x,player.position.z,origemY);
-  // Agua como VOLUME: em parte funda o corpo recebe empuxo e arrasto em vez de cair seco ate o fundo.
-  const naAgua=estaNaAgua(player.position.x,player.position.z);
-  const profundidadeAgua=naAgua?LAGO_PEIXES.nivelAgua-superficieY:0;
-  if(naAgua&&profundidadeAgua>PLAYER_HEIGHT*.32&&player.position.y<=LAGO_PEIXES.nivelAgua+.16){
-    const alvo=Math.max(superficieY,LAGO_PEIXES.nivelAgua-PLAYER_HEIGHT*.58);
-    player.position.y=THREE.MathUtils.lerp(player.position.y,alvo,1-Math.exp(-4.8*dt));
-    velocidadeY*=Math.exp(-7*dt);noChao=false;return;
-  }
-  if(proximoY<=superficieY){player.position.y=superficieY;velocidadeY=0;noChao=true}
-  else{player.position.y=proximoY;noChao=false}
-}"""
+            velocidadeY+=GRAVIDADE*dt;
+            const proximoY=player.position.y+velocidadeY*dt;
+            const origemY=Math.max(player.position.y,proximoY)+1.2;
+            const superficieY=encontrarSuperficieAbaixo(player.position.x,player.position.z,origemY);
+            // Agua como VOLUME: em parte funda o corpo recebe empuxo e arrasto em vez de cair seco ate o fundo.
+            const naAgua=estaNaAgua(player.position.x,player.position.z);
+            const profundidadeAgua=naAgua?LAGO_PEIXES.nivelAgua-superficieY:0;
+            if(naAgua&&profundidadeAgua>PLAYER_HEIGHT*.32&&player.position.y<=LAGO_PEIXES.nivelAgua+.16){
+              const alvo=Math.max(superficieY,LAGO_PEIXES.nivelAgua-PLAYER_HEIGHT*.58);
+              player.position.y=THREE.MathUtils.lerp(player.position.y,alvo,1-Math.exp(-4.8*dt));
+              velocidadeY*=Math.exp(-7*dt);noChao=false;return;
+            }
+            if(proximoY<=superficieY){player.position.y=superficieY;velocidadeY=0;noChao=true}
+            else{player.position.y=proximoY;noChao=false}
+          }"""
           replace_once('src/Player.js',old,new)
 
           replace_once('src/Player.js',
               "  velocity.lerp(desired,smooth);",
               "  // Arrasto horizontal dentro da agua: o jogador ainda se move, mas nao corre como em terra seca.\n  if(estaNaAgua(player.position.x,player.position.z)&&player.position.y<LAGO_PEIXES.nivelAgua+.05)desired.multiplyScalar(.46);\n  velocity.lerp(desired,smooth);")
+          PY
       - name: Syntax check
         run: node --check src/Terrain.js && node --check src/Player.js && node --check src/LakeConfig.js
       - name: Commit patch
