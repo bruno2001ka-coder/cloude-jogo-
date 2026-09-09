@@ -1,4 +1,5 @@
 // Fonte unica do lago: zero imports para Terrain, Player e visual poderem usar sem ciclo.
+// Esta configuracao tambem e usada pela escavacao real e pela fisica de agua do jogador.
 export const LAGO_PEIXES={
   x:-113,z:-50,
   raioX:5.4,raioZ:3.8,
