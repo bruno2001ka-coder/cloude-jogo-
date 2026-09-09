@@ -60,7 +60,7 @@ import{GLTFLoader}from'three/addons/loaders/GLTFLoader.js';
 import{scene}from'./core.js';
 import{obterElevacao,alturaDoChaoDesenhado}from'./Terrain.js';
 import{viaPrincipal,viaBaixa,becos}from'./Favela.js';
-import{registrarCaixa,marcarObstaculoMovel,colideObstaculoXZ}from'./Physics.js';
+import{registrarCaixa,marcarObstaculoMovel,colideParedeXZ}from'./Physics.js';
 
 const COMPRIMENTO=1.90,LARGURA=.86,ALTURA_COLISAO=.85;
 const ENTRE_EIXOS=.70;
@@ -240,17 +240,25 @@ const BECO_LATERAL=2.2,BECO_VEL=4.5;// ela anda DEVAGAR no beco: é a única vel
 // de ronda dentro de beco — mais da metade do tempo, ou seja, deixaria de ser patrulha de rua e
 // viraria patrulha de beco. O anel tem 283 m a ~8 m/s (35 s por volta) e são 5 bocas; a 0,12 ela
 // pega um beco a cada duas voltas, que é o que faz a coisa ser um acontecimento e não uma rotina.
+// O que importa é o tempo TOTAL dentro de beco, não a chance por porta: quando a conferência ficou
+// determinística e depois mais fina, o número de becos aceitos foi 5 -> 9 -> 5, e esta constante
+// acompanhou. Com 5 desvios, 0,12 dá um beco a cada duas voltas.
 const BECO_CHANCE=.12;
 const RETORNO_RAIOS=[2.5,3,3.5,4,5];
 // O corpo dela cabe neste ponto, com este rumo? Mesma pergunta que o teste faz, feita aqui dentro
 // pra o desvio se recusar sozinho se o mapa mudar — melhor perder um beco do que ganhar uma viatura
 // dentro de uma parede.
+// `colideParedeXZ` e não `colideObstaculoXZ`: aqui se PLANEJA uma rota, e rota não pode depender de
+// onde os carros estavam no instante do planejamento. O teste completo inclui as caixas móveis — a
+// outra viatura, o carro e a moto do jogador — e com elas o conjunto de becos aceitos mudava de
+// rodada pra rodada. Foi assim que uma conferência MAIS DURA aceitou MAIS becos (7 contra 5), que é
+// o tipo de resultado que denuncia aleatoriedade em vez de medida.
 function corpoCabe(cx,cz,rumo,folga=.12){
   const y=alturaDoChaoDesenhado(cx,cz)+.1;
   const L=LARGURA/2+folga,C=COMPRIMENTO/2+folga;
   const sx=Math.sin(rumo),cs=Math.cos(rumo);
   for(const[dl,dc]of[[-L,-C],[L,-C],[-L,C],[L,C],[-L,0],[L,0]])
-    if(colideObstaculoXZ(cx+cs*dl+sx*dc,cz-sx*dl+cs*dc,y,.02,.02,.9))return false;
+    if(colideParedeXZ(cx+cs*dl+sx*dc,cz-sx*dl+cs*dc,y,.02,.02,.9))return false;
   return true;
 }
 // ===== O RETORNO É UMA GOTA, E O MEIO-CÍRCULO NÃO SERVE =====
@@ -351,13 +359,29 @@ function montarDesvios(){
     //   · ela nunca anda pra trás (produto escalar do passo com a tangente).
     // Beco que não passa simplesmente não vira desvio. Perder um beco é barato; entregar a viatura
     // dentro de uma parede, ou dando ré, não é — ré é a queixa original dele.
-    const n=Math.max(24,Math.ceil(comp/.4));
-    let serve=true,ant=curva.getPointAt(0);
-    for(let k=0;k<=n&&serve;k++){
+    // O PASSO E A FOLGA DA CONFERÊNCIA TÊM QUE SER MAIS DUROS QUE OS DA RONDA.
+    // Estavam em 0,4 m e 10 cm, e o teste de ronda pegou o desvio 1 raspando SEMPRE no mesmo ponto,
+    // entre 9,2 e 10,1 m: uma janela de 90 cm que caía entre duas amostras da conferência. Conferir
+    // com a mesma frouxidão com que se anda é não conferir nada — a margem tem que sobrar.
+    // 0,15 m de passo e 18 cm de folga, que é a espessura de uma parede: se a diferença entre passar
+    // e bater for menos que uma parede, o beco não serve.
+    // O PASSO TEM QUE SER MENOR QUE O RAIO DA MANOBRA. Fui de 0,4 pra 0,25 e ainda escapavam coisas:
+    // com 0,15 apareceram um ponto raspando aos 45,7 m num desvio e dois bicos de verdade em outros
+    // dois — e sumiu um "bico" que era só corda grossa perto do ápice da gota (raio 2,5 m). Amostrar
+    // mais fino que a curva é a única forma de a conferência valer alguma coisa; a conferência do
+    // módulo tem que ser pelo menos tão dura quanto o teste que julga ela.
+    const n=Math.max(60,Math.ceil(comp/.15));
+    // A TANGENTE DE COMPARAÇÃO É A DE ONDE O PASSO COMEÇOU, não a de onde ele termina.
+    // Eu conferia contra a tangente do ponto de CHEGADA e o teste contra a de SAÍDA — a mesma
+    // pergunta feita de dois jeitos, e perto do ápice da gota elas discordam por uma rotação de
+    // passo. Duas dessas passavam aqui e reprovavam lá. A física é a de saída: o carro aponta pra
+    // onde estava apontando quando o passo começou, e é contra isso que "andou pra trás" se mede.
+    let serve=true,ant=curva.getPointAt(0),tAnt=curva.getTangentAt(0);
+    for(let k=1;k<=n&&serve;k++){
       const u=k/n,p=curva.getPointAt(u),t=curva.getTangentAt(u);
-      if(!corpoCabe(p.x,p.z,Math.atan2(t.x,t.z),.10))serve=false;
-      if(k>0&&(p.x-ant.x)*t.x+(p.z-ant.z)*t.z<0)serve=false;
-      ant=p;
+      if(!corpoCabe(p.x,p.z,Math.atan2(t.x,t.z),.18))serve=false;
+      if((p.x-ant.x)*tAnt.x+(p.z-ant.z)*tAnt.z<0)serve=false;
+      ant=p;tAnt=t;
     }
     if(!serve)continue;
     lista.push({curva,comp,uEntra,uSai,
@@ -490,7 +514,14 @@ function faltaAte(de,ate){let d=ate-de;if(d<0)d+=1;return d*COMPRIMENTO_DA_ROTA}
 // DEVOLVE o ponto onde uma viatura acabou de estacionar numa ocorrência (uma vez só, no quadro da
 // chegada) ou null. Quem faz alguma coisa com isso é o `main`: é ele que sabe da polícia. Foi assim
 // que o alvo entrou, e é assim que a resposta sai — este módulo continua só dirigindo.
-let despachada=null,ocorrenciaAtendida=false,alvoAtendido=null;
+// QUANTAS viaturas largam a ronda. Uma na batida de canteiro; as duas numa perseguição de ficha 3+.
+const PERSEGUICAO_DUAS=3;
+// Vasculhando (endereço frio), ela passa devagar pela área em vez de parar: 3 m/s é passo de quem
+// está olhando pros becos, não de quem está indo a algum lugar. O raio é o pedaço de anel em volta
+// do ponto onde ela alivia.
+const VASCULHA_VEL=3,VASCULHA_RAIO=22;
+const despachadas=[];
+let ocorrenciaAtendida=false,alvoAtendido=null;
 // Quanto a ocorrência precisa andar pra virar OUTRA ocorrência. Canteiro não anda; jogador anda.
 const OCORRENCIA_ANDOU=12;
 // `segurar` vem do main: é a polícia dizendo "ainda tem serviço" — tem canteiro sendo batido, ou a
@@ -501,9 +532,14 @@ export function atualizarViaturas(dt,alvo,segurar){
   // ===== QUEM ATENDE É A MAIS PERTO, SÓ ELA, E SÓ UMA VEZ =====
   // Três regras, e cada uma tapou um buraco que o teste mostrou:
   //
-  //  · SÓ UMA VAI. As duas largarem a ronda pelo mesmo canteiro é o que polícia nenhuma faz — some
-  //    viatura da rua inteira por causa de uma ocorrência. Vai a que chega primeiro (menor distância
-  //    PELA FRENTE, a única que ela pode andar) e a outra segue rondando o lado oposto do anel.
+  //  · NUMA BATIDA, SÓ UMA VAI. As duas largarem a ronda pelo mesmo canteiro é o que polícia nenhuma
+  //    faz — some viatura da rua inteira por causa de uma ocorrência. Vai a que chega primeiro (menor
+  //    distância PELA FRENTE, a única que ela pode andar) e a outra segue rondando o lado oposto.
+  //    NUMA PERSEGUIÇÃO DE FICHA ALTA (3+), VÃO AS DUAS. Isso é o oposto do caso do canteiro, e de
+  //    propósito: canteiro é serviço de rotina, foragido de três estrelas é o que tira todo mundo da
+  //    rotina. Medido antes: em 120 s de ficha 3 e ficha 5, NUNCA houve duas atendendo — a segunda
+  //    seguia a ronda como se nada acontecesse. E como elas rodam meia volta uma da outra, elas
+  //    chegam pelos dois lados do anel sem eu ter que escrever uma linha de cerco.
   //  · UMA VEZ ESCOLHIDA, É ELA. Sem travar, dava rodízio: a despachada parava a 2 m do destino, a
   //    outra ia se aproximando na ronda, em algum momento ficava mais perto QUE a parada, virava a
   //    despachada, e a primeira era solta. Medido: duas guarnições desembarcadas na mesma batida,
@@ -513,7 +549,10 @@ export function atualizarViaturas(dt,alvo,segurar){
   //    parada até concluir o serviço ou os polícias morreren". Quem sabe isso é a polícia, e chega
   //    aqui pelo `segurar`. (A versão anterior esperava 4 s e caía fora; ficava a viatura rodando
   //    tranquila enquanto a dupla dela trabalhava sozinha do outro lado do morro.)
-  if(!alvo&&!segurar){despachada=null;ocorrenciaAtendida=false;alvoAtendido=null}
+  // Quantas vão. `alvo.perseguicao` e `alvo.nivel` vêm na ficha da ocorrência (ver `ocorrenciaAtual`
+  // no Police.js) — este módulo continua sem conhecer a polícia, só lê a ficha que recebe.
+  const querem=alvo&&alvo.perseguicao&&(alvo.nivel??0)>=PERSEGUICAO_DUAS?2:1;
+  if(!alvo&&!segurar){despachadas.length=0;ocorrenciaAtendida=false;alvoAtendido=null}
   // ===== A OCORRÊNCIA ANDOU: É OUTRA =====
   // Canteiro fica onde está, mas o JOGADOR corre. Sem isto, a viatura despachada atrás dele ficava
   // grudada pra sempre no primeiro ponto onde ele foi visto — ele já estava três quarteirões adiante
@@ -523,24 +562,29 @@ export function atualizarViaturas(dt,alvo,segurar){
   // morro enquanto a viatura dela roda tranquila.
   else if(alvo&&alvoAtendido&&!segurar&&
           Math.hypot(alvo.x-alvoAtendido.x,alvo.z-alvoAtendido.z)>OCORRENCIA_ANDOU){
-    despachada=null;ocorrenciaAtendida=false;alvoAtendido=null;
+    despachadas.length=0;ocorrenciaAtendida=false;alvoAtendido=null;
   }
-  if(alvo&&!despachada&&!ocorrenciaAtendida){
+  if(alvo&&despachadas.length<querem&&!ocorrenciaAtendida){
     const destino=uMaisPerto(alvo);
-    let melhor=Infinity;
+    let melhor=Infinity,escolhida=null;
     for(const v of viaturas){
       // QUEM ESTÁ NO BECO NÃO ATENDE. O destino é um `u` do ANEL, e ela não está no anel — despachar
       // ela seria mandar frear pra um ponto que não existe no caminho em que está. Ela termina o
       // desvio (são poucos segundos) e a outra vai. Se as duas estiverem em beco, a ocorrência espera
       // o primeiro que sair, que é o comportamento certo e não um travamento.
-      if(v.desvio)continue;
+      if(v.desvio||despachadas.includes(v))continue;
       const d=faltaAte(v.u,destino);
-      if(d<melhor){melhor=d;despachada=v}
+      if(d<melhor){melhor=d;escolhida=v}
     }
-    if(despachada){despachada.destino=destino;despachada.desembarcou=false;alvoAtendido={x:alvo.x,z:alvo.z}}
+    if(escolhida){
+      escolhida.destino=destino;escolhida.desembarcou=false;
+      despachadas.push(escolhida);alvoAtendido={x:alvo.x,z:alvo.z};
+    }
   }
+  // O endereço é FRIO? Então ninguém para em cima dele. Ver o comentário de `PARA_NO_PONTO`.
+  const paraNoPonto=!alvo||alvo.quente!==false;
   for(const v of viaturas){
-    const atendendo=v===despachada;
+    const atendendo=despachadas.includes(v);
     v.atendendo=atendendo;
 
     // ===== NO BECO ELA ANDA NO CAMINHO DO BECO =====
@@ -564,18 +608,26 @@ export function atualizarViaturas(dt,alvo,segurar){
     let falta=Infinity;
     if(atendendo){
       falta=faltaAte(v.u,v.destino);
-      // PARAR DIREITO. `v² = 2·freio·distância` é o quanto ela pode estar correndo pra ainda caber a
-      // frenagem até o ponto de parada. Sem isto ela chegaria a 14 m/s e viraria estátua num quadro,
-      // que é o que a versão anterior fazia — e é exatamente a cara de coisa que não é carro.
-      teto=Math.min(teto,Math.sqrt(Math.max(0,2*FREIO*Math.max(0,falta-CHEGOU))));
+      // ===== PARA NO PONTO, OU VASCULHA A ÁREA =====
+      // Com endereço QUENTE ela para: é onde ele está agora, pelo que se sabe.
+      // Com endereço FRIO (o rastro esfriou e sobrou só o último lugar em que ele foi visto), parar
+      // em cima do ponto velho é a cara de burrice que ele apontou — medido: a despachada ficou com
+      // velocidade 0,0 enquanto o jogador corria 200 m. Aí ela não freia: passa devagar pela área,
+      // dá a volta no anel e passa de novo. É ronda de busca, e é o que polícia faz quando perdeu.
+      if(paraNoPonto)
+        // `v² = 2·freio·distância` é o quanto ela pode estar correndo pra ainda caber a frenagem até
+        // o ponto de parada. Sem isto ela chegaria a 14 m/s e viraria estátua num quadro.
+        teto=Math.min(teto,Math.sqrt(Math.max(0,2*FREIO*Math.max(0,falta-CHEGOU))));
+      else if(falta<VASCULHA_RAIO||falta>COMPRIMENTO_DA_ROTA-VASCULHA_RAIO)
+        teto=Math.min(teto,VASCULHA_VEL);// passando pela área: devagar, procurando
     }
     // Acelera ou freia até o teto, respeitando o que o motor e o freio dão. É daqui que sai a
     // sensação de peso: ela não muda de velocidade de um quadro pro outro.
     const limite=teto>v.vel?ACEL*dt:FREIO*dt;
     v.vel+=Math.max(-limite,Math.min(limite,teto-v.vel));
     if(v.vel<0)v.vel=0;
-    // Anda, sem nunca passar do ponto de parada.
-    const anda=Math.min(v.vel*dt,atendendo?Math.max(0,falta-CHEGOU):Infinity);
+    // Anda, sem nunca passar do ponto de parada — a não ser que não haja ponto de parada.
+    const anda=Math.min(v.vel*dt,atendendo&&paraNoPonto?Math.max(0,falta-CHEGOU):Infinity);
     const uAntes=v.u;
     v.u=(v.u+anda/COMPRIMENTO_DA_ROTA)%1;
     // ===== ENTROU NO BECO? =====
@@ -611,7 +663,7 @@ export function atualizarViaturas(dt,alvo,segurar){
       v.luzes[1].material.emissiveIntensity=liga?.15:2.4;
       // CHEGOU E PAROU: é a hora de a guarnição saltar. Parada de verdade (velocidade quase zero),
       // não "encostou no raio" — policial pulando de carro andando é pior que não ter carro.
-      if(!v.desembarcou&&falta-CHEGOU<=.05&&v.vel<.3){
+      if(paraNoPonto&&!v.desembarcou&&falta-CHEGOU<=.05&&v.vel<.3){
         v.desembarcou=true;
         desembarque={x:v.grupo.position.x,z:v.grupo.position.z};
       }

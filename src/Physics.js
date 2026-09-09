@@ -184,10 +184,10 @@ export function registrarCaixa(box,categoria='sem-categoria'){
 // centenas de caixas do mapa inteiro. A grade já existia, mas SÓ o teste de segmento (bala, linha de
 // visão) usava ela; o de caixa, que é o que roda mais vezes por segundo, continuava linear.
 const _candidatasCaixa=[];
-function candidatasDaCaixa(minX,minZ,maxX,maxZ){
+function candidatasDaCaixa(minX,minZ,maxX,maxZ,comMoveis=true){
   if(!gradeMontada)montarGrade();
   _candidatasCaixa.length=0;
-  for(const b of obstaculosMoveis)_candidatasCaixa.push(b);
+  if(comMoveis)for(const b of obstaculosMoveis)_candidatasCaixa.push(b);
   carimboAtual++;
   const cx0=celulaDe(minX),cx1=celulaDe(maxX),cz0=celulaDe(minZ),cz1=celulaDe(maxZ);
   for(let cx=cx0;cx<=cx1;cx++)for(let cz=cz0;cz<=cz1;cz++){
@@ -223,6 +223,18 @@ function colideNaLista(lista,x,z,y,meiaLarg,meiaProf,altura){
 
 export function colideObstaculoXZ(x,z,y,meiaLarg,meiaProf,altura){
   return colideNaLista(candidatasDaCaixa(x-meiaLarg,z-meiaProf,x+meiaLarg,z+meiaProf),
+                       x,z,y,meiaLarg,meiaProf,altura);
+}
+// ===== O MUNDO CONSTRUÍDO, SEM O QUE ANDA =====
+// "Bate em alguma coisa AGORA?" e "bate no mundo construído?" são perguntas diferentes, e confundir
+// as duas custou caro: a Viatura confere os becos com o corpo dela e usava o teste completo, que
+// inclui as caixas MÓVEIS — ou seja, a outra viatura, o carro e a moto do jogador. O conjunto de
+// becos aceitos passou a depender de onde os carros estavam no instante da conferência: a mesma
+// checagem, feita mais dura, aceitou MAIS becos (7 contra 5). Resultado que piora ao apertar é
+// resultado aleatório.
+// Quem PLANEJA rota pergunta pelo mundo construído; quem anda no quadro pergunta por tudo.
+export function colideParedeXZ(x,z,y,meiaLarg,meiaProf,altura){
+  return colideNaLista(candidatasDaCaixa(x-meiaLarg,z-meiaProf,x+meiaLarg,z+meiaProf,false),
                        x,z,y,meiaLarg,meiaProf,altura);
 }
 

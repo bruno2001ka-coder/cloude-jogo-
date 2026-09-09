@@ -368,6 +368,51 @@ Medido em 6 min de ronda: entra em beco 10×, sai 10×, **0 quadros dentro de pa
 continua atendendo ocorrência (desembarca a 2,4 m do alvo). `BECO_CHANCE` é 0,12 porque a 0,4 ela
 passava 195 s dos 360 s dentro de beco — virava patrulha de beco.
 
+### E a caçada: por que elas pareciam burras
+
+*"tem como deixar elas mais inteligente?"* Medido antes de responder, e o número foi feio:
+
+```
+5 estrelas, nenhum policial por perto  ->  0 s dos 120 s com alvo
+qualquer cenário                       ->  0 s com AS DUAS atendendo
+despachada                             ->  parada (vel 0,0) no ponto velho enquanto ele corre 200 m
+```
+
+A causa: o alvo delas era **só o rastro quente**, e rastro só nasce quando um policial **a pé**
+enxerga o jogador. Sem ninguém por perto, a polícia motorizada não sabia que ele existia.
+
+O conserto **não** é mandar na posição viva dele — isso mataria o despiste. É dar a elas o que uma
+polícia de verdade tem: o **último endereço conhecido**, que sobrevive ao rastro esfriar
+(`ultimoVisto`). Rastro quente → vão e param. Rastro frio → vão pra área e **vasculham** a 3 m/s sem
+parar em cima do ponto velho. E com ficha 3+ vão **as duas**, que já rodam meia volta uma da outra e
+por isso chegam pelos dois lados sem uma linha de código de cerco.
+
+A ocorrência virou uma **ficha** (`{x,z,perseguicao,quente,nivel}`) em vez de uma coordenada — é o
+que mantém a fronteira: `Viatura.js` continua sem conhecer `Police.js`.
+
+Depois: 48 s de caçada com endereço frio, as duas, nunca paradas, chegando a 1,3 m do endereço. E
+**48 s é exatamente o que a ficha 4 leva pra zerar** (8 + 4×10) — os dois sistemas se encontram.
+
+**Três armadilhas de régua nessa rodada:**
+
+1. dar estrela sem ninguém nunca ter visto o jogador é um cenário que não existe no jogo (estrela vem
+   de ser visto). O teste dizia "0 s com alvo" e eu quase li como defeito;
+2. eu tinha exigido "mais de 60 s de caçada" e o teste reprovou com 48. **A régua estava errada**: a
+   caçada acabou porque ele deixou de ser procurado. Trocada por "dura o que a ficha dura";
+3. **conferência que olha caixa MÓVEL não é determinística.** A conferência dos becos usava o teste
+   de colisão completo, que inclui a outra viatura e o carro do jogador — e o conjunto de becos
+   aceitos mudava conforme onde os carros estavam. Sintoma: a mesma conferência, feita **mais dura**,
+   aceitou **mais** becos (7 contra 5). Nasceu daí o `colideParedeXZ`: *"bate no mundo construído?"*
+   é outra pergunta que *"bate em alguma coisa agora?"*, e quem PLANEJA rota faz a primeira.
+
+E duas sobre resolução, que valem para qualquer varredura de caminho:
+
+- **passo maior que o raio da curva mede a corda, não o movimento** — a 0,4 m o teste acusava bico no
+  ápice da gota (raio 2,5 m) que não existia; a 0,15 m ele sumiu e apareceram dois bicos de verdade;
+- **a conferência do módulo tem que ser tão fina quanto o teste que a julga**, e fazer a MESMA
+  pergunta: eu comparava o passo com a tangente do ponto de CHEGADA e o teste com a de SAÍDA. Perto
+  do ápice as duas discordam por uma rotação de passo. A física é a de saída.
+
 ---
 
 ## Tiro: som e projétil

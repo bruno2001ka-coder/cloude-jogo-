@@ -589,14 +589,39 @@ export function __plantacoesBatidas(){return plantacoesBatidas.map(q=>({x:q.x,z:
 // O ALVO É O RASTRO, e não a posição viva dele. O rastro é o que a polícia SABE pelo rádio (ver
 // `compartilharAvistamento`): eles vão onde ele foi VISTO. Perseguir a coordenada viva seria
 // teleguiado — e injusto, porque despistar deixaria de existir.
+// ===== O QUE O RÁDIO SABE, E POR QUE A VIATURA PRECISA DE MAIS QUE UM PONTO =====
+// "tem como deixar elas mais inteligente?" Medido antes de responder, e o número foi feio:
+//     5 estrelas, nenhum policial por perto -> a viatura ficou 0 s dos 120 s com alvo.
+// Ou seja: ficha máxima e as duas viaturas rodando a ronda como se nada acontecesse. A causa está
+// aqui: o alvo delas era SÓ o rastro quente, e rastro só nasce quando um policial A PÉ enxerga o
+// jogador. Sem ninguém por perto, a polícia motorizada não sabia da existência dele.
+//
+// O conserto NÃO é mandar elas na posição viva dele — isso mataria o despiste, que é a mecânica que
+// acabou de entrar ("passou um tempo não achou, vai sumindo as estrelas"). O conserto é dar a elas a
+// mesma coisa que uma polícia de verdade tem: O ÚLTIMO ENDEREÇO CONHECIDO, mesmo depois de esfriar.
+//   · rastro QUENTE  -> vão nele e param: é onde ele está agora, pelo que se sabe;
+//   · rastro FRIO    -> vão pra área e VASCULHAM, sem parar em cima do ponto velho.
+// `ultimoVisto` guarda o endereço além da validade do rastro. Fica null se ninguém nunca o viu —
+// inclusive num save com ficha suja carregado do zero, e aí elas não têm mesmo o que perseguir.
+let ultimoVisto=null;
 function alvoDoJogador(){
   if(policia.procurado<=0)return null;
-  if(!rastroValido(performance.now()/1000))return null;
-  return{x:rastro.x,z:rastro.z};
+  const agora=performance.now()/1000;
+  if(rastroValido(agora))return{x:rastro.x,z:rastro.z,perseguicao:true,quente:true,nivel:policia.procurado};
+  if(!ultimoVisto)return null;
+  return{x:ultimoVisto.x,z:ultimoVisto.z,perseguicao:true,quente:false,nivel:policia.procurado};
 }
 // Canteiro primeiro: batida em andamento é serviço começado, e largar no meio deixa a guarnição a pé
 // sozinha do outro lado do morro — defeito que o `viatura.mjs` já mediu uma vez.
-export function ocorrenciaAtual(){return policia.alvoPlantacao??alvoDoJogador()}
+// A ocorrência leva CONSIGO o que a viatura precisa pra decidir, e não só a coordenada: se é
+// perseguição ou batida, se o endereço é quente, e o nível da ficha. É o que mantém a fronteira —
+// `Viatura.js` continua sem conhecer `Police.js`, só recebe uma ficha de ocorrência mais completa.
+export function ocorrenciaAtual(){
+  if(policia.alvoPlantacao)
+    return{x:policia.alvoPlantacao.x,z:policia.alvoPlantacao.z,
+      perseguicao:false,quente:true,nivel:policia.procurado};
+  return alvoDoJogador();
+}
 
 // Próximo ponto da patrulha. Com PATRULHA_VIES de chance cai num disco de PATRULHA_RAIO_VIES em volta
 // de uma muda madura sorteada — o heli "está batendo aquela região", não indo na coordenada exata dela.
@@ -647,7 +672,7 @@ function renderJogador(){
   // outro lado da moeda — é o único desfecho em que a polícia consegue o que queria. Conta acertada,
   // ficha zerada, na hora.
   policia.procurado=0;
-  rastro.ativo=false;rastro.buscaAte=0;
+  rastro.ativo=false;rastro.buscaAte=0;ultimoVisto=null;
   policia.tempoSemVer=0;policia.tempoNivel=0;
   vigiadoAte=performance.now()/1000+FICHA_QUENTE;
   // A PATRULHA QUE JÁ ESTÁ EM CAMPO PRECISA RECUAR DE FATO. Zerar a ficha faz eles pararem de
@@ -742,6 +767,9 @@ let atencaoCache=null;// o texto só volta pro DOM quando muda (ele muda a cada 
 const rastro={ativo:false,x:0,z:0,ate:0,avisadoEm:-99,buscaAte:0};
 function compartilharAvistamento(x,z,agora){
   const novo=!rastro.ativo;
+  // O endereço fica gravado DEPOIS de o rastro esfriar: é o que a viatura usa pra ir vasculhar a
+  // área em vez de voltar pra ronda como se nada tivesse acontecido.
+  ultimoVisto={x,z};
   rastro.ativo=true;rastro.x=x;rastro.z=z;rastro.ate=agora+MEMORIA_ALVO;
   rastro.buscaAte=rastro.ate+BUSCA_DURACAO;
   // O aviso é limitado no tempo porque o rastro é reescrito a cada avistamento — sem a trava, um
@@ -1699,7 +1727,7 @@ export function __ferirPolicialParaTeste(dano){
   if(pol)atingirPolicial(pol,dano);
   return !!pol;
 }
-export function __zerarFichaParaTeste(){policia.procurado=0;rastro.ativo=false;rastro.buscaAte=0}
+export function __zerarFichaParaTeste(){policia.procurado=0;rastro.ativo=false;rastro.buscaAte=0;ultimoVisto=null}
 // Bancada do olho de rua: um policial PARADO num ponto escolhido, e o mapa limpo dos outros. Parado
 // porque a pergunta é sobre alcance e parede — com ele andando eu mediria a ronda, não a vista.
 export function __limparPoliciaisParaTeste(){
@@ -2054,7 +2082,9 @@ export function atualizarPolicia(dt){
         policia.tempoNivel+=dt;
         if(policia.tempoNivel>=SEM_VER_POR_NIVEL){
           policia.tempoNivel=0;policia.procurado--;
-          if(policia.procurado===0)mostrarAviso('Ficha limpa. Esfriou.',2600);
+          // Ficha limpa apaga o endereço: sem isso as viaturas continuariam vasculhando o lugar onde
+          // ele foi visto meia hora atrás, procurando um cidadão sem ficha.
+          if(policia.procurado===0){ultimoVisto=null;mostrarAviso('Ficha limpa. Esfriou.',2600)}
         }
       }else policia.tempoNivel=0;
     }
