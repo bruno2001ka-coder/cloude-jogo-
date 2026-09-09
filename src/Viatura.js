@@ -7,10 +7,11 @@ import{registrarCaixa,marcarObstaculoMovel,colideParedeXZ}from'./Physics.js';
 
 const COMPRIMENTO=1.90,LARGURA=.86,ALTURA_COLISAO=.85,ENTRE_EIXOS=.70,ALTURA_ASSENTO=-.02;
 const CHEGOU=2,PERSEGUICAO_DUAS=3;
-const VEL_CRUZEIRO=9,VEL_ATENDENDO=14,VEL_BUSCA=4.2,ACEL=3.2,FREIO=5.5;
+const VEL_CRUZEIRO=9,VEL_ATENDENDO=12.5,VEL_BUSCA=4.2,ACEL=3.2,FREIO=6.6;
 const LATERAL_RONDA=4.5,LATERAL_ATENDENDO=8;
 const MAO=1,MAO_DESVIANDO=-.6,PERTO_PRA_DESVIAR=9,TROCA_DE_FAIXA=2.5;
-const PERSEGUICAO_RECALCULA=.55,INTERCEPTA_MAX=4.5,ALVO_VEL_MAX=11;
+const PERSEGUICAO_RECALCULA=.70,INTERCEPTA_MAX=4.0,ALVO_VEL_MAX=11;
+const DISTANCIA_SEGURA=4.2,RAIO_APROXIMACAO=16,VEL_APROXIMACAO=5.5,GIRO_MAX_RAD_S=2.35;
 const DESEMBARQUE_SEM_ACESSO=5.5;
 const PASSO_VALIDACAO=.45,FOLGA_ROTA=.18,INCLINACAO_MAX=Math.tan(22*Math.PI/180);
 const MAPA_LIMITE=124,GRADE_VEICULO=4,BUSCA_MAX_NOS=5200;
@@ -84,10 +85,6 @@ function faltaAte(de,ate){let d=ate-de;if(d<0)d+=1;return d*COMPRIMENTO_DA_ROTA}
 function uMaisPerto(alvo){return uMaisPertoDe(ROTA,alvo,360)}
 
 // ===== NAVEGAÇÃO VEICULAR GLOBAL =====
-// Primeiro tenta um corredor direto/curto. Se não der, usa A* numa grade que cobre o mapa inteiro.
-// Cada aresta só existe se o corpo completo da viatura passa sem tocar parede e sem subir inclinação
-// absurda. Assim ela pode abandonar o anel, contornar quarteirões e voltar a recalcular enquanto o
-// jogador corre, sem usar a malha de pedestre como se carro tivesse 25 cm de largura.
 function corpoCabe(cx,cz,rumo,folga=FOLGA_ROTA){
   if(Math.abs(cx)>MAPA_LIMITE||Math.abs(cz)>MAPA_LIMITE)return false;
   const y=alturaDoChaoDesenhado(cx,cz)+.1,L=LARGURA/2+folga,C=COMPRIMENTO/2+folga;
@@ -170,8 +167,6 @@ function buscarRotaGlobal(inicio,fim){
   pontosGrade.reverse();
   const pontos=[{x:inicio.x,z:inicio.z},...pontosGrade.slice(1)];
   if(final.completo)pontos.push({x:fim.x,z:fim.z});
-  // Suaviza a grade pulando nós quando existe visão veicular direta. Isso transforma o zigue-zague
-  // de A* em curvas/retas longas e reduz drasticamente o número de quinas dirigidas.
   const limpos=[pontos[0]];let i=0;
   while(i<pontos.length-1){let j=pontos.length-1;for(;j>i+1;j--)if(segmentoLivre(pontos[i],pontos[j]))break;limpos.push(pontos[j]);i=j}
   return{pontos:limpos,completo:final.completo};
@@ -195,7 +190,6 @@ function montarCaminhoLivre(inicio,fim){
   return{curva,comp,perfil:montarPerfilDe(curva,comp,LATERAL_ATENDENDO,VEL_ATENDENDO,false),completo:global.completo};
 }
 
-// Mantidos para debug/compatibilidade com os testes existentes.
 let DESVIOS=null;
 function desvios(){
   if(DESVIOS)return DESVIOS;DESVIOS=[];
@@ -217,18 +211,21 @@ function criarViatura(u0){
   const luzes=[lampada(0x3366ff,-.18),lampada(0xff3322,.18)],caixa=new THREE.Box3(new THREE.Vector3(0,-9999,0),new THREE.Vector3(.01,-9998.99,.01));
   marcarObstaculoMovel(registrarCaixa(caixa,'viatura'));
   return{grupo,u:u0,luzes,caixa,piscaT:0,vel:0,mao:MAO,atendendo:false,desembarcou:false,destino:u0,
-    rotaDinamica:null,sRota:0,baseU:u0,semAcesso:false,modoBusca:false,retornando:false};
+    rotaDinamica:null,sRota:0,baseU:u0,semAcesso:false,modoBusca:false,retornando:false,rumoSuave:null};
 }
 function caminhoAtual(v){
   if(v.rotaDinamica){const t=Math.min(1,Math.max(0,v.sRota/v.rotaDinamica.comp));return{curva:v.rotaDinamica.curva,t,fora:true}}
   return{curva:ROTA,t:v.u,fora:false};
 }
-function assentar(v){
+function assentar(v,dt=0){
   const atual=caminhoAtual(v),eixo=atual.curva.getPointAt(atual.t),t=atual.curva.getTangentAt(Math.min(.999,atual.t));
   const rumo=Math.atan2(-t.x,-t.z),p={x:eixo.x-t.z*(atual.fora?0:v.mao),z:eixo.z+t.x*(atual.fora?0:v.mao)};
   const yF=alturaDoChaoDesenhado(p.x+t.x*ENTRE_EIXOS,p.z+t.z*ENTRE_EIXOS),yT=alturaDoChaoDesenhado(p.x-t.x*ENTRE_EIXOS,p.z-t.z*ENTRE_EIXOS);
-  v.grupo.position.set(p.x,(yF+yT)/2+ALTURA_ASSENTO,p.z);v.grupo.rotation.y=rumo;v.grupo.rotation.x=Math.atan2(yF-yT,ENTRE_EIXOS*2);
-  const c=Math.abs(Math.cos(rumo)),sn=Math.abs(Math.sin(rumo)),meiaX=(COMPRIMENTO*sn+LARGURA*c)/2,meiaZ=(COMPRIMENTO*c+LARGURA*sn)/2,y=obterElevacao(p.x,p.z);
+  v.grupo.position.set(p.x,(yF+yT)/2+ALTURA_ASSENTO,p.z);
+  if(v.rumoSuave==null||!dt)v.rumoSuave=rumo;
+  else{const delta=Math.atan2(Math.sin(rumo-v.rumoSuave),Math.cos(rumo-v.rumoSuave)),lim=GIRO_MAX_RAD_S*dt;v.rumoSuave+=Math.max(-lim,Math.min(lim,delta))}
+  v.grupo.rotation.y=v.rumoSuave;v.grupo.rotation.x=Math.atan2(yF-yT,ENTRE_EIXOS*2);
+  const rumoCaixa=v.grupo.rotation.y,c=Math.abs(Math.cos(rumoCaixa)),sn=Math.abs(Math.sin(rumoCaixa)),meiaX=(COMPRIMENTO*sn+LARGURA*c)/2,meiaZ=(COMPRIMENTO*c+LARGURA*sn)/2,y=obterElevacao(p.x,p.z);
   v.caixa.min.set(p.x-meiaX,y-.1,p.z-meiaZ);v.caixa.max.set(p.x+meiaX,y+ALTURA_COLISAO,p.z+meiaZ);
 }
 new GLTFLoader().load('assets/viatura.glb',gltf=>{
@@ -258,8 +255,21 @@ function pontoInterceptacao(v,alvo,velAlvo){
   const d=Math.hypot(alvo.x-v.grupo.position.x,alvo.z-v.grupo.position.z),lead=Math.min(INTERCEPTA_MAX,d/Math.max(6,VEL_ATENDENDO));
   return{x:THREE.MathUtils.clamp(alvo.x+velAlvo.x*lead,-MAPA_LIMITE,MAPA_LIMITE),z:THREE.MathUtils.clamp(alvo.z+velAlvo.z*lead,-MAPA_LIMITE,MAPA_LIMITE)};
 }
+function pontoAbordagem(v,alvo,velAlvo){
+  const previsto=pontoInterceptacao(v,alvo,velAlvo);
+  if(!alvo||alvo.quente===false)return previsto;
+  const dx=previsto.x-v.grupo.position.x,dz=previsto.z-v.grupo.position.z,d=Math.hypot(dx,dz);
+  if(d<.01)return{x:v.grupo.position.x,z:v.grupo.position.z};
+  const recuo=Math.min(DISTANCIA_SEGURA,d*.45);
+  return{x:previsto.x-dx/d*recuo,z:previsto.z-dz/d*recuo};
+}
 function planejar(v,alvo,velAlvo){
-  const previsto=pontoInterceptacao(v,alvo,velAlvo),inicio={x:v.grupo.position.x,z:v.grupo.position.z};
+  const distJogador=alvo?Math.hypot(alvo.x-v.grupo.position.x,alvo.z-v.grupo.position.z):Infinity;
+  if(alvo&&alvo.quente!==false&&distJogador<=DISTANCIA_SEGURA+.6){
+    if(!v.rotaDinamica)v.destino=v.u;
+    v.semAcesso=false;v.modoBusca=false;v.retornando=false;return;
+  }
+  const previsto=pontoAbordagem(v,alvo,velAlvo),inicio={x:v.grupo.position.x,z:v.grupo.position.z};
   const caminho=montarCaminhoLivre(inicio,previsto);
   if(caminho){
     if(!v.rotaDinamica)v.baseU=v.u;
@@ -301,21 +311,34 @@ export function atualizarViaturas(dt,alvo,segurar){
     if(v.rotaDinamica){
       const r=v.rotaDinamica,idx=Math.min(N_PERFIL-1,Math.floor(Math.min(.999,v.sRota/r.comp)*N_PERFIL));
       let teto=r.perfil[idx]??VEL_ATENDENDO;const falta=Math.max(0,r.comp-v.sRota),vaiParar=atendendo&&!v.retornando;
+      const distJogador=atendendo&&alvo&&alvo.quente!==false?Math.hypot(alvo.x-v.grupo.position.x,alvo.z-v.grupo.position.z):Infinity;
       if(v.modoBusca)teto=Math.min(teto,VEL_BUSCA);
       if(vaiParar)teto=Math.min(teto,Math.sqrt(Math.max(0,2*FREIO*Math.max(0,falta-CHEGOU))));
+      if(distJogador<RAIO_APROXIMACAO){
+        const freioJogador=Math.sqrt(Math.max(0,2*FREIO*Math.max(0,distJogador-DISTANCIA_SEGURA)));
+        teto=Math.min(teto,VEL_APROXIMACAO,freioJogador);
+      }
+      if(distJogador<=DISTANCIA_SEGURA)teto=0;
       const lim=teto>v.vel?ACEL*dt:FREIO*dt;v.vel+=Math.max(-lim,Math.min(lim,teto-v.vel));if(v.vel<0)v.vel=0;
-      v.sRota+=Math.min(v.vel*dt,vaiParar?Math.max(0,falta-CHEGOU):Infinity);
+      const avancoJogador=Number.isFinite(distJogador)?Math.max(0,distJogador-DISTANCIA_SEGURA):Infinity;
+      v.sRota+=Math.min(v.vel*dt,vaiParar?Math.max(0,falta-CHEGOU):Infinity,avancoJogador);
       if(v.retornando&&v.sRota>=r.comp-.1){v.rotaDinamica=null;v.sRota=0;v.u=v.baseU;v.retornando=false}
       if(vaiParar&&!v.desembarcou&&falta<=CHEGOU+.15&&v.vel<.4){v.desembarcou=true;desembarque={x:v.grupo.position.x,z:v.grupo.position.z}}
     }else{
-      let teto=tetoEm(atendendo?PERFIL_ATENDENDO:PERFIL_RONDA,v.u),falta=Infinity;
+      let teto=tetoEm(atendendo?PERFIL_ATENDENDO:PERFIL_RONDA,v.u),falta=Infinity,distJogador=Infinity;
       if(atendendo){
         falta=faltaAte(v.u,v.destino);const precisaParar=v.semAcesso||!alvo||alvo.quente!==false;
+        if(alvo&&alvo.quente!==false)distJogador=Math.hypot(alvo.x-v.grupo.position.x,alvo.z-v.grupo.position.z);
         if(precisaParar)teto=Math.min(teto,Math.sqrt(Math.max(0,2*FREIO*Math.max(0,falta-CHEGOU))));
         else if(falta<22||falta>COMPRIMENTO_DA_ROTA-22)teto=Math.min(teto,VEL_BUSCA);
+        if(distJogador<RAIO_APROXIMACAO){
+          const freioJogador=Math.sqrt(Math.max(0,2*FREIO*Math.max(0,distJogador-DISTANCIA_SEGURA)));
+          teto=Math.min(teto,VEL_APROXIMACAO,freioJogador);
+        }
+        if(distJogador<=DISTANCIA_SEGURA)teto=0;
       }
       const lim=teto>v.vel?ACEL*dt:FREIO*dt;v.vel+=Math.max(-lim,Math.min(lim,teto-v.vel));if(v.vel<0)v.vel=0;
-      const parar=atendendo&&(v.semAcesso||!alvo||alvo.quente!==false),anda=Math.min(v.vel*dt,parar?Math.max(0,falta-CHEGOU):Infinity);
+      const parar=atendendo&&(v.semAcesso||!alvo||alvo.quente!==false),anda=Math.min(v.vel*dt,parar?Math.max(0,falta-CHEGOU):Infinity,Number.isFinite(distJogador)?Math.max(0,distJogador-DISTANCIA_SEGURA):Infinity);
       v.u=(v.u+anda/COMPRIMENTO_DA_ROTA)%1;
       if(atendendo&&v.semAcesso&&!v.desembarcou&&falta<=DESEMBARQUE_SEM_ACESSO&&v.vel<.4){v.desembarcou=true;desembarque={x:v.grupo.position.x,z:v.grupo.position.z}}
     }
@@ -324,7 +347,7 @@ export function atualizarViaturas(dt,alvo,segurar){
     v.mao+=Math.max(-TROCA_DE_FAIXA*dt,Math.min(TROCA_DE_FAIXA*dt,maoAlvo-v.mao));
     if(atendendo){v.piscaT+=dt;const liga=Math.floor(v.piscaT*4)%2;v.luzes[0].material.emissiveIntensity=liga?2.4:.15;v.luzes[1].material.emissiveIntensity=liga?.15:2.4}
     else{v.piscaT=0;for(const l of v.luzes)l.material.emissiveIntensity=.2}
-    assentar(v);
+    assentar(v,dt);
   }
   return desembarque;
 }
