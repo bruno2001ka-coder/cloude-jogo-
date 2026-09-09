@@ -6,6 +6,7 @@ import{bairro,animais,FAZENDA,sumirCaixa}from'./WorldGenerator.js';
 import{obterElevacao}from'./Terrain.js';
 import{registrarCaixa,marcarObstaculoMovel}from'./Physics.js';
 import{criarSombraContato}from'./Materials.js';
+import{player}from'./Player.js';
 
 const madeira=new THREE.MeshStandardMaterial({color:0x7a5738,roughness:.94,metalness:0});
 const madeiraEscura=new THREE.MeshStandardMaterial({color:0x4e3928,roughness:.96,metalness:0});
@@ -156,13 +157,43 @@ export function alternarPorteiraAnimal(p){
 }
 export{porteirasAnimais,CURRAIS};
 
+// Painel de acao das porteiras. Reusa o mesmo #acaoPanel das casas/lojas sem criar HUD nova.
+// Como os currais ficam longe dos outros contextos, o botao so aparece quando realmente ha uma
+// porteira de animal a menos de 2,6 m. No teclado, E faz a mesma coisa que tocar no botao.
+const acaoPanel=document.getElementById('acaoPanel');
+let ultimaPorteiraUI=null,ultimoEstadoUI=null;
+function desenharAcaoPorteira(p){
+  if(!acaoPanel||!p)return;
+  acaoPanel.innerHTML='';
+  const b=document.createElement('button');b.id='animalGateAction';
+  b.textContent=`${p.icone} ${p.aberta?'Fechar':'Abrir'} porteira das ${p.nome.toLowerCase()}`;
+  b.onclick=()=>{alternarPorteiraAnimal(p);desenharAcaoPorteira(p)};
+  acaoPanel.appendChild(b);acaoPanel.style.display='flex';
+  ultimaPorteiraUI=p;ultimoEstadoUI=p.aberta;
+}
+setInterval(()=>{
+  const p=porteiraAnimalProxima(player.position),botao=document.getElementById('animalGateAction');
+  if(p){
+    if(!botao||ultimaPorteiraUI!==p||ultimoEstadoUI!==p.aberta)desenharAcaoPorteira(p);
+    return;
+  }
+  // Se outro sistema ja substituiu o conteudo do painel, nao mexe nele.
+  if(botao){botao.remove();if(!acaoPanel.children.length)acaoPanel.style.display='none'}
+  ultimaPorteiraUI=null;ultimoEstadoUI=null;
+},120);
+addEventListener('keydown',e=>{
+  if(e.code!=='KeyE'||e.repeat)return;
+  const p=porteiraAnimalProxima(player.position);if(!p)return;
+  e.preventDefault();alternarPorteiraAnimal(p);desenharAcaoPorteira(p);
+},true);
+
 // Anima so as tres folhas. requestAnimationFrame separado evita tocar no loop central e custa quase zero.
 let ultimo=performance.now();
 function animar(t){
   const dt=Math.min(.05,(t-ultimo)/1000);ultimo=t;
   const k=1-Math.exp(-10*dt);
   for(const p of porteirasAnimais){
-    p.pivo.rotation.y+= (p.alvoAng-p.pivo.rotation.y)*k;
+    p.pivo.rotation.y+=(p.alvoAng-p.pivo.rotation.y)*k;
     if(Math.abs(p.alvoAng-p.pivo.rotation.y)<.002)p.pivo.rotation.y=p.alvoAng;
   }
   requestAnimationFrame(animar);
