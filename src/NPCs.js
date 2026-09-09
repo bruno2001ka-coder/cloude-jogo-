@@ -1,4 +1,4 @@
-// Moradores caminhando pelas vielas do bairro, sem entrar nas casas — seguem 4 corredores fixos, dobrando nos cruzamentos.
+// Moradores caminhando pelas vielas do bairro, sem entrar nas casas.
 import*as THREE from'three';
 import{obterElevacao}from'./Terrain.js';
 import{colidePedestreXZ,buscarPosicaoLivre}from'./Physics.js';
@@ -6,69 +6,60 @@ import{distanciaLivreHorizontal,encontrarCaminho}from'./NavMesh.js';
 import{bairro,BECOS}from'./WorldGenerator.js';
 import{PLAYER_HEIGHT,player}from'./Player.js';
 import{noCelular}from'./core.js';
+import{criarHumanoLowPoly}from'./HumanoidLowPoly.js';
 
-// No celular as pecas pequenas do corpo nao abrem uma passada extra no shadow map.
-function bloco(geo,material,x,y,z,parent){const m=new THREE.Mesh(geo,material);m.position.set(x,y,z);m.castShadow=!noCelular;m.receiveShadow=true;parent.add(m);return m}
-
-// A malha crua do morador (mesmo bloco do policial) mede 1,75 nesta escala — dividindo por
-// PLAYER_HEIGHT dá a escala que deixa o morador do mesmo tamanho do personagem principal.
+// O humanoide cru mede ~1,75 unidade; esta escala o deixa do tamanho do personagem principal.
 const ESCALA_NPC=PLAYER_HEIGHT/1.75;
-// Largura/profundidade da hitbox e altura de colisão acompanham a mesma escala do corpo visual.
 export const PEDESTRE_MEIA_LARG=.45*ESCALA_NPC,PEDESTRE_MEIA_PROF=.22*ESCALA_NPC,PEDESTRE_ALTURA=PLAYER_HEIGHT;
-// Alcance do raycast horizontal de antecipação: pouco mais que um passo de 1 s na velocidade máxima.
 const LOOKAHEAD=2.2;
 
-// ===== POR ONDE O MORADOR ANDA =====
-// Aqui existiam QUATRO CORREDORES COM COORDENADA FIXA (`CORREDOR_X1=-14.3` e companhia), tirados da
-// grade regular que o bairro tinha. Quando o traçado virou fileira empacotada com becos sorteados por
-// fileira, esses corredores deixaram de ser becos: o morador passou a andar contra parede, e a
-// polícia de rua — que rondava os mesmos pontos — também.
-//
-// Junto com as coordenadas foi embora todo o roteamento por corredor (`corredorDoPonto`,
-// `INTERSECOES`, `construirRota`). Ele só sabia dobrar numa esquina entre quatro linhas conhecidas,
-// e generalizar isso pra N becos tortos seria reescrever, mal, o A* que a NavMesh já tem e a polícia
-// já usa. Agora o destino sai dos becos DE VERDADE (`BECOS`, registrados no momento em que o traçado
-// os abre) e o caminho vem de `encontrarCaminho`.
 export const waypointsVielas=BECOS;
-// Replanejar A* custa ~0,6 ms. Oito moradores replanejando à vontade apareceriam como engasgo no
-// celular, então cada um só recalcula ao chegar no destino — e o destino é longe.
 function rotaAteDestino(npc,destino){
   const caminho=encontrarCaminho(npc.pos.x,npc.pos.z,destino.x,destino.z);
   return caminho&&caminho.length?caminho:[destino];
 }
 
-export const npcs=[];const CORES_ROUPA_NPC=[0x8b5a3c,0x3c5a8b,0x8b3c5a,0x5a8b3c,0x6b6b6b,0xb08040,0x4a4a5a,0x7a3c3c];
+export const npcs=[];
+const CORES_ROUPA_NPC=[0x8b5a3c,0x3c5a8b,0x8b3c5a,0x5a8b3c,0x6b6b6b,0xb08040,0x4a4a5a,0x7a3c3c];
 const CORES_PELE_NPC=[0xc79067,0x8a5a3c,0xe0b088,0x6b4a30];
-// Corpo com o mesmo padrão do personagem principal (cabeça, cabelo, rosto, braços, pernas) — não é mais uma caixa simplificada.
-function criarNPC(corRoupa,corPele){
-  const g=new THREE.Group();bairro.add(g);
-  const skinNpc=new THREE.MeshStandardMaterial({color:corPele,roughness:.55}),roupaNpc=new THREE.MeshStandardMaterial({color:corRoupa,roughness:.78}),calcaNpc=new THREE.MeshStandardMaterial({color:0x3a3a34,roughness:.85}),cabeloNpc=new THREE.MeshStandardMaterial({color:0x171712,roughness:.9}),faceNpc=new THREE.MeshStandardMaterial({color:0x171712,roughness:.8});
-  bloco(new THREE.BoxGeometry(.55,.82,.33),roupaNpc,0,.87,0,g);
-  bloco(new THREE.BoxGeometry(.37,.37,.35),skinNpc,0,1.48,0,g);
-  for(const x of[-.07,.07])bloco(new THREE.BoxGeometry(.06,.06,.03),faceNpc,x,1.53,.175,g);
-  bloco(new THREE.BoxGeometry(.13,.03,.02),faceNpc,0,1.4,.18,g);
-  bloco(new THREE.BoxGeometry(.39,.1,.36),cabeloNpc,0,1.7,0,g);
+const CORES_CABELO=[0x171712,0x38251b,0x5a3822,0x1f1b19];
+const CORES_CALCA=[0x30343b,0x3b342f,0x263744,0x45443d];
+
+function criarNPC(corRoupa,corPele,indice){
+  const largura=.92+(indice%4)*.045;
+  const visual=criarHumanoLowPoly({
+    parent:bairro,
+    roupa:corRoupa,
+    pele:corPele,
+    calca:CORES_CALCA[indice%CORES_CALCA.length],
+    cabelo:CORES_CABELO[indice%CORES_CABELO.length],
+    sapato:indice%3===0?0x4b382c:0x222427,
+    sombras:!noCelular,
+    largura,
+  });
+  const g=visual.grupo;
+  // Pequena variacao de altura evita oito clones com a mesma silhueta.
   const escalaEscolhida=ESCALA_NPC*(.92+Math.random()*.16);
-  const pernas=[-.14,.14].map(lx=>bloco(new THREE.BoxGeometry(.13,.55,.16),calcaNpc,lx,.29,0,g));
-  const bracos=[-.37,.37].map(lx=>bloco(new THREE.BoxGeometry(.13,.58,.16),skinNpc,lx,.9,0,g));
   g.scale.setScalar(escalaEscolhida);
-  return{grupo:g,pernas,bracos,pos:new THREE.Vector3(),alvo:null,rota:[],velocidade:1.4+Math.random()*.6,caminhando:Math.random()*10,acumPerf:Math.random()*.15};
+  return{grupo:g,pernas:visual.pernas,bracos:visual.bracos,pos:new THREE.Vector3(),alvo:null,rota:[],velocidade:1.4+Math.random()*.6,caminhando:Math.random()*10,acumPerf:Math.random()*.15};
 }
-for(let i=0;i<8;i++){const wp=waypointsVielas[Math.floor(Math.random()*waypointsVielas.length)];const npc=criarNPC(CORES_ROUPA_NPC[i%CORES_ROUPA_NPC.length],CORES_PELE_NPC[i%CORES_PELE_NPC.length]);npc.pos.set(wp.x,0,wp.z);npcs.push(npc)}
+
+for(let i=0;i<8;i++){
+  const wp=waypointsVielas[Math.floor(Math.random()*waypointsVielas.length)];
+  const npc=criarNPC(CORES_ROUPA_NPC[i%CORES_ROUPA_NPC.length],CORES_PELE_NPC[i%CORES_PELE_NPC.length],i);
+  npc.pos.set(wp.x,0,wp.z);npcs.push(npc);
+}
 function escolherProximoAlvo(npc){
   if(npc.rota.length){npc.alvo=npc.rota.shift();return}
   const destino=waypointsVielas[Math.floor(Math.random()*waypointsVielas.length)];
   npc.rota=rotaAteDestino(npc,destino);
   npc.alvo=npc.rota.shift();
 }
-// Teste de colisão do corpo do pedestre na altura do chão daquele ponto.
 export function colidePedestre(x,z){
   return colidePedestreXZ(x,z,obterElevacao(x,z),PEDESTRE_MEIA_LARG,PEDESTRE_MEIA_PROF,PEDESTRE_ALTURA);
 }
 export function atualizarNPCs(dt){
   for(const npc of npcs){
-    // LOD de CPU: perto do jogador continua 60 Hz. Longe, o morador segue a mesma rota mas sua
-    // simulacao roda em passos maiores. Fora do alcance visual ele tambem deixa de gerar draw calls.
     let dtNpc=dt;
     if(noCelular){
       const dJog=Math.hypot(player.position.x-npc.pos.x,player.position.z-npc.pos.z);
@@ -85,7 +76,7 @@ export function atualizarNPCs(dt){
     const dx=npc.alvo.x-npc.pos.x,dz=npc.alvo.z-npc.pos.z,dist=Math.hypot(dx,dz);
     let moveu=false;
     if(dist>.1){
-      const alturaPeito=obterElevacao(npc.pos.x,npc.pos.z)+1.1;
+      const alturaPeito=obterElevacao(npc.pos.x,npc.pos.z)+PLAYER_HEIGHT*.62;
       const livre=distanciaLivreHorizontal(npc.pos.x,npc.pos.z,dx/dist,dz/dist,LOOKAHEAD,alturaPeito);
       if(livre<LOOKAHEAD*.45){
         npc.rota=[];npc.alvo=null;
@@ -102,6 +93,14 @@ export function atualizarNPCs(dt){
       if(livre){npc.pos.x=livre.x;npc.pos.z=livre.z;npc.rota=[];npc.alvo=null}
     }
     npc.grupo.position.set(npc.pos.x,obterElevacao(npc.pos.x,npc.pos.z),npc.pos.z);
-    if(moveu){npc.caminhando+=dtNpc*7;const balanco=Math.sin(npc.caminhando)*.5;npc.pernas[0].rotation.x=balanco;npc.pernas[1].rotation.x=-balanco;npc.bracos[0].rotation.x=-balanco*.7;npc.bracos[1].rotation.x=balanco*.7}else{npc.pernas[0].rotation.x*=.9;npc.pernas[1].rotation.x*=.9;npc.bracos[0].rotation.x*=.9;npc.bracos[1].rotation.x*=.9}
+    if(moveu){
+      npc.caminhando+=dtNpc*7;
+      const balanco=Math.sin(npc.caminhando)*.52;
+      npc.pernas[0].rotation.x=balanco;npc.pernas[1].rotation.x=-balanco;
+      npc.bracos[0].rotation.x=-balanco*.72;npc.bracos[1].rotation.x=balanco*.72;
+    }else{
+      npc.pernas[0].rotation.x*=.84;npc.pernas[1].rotation.x*=.84;
+      npc.bracos[0].rotation.x*=.84;npc.bracos[1].rotation.x*=.84;
+    }
   }
 }
