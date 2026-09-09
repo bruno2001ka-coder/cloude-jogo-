@@ -163,6 +163,11 @@ export function atualizarRadar(){
   // ===== AS MARCAS =====
   radarCtx.save();
   radarCtx.beginPath();radarCtx.arc(RADAR_CX,RADAR_CY,RADAR_TAM/2-3,0,Math.PI*2);radarCtx.clip();
+  // ===== CASA DO JOGADOR =====
+  // CJ = Casa do Jogador. Fica sempre visível e usa um anel próprio quando está longe, para não
+  // desaparecer atrás de CAR, MOTO ou dos polos econômicos.
+  const CJ=casasOcas.find(r=>r.papel==='jogador');
+  if(CJ)desenharPontoRadar(CJ.x,CJ.z,'#55d6ff',5,true,'CJ',RADAR_LIMITE-31);
   // ===== O CARRO E A MOTO VÊM ANTES DOS POLOS, E NUM ANEL SÓ DELES =====
   // "marque o carro e a moto no mapa também, quando fico longe custo achar eles."
   // Duas decisões, e as duas saíram da foto do radar em que eu já tinha "resolvido" isto:
@@ -199,9 +204,9 @@ export function atualizarRadar(){
   // nenhum. Agora: comércio na cor da placa da fachada (é a mesma cor no radar e no prédio, que é o
   // que liga uma coisa na outra), cliente no verde da zona de entrega.
   // SEM SIGLA: são catorze espalhadas pelo morro, e catorze etiquetas tapavam o mapa inteiro — está
-  // na foto que motivou esta linha.
+  // na foto que motivou esta linha. A casa do jogador fica fora daqui porque já recebeu a marca CJ.
   const CORES_CASA_OCA={boteco:'#ffb43c',roupas:'#e0559c',eletronicos:'#3f8fe0'};
-  for(const r of casasOcas)
+  for(const r of casasOcas)if(r.papel!=='jogador')
     desenharPontoRadar(r.x,r.z,r.papel==='cliente'?'#63d16a':(CORES_CASA_OCA[r.comercio]||'#c23a3a'),
       r.papel==='cliente'?4.5:4,false);
   // Muda sem sigla: são muitas, e o ponto verde já diz tudo. Sigla em cada pé viraria borrão.
