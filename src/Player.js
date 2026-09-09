@@ -2,6 +2,7 @@
 import*as THREE from'three';
 import{scene}from'./core.js';
 import{obterElevacao}from'./Terrain.js';
+import{LAGO_PEIXES,estaNaAgua}from'./LakeConfig.js';
 import{PLAYER_LIMIT}from'./WorldBounds.js';
 import{obstaculos,superficiesAndaveis,caixaColideComObstaculos,buscarPosicaoLivre}from'./Physics.js';
 import{criarSombraContato}from'./Materials.js';
@@ -202,7 +203,22 @@ function encontrarSuperficieAbaixo(x,z,yOrigem){const terrenoY=obterElevacao(x,z
 // Gravidade real + salto: velocidadeY acumula por frame, noChao habilita o próximo pulo.
 const GRAVIDADE=-24,VELOCIDADE_PULO=8.2;let velocidadeY=0,noChao=true;
 export function pularJogador(){if(noChao){velocidadeY=VELOCIDADE_PULO;noChao=false}}
-export function atualizarFisicaVertical(dt){velocidadeY+=GRAVIDADE*dt;const proximoY=player.position.y+velocidadeY*dt;const origemY=Math.max(player.position.y,proximoY)+1.2;const superficieY=encontrarSuperficieAbaixo(player.position.x,player.position.z,origemY);if(proximoY<=superficieY){player.position.y=superficieY;velocidadeY=0;noChao=true}else{player.position.y=proximoY;noChao=false}}
+export function atualizarFisicaVertical(dt){
+  velocidadeY+=GRAVIDADE*dt;
+  const proximoY=player.position.y+velocidadeY*dt;
+  const origemY=Math.max(player.position.y,proximoY)+1.2;
+  const superficieY=encontrarSuperficieAbaixo(player.position.x,player.position.z,origemY);
+  // Agua como VOLUME: em parte funda o corpo recebe empuxo e arrasto em vez de cair seco ate o fundo.
+  const naAgua=estaNaAgua(player.position.x,player.position.z);
+  const profundidadeAgua=naAgua?LAGO_PEIXES.nivelAgua-superficieY:0;
+  if(naAgua&&profundidadeAgua>PLAYER_HEIGHT*.32&&player.position.y<=LAGO_PEIXES.nivelAgua+.16){
+    const alvo=Math.max(superficieY,LAGO_PEIXES.nivelAgua-PLAYER_HEIGHT*.58);
+    player.position.y=THREE.MathUtils.lerp(player.position.y,alvo,1-Math.exp(-4.8*dt));
+    velocidadeY*=Math.exp(-7*dt);noChao=false;return;
+  }
+  if(proximoY<=superficieY){player.position.y=superficieY;velocidadeY=0;noChao=true}
+  else{player.position.y=proximoY;noChao=false}
+}
 
 // ===== REDE DE SEGURANÇA ANTI-TRAVAMENTO =====
 // Em vez de caçar um por um os cantos de geometria onde dá pra encravar, o jogo detecta que o jogador
@@ -304,6 +320,8 @@ export function atualizarMovimentoJogador(dt,keys,joyX,joyY,yaw,fatorVelocidade=
     _frente.set(-Math.sin(yaw),0,-Math.cos(yaw));_lado.set(Math.cos(yaw),0,-Math.sin(yaw));
     desired.set((_lado.x*x-_frente.x*z)*escala,0,(_lado.z*x-_frente.z*z)*escala);
   }
+  // Arrasto horizontal dentro da agua: o jogador ainda se move, mas nao corre como em terra seca.
+  if(estaNaAgua(player.position.x,player.position.z)&&player.position.y<LAGO_PEIXES.nivelAgua+.05)desired.multiplyScalar(.46);
   velocity.lerp(desired,smooth);
   // Resolvido por eixo (escorrega na parede em vez de grudar), cada eixo com o step offset.
   const py=player.position.y;

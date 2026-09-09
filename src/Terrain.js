@@ -4,6 +4,7 @@ import{matChao}from'./Materials.js';
 import{scene}from'./core.js';
 import{MAP_HALF_SIZE,MAP_SIZE}from'./WorldBounds.js';
 import{registrarCaixa}from'./Physics.js';
+import{deformarTerrenoLago}from'./LakeConfig.js';
 
 // ===== O MORRO NÃO É UM CONE =====
 // Já foi UMA gaussiana em (0,-24): matematicamente perfeita e, por isso mesmo, lendo como uma bolha
@@ -65,6 +66,8 @@ export function obterElevacao(x,z){
     +Math.cos(x*.19-z*.16)*.3
     +Math.sin(x*.33+z*.28)*.12;
   h-=PLATO_FORCA*Math.sin(2*Math.PI*h/PLATO_PASSO)/(2*Math.PI);
+  // O lago e uma ESCAVACAO do proprio terreno. Player, veiculos e malha visual leem esta mesma altura.
+  h=deformarTerrenoLago(h,x,z);
   return THREE.MathUtils.clamp(h,-2.5,22);
 }
 
