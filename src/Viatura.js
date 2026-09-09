@@ -524,11 +524,17 @@ const despachadas=[];
 let ocorrenciaAtendida=false,alvoAtendido=null;
 // Quanto a ocorrência precisa andar pra virar OUTRA ocorrência. Canteiro não anda; jogador anda.
 const OCORRENCIA_ANDOU=12;
+// Perseguição estilo GTA: enquanto o jogador estiver sendo perseguido, a viatura não pode continuar
+// dirigindo para a coordenada onde ele estava vários segundos atrás. O destino é recalculado em pulsos
+// curtos (não todo frame, para não ficar nervoso nem desperdiçar CPU no celular).
+const PERSEGUICAO_RECALCULA=.35;
+let relogioPerseguicao=0;
 // `segurar` vem do main: é a polícia dizendo "ainda tem serviço" — tem canteiro sendo batido, ou a
 // guarnição ainda está em campo voltando pro carro. Enquanto for true a despachada NÃO sai do lugar.
 export function atualizarViaturas(dt,alvo,segurar){
   if(!modelo)return null;
   let desembarque=null;
+  relogioPerseguicao=Math.max(0,relogioPerseguicao-dt);
   // ===== QUEM ATENDE É A MAIS PERTO, SÓ ELA, E SÓ UMA VEZ =====
   // Três regras, e cada uma tapou um buraco que o teste mostrou:
   //
@@ -563,6 +569,18 @@ export function atualizarViaturas(dt,alvo,segurar){
   else if(alvo&&alvoAtendido&&!segurar&&
           Math.hypot(alvo.x-alvoAtendido.x,alvo.z-alvoAtendido.z)>OCORRENCIA_ANDOU){
     despachadas.length=0;ocorrenciaAtendida=false;alvoAtendido=null;
+  }
+  // PERSEGUIÇÃO MÓVEL: atualiza continuamente o ponto de interceptação das viaturas já
+  // despachadas. Antes elas perseguiam a primeira posição conhecida e podiam estacionar ali enquanto
+  // o jogador já estava longe. Em GTA SA a sensação vem justamente do carro continuar caçando o alvo.
+  if(alvo&&alvo.perseguicao&&despachadas.length&&relogioPerseguicao<=0){
+    const novoDestino=uMaisPerto(alvo);
+    for(const v of despachadas){
+      if(!v.desvio){v.destino=novoDestino;v.desembarcou=false}
+    }
+    alvoAtendido={x:alvo.x,z:alvo.z};
+    ocorrenciaAtendida=false;
+    relogioPerseguicao=PERSEGUICAO_RECALCULA;
   }
   if(alvo&&despachadas.length<querem&&!ocorrenciaAtendida){
     const destino=uMaisPerto(alvo);
