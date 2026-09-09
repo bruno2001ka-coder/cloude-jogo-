@@ -4,9 +4,11 @@ import{obterElevacao}from'./Terrain.js';
 import{colidePedestreXZ,buscarPosicaoLivre}from'./Physics.js';
 import{distanciaLivreHorizontal,encontrarCaminho}from'./NavMesh.js';
 import{bairro,BECOS}from'./WorldGenerator.js';
-import{PLAYER_HEIGHT}from'./Player.js';
+import{PLAYER_HEIGHT,player}from'./Player.js';
+import{noCelular}from'./core.js';
 
-function bloco(geo,material,x,y,z,parent){const m=new THREE.Mesh(geo,material);m.position.set(x,y,z);m.castShadow=true;m.receiveShadow=true;parent.add(m);return m}
+// No celular as pecas pequenas do corpo nao abrem uma passada extra no shadow map.
+function bloco(geo,material,x,y,z,parent){const m=new THREE.Mesh(geo,material);m.position.set(x,y,z);m.castShadow=!noCelular;m.receiveShadow=true;parent.add(m);return m}
 
 // A malha crua do morador (mesmo bloco do policial) mede 1,75 nesta escala — dividindo por
 // PLAYER_HEIGHT dá a escala que deixa o morador do mesmo tamanho do personagem principal.
@@ -41,8 +43,8 @@ const CORES_PELE_NPC=[0xc79067,0x8a5a3c,0xe0b088,0x6b4a30];
 function criarNPC(corRoupa,corPele){
   const g=new THREE.Group();bairro.add(g);
   const skinNpc=new THREE.MeshStandardMaterial({color:corPele,roughness:.55}),roupaNpc=new THREE.MeshStandardMaterial({color:corRoupa,roughness:.78}),calcaNpc=new THREE.MeshStandardMaterial({color:0x3a3a34,roughness:.85}),cabeloNpc=new THREE.MeshStandardMaterial({color:0x171712,roughness:.9}),faceNpc=new THREE.MeshStandardMaterial({color:0x171712,roughness:.8});
-  const body=bloco(new THREE.BoxGeometry(.55,.82,.33),roupaNpc,0,.87,0,g);
-  const head=bloco(new THREE.BoxGeometry(.37,.37,.35),skinNpc,0,1.48,0,g);
+  bloco(new THREE.BoxGeometry(.55,.82,.33),roupaNpc,0,.87,0,g);
+  bloco(new THREE.BoxGeometry(.37,.37,.35),skinNpc,0,1.48,0,g);
   for(const x of[-.07,.07])bloco(new THREE.BoxGeometry(.06,.06,.03),faceNpc,x,1.53,.175,g);
   bloco(new THREE.BoxGeometry(.13,.03,.02),faceNpc,0,1.4,.18,g);
   bloco(new THREE.BoxGeometry(.39,.1,.36),cabeloNpc,0,1.7,0,g);
@@ -50,7 +52,7 @@ function criarNPC(corRoupa,corPele){
   const pernas=[-.14,.14].map(lx=>bloco(new THREE.BoxGeometry(.13,.55,.16),calcaNpc,lx,.29,0,g));
   const bracos=[-.37,.37].map(lx=>bloco(new THREE.BoxGeometry(.13,.58,.16),skinNpc,lx,.9,0,g));
   g.scale.setScalar(escalaEscolhida);
-  return{grupo:g,pernas,bracos,pos:new THREE.Vector3(),alvo:null,rota:[],velocidade:1.4+Math.random()*.6,caminhando:Math.random()*10};
+  return{grupo:g,pernas,bracos,pos:new THREE.Vector3(),alvo:null,rota:[],velocidade:1.4+Math.random()*.6,caminhando:Math.random()*10,acumPerf:Math.random()*.15};
 }
 for(let i=0;i<8;i++){const wp=waypointsVielas[Math.floor(Math.random()*waypointsVielas.length)];const npc=criarNPC(CORES_ROUPA_NPC[i%CORES_ROUPA_NPC.length],CORES_PELE_NPC[i%CORES_PELE_NPC.length]);npc.pos.set(wp.x,0,wp.z);npcs.push(npc)}
 function escolherProximoAlvo(npc){
@@ -65,35 +67,41 @@ export function colidePedestre(x,z){
 }
 export function atualizarNPCs(dt){
   for(const npc of npcs){
+    // LOD de CPU: perto do jogador continua 60 Hz. Longe, o morador segue a mesma rota mas sua
+    // simulacao roda em passos maiores. Fora do alcance visual ele tambem deixa de gerar draw calls.
+    let dtNpc=dt;
+    if(noCelular){
+      const dJog=Math.hypot(player.position.x-npc.pos.x,player.position.z-npc.pos.z);
+      npc.grupo.visible=dJog<120;
+      const intervalo=dJog>120?.75:dJog>85?.42:dJog>45?.18:0;
+      if(intervalo){
+        npc.acumPerf+=dt;
+        if(npc.acumPerf<intervalo)continue;
+        dtNpc=Math.min(npc.acumPerf,.8);npc.acumPerf=0;
+      }else npc.acumPerf=0;
+    }
+
     if(!npc.alvo||Math.hypot(npc.alvo.x-npc.pos.x,npc.alvo.z-npc.pos.z)<.5)escolherProximoAlvo(npc);
     const dx=npc.alvo.x-npc.pos.x,dz=npc.alvo.z-npc.pos.z,dist=Math.hypot(dx,dz);
     let moveu=false;
     if(dist>.1){
-      // RAYCASTING HORIZONTAL (look-ahead): antes o morador só descobria a parede colidindo com ela e
-      // ficava raspando no muro até o desencravador agir. Agora ele "enxerga" à frente na altura do
-      // peito e desiste da rota ANTES de encostar, escolhendo outro destino como faria alguém andando.
       const alturaPeito=obterElevacao(npc.pos.x,npc.pos.z)+1.1;
       const livre=distanciaLivreHorizontal(npc.pos.x,npc.pos.z,dx/dist,dz/dist,LOOKAHEAD,alturaPeito);
       if(livre<LOOKAHEAD*.45){
-        // Parede à frente: abandona a rota e escolhe outro destino no próximo frame. Só o MOVIMENTO é
-        // pulado — o desencravador e a atualização de posição abaixo continuam rodando, senão um morador
-        // que já tivesse acabado dentro da parede ficaria fora do alcance de quem o resolve.
         npc.rota=[];npc.alvo=null;
       }else{
         const vx=dx/dist*npc.velocidade,vz=dz/dist*npc.velocidade;
-        const nx=npc.pos.x+vx*dt,nz=npc.pos.z+vz*dt;
+        const nx=npc.pos.x+vx*dtNpc,nz=npc.pos.z+vz*dtNpc;
         if(!colidePedestre(nx,npc.pos.z)){npc.pos.x=nx;moveu=true}
         if(!colidePedestre(npc.pos.x,nz)){npc.pos.z=nz;moveu=true}
         if(moveu)npc.grupo.rotation.y=Math.atan2(vx,vz);else{npc.rota=[];npc.alvo=null}
       }
     }
-    // Se por qualquer motivo acabou dentro de uma parede (spawn ruim, empurrão, geometria nova),
-    // desencrava em vez de ficar preso pra sempre tentando andar contra o obstáculo.
     if(colidePedestre(npc.pos.x,npc.pos.z)){
       const livre=buscarPosicaoLivre(npc.pos.x,npc.pos.z,colidePedestre);
       if(livre){npc.pos.x=livre.x;npc.pos.z=livre.z;npc.rota=[];npc.alvo=null}
     }
     npc.grupo.position.set(npc.pos.x,obterElevacao(npc.pos.x,npc.pos.z),npc.pos.z);
-    if(moveu){npc.caminhando+=dt*7;const balanco=Math.sin(npc.caminhando)*.5;npc.pernas[0].rotation.x=balanco;npc.pernas[1].rotation.x=-balanco;npc.bracos[0].rotation.x=-balanco*.7;npc.bracos[1].rotation.x=balanco*.7}else{npc.pernas[0].rotation.x*=.9;npc.pernas[1].rotation.x*=.9;npc.bracos[0].rotation.x*=.9;npc.bracos[1].rotation.x*=.9}
+    if(moveu){npc.caminhando+=dtNpc*7;const balanco=Math.sin(npc.caminhando)*.5;npc.pernas[0].rotation.x=balanco;npc.pernas[1].rotation.x=-balanco;npc.bracos[0].rotation.x=-balanco*.7;npc.bracos[1].rotation.x=balanco*.7}else{npc.pernas[0].rotation.x*=.9;npc.pernas[1].rotation.x*=.9;npc.bracos[0].rotation.x*=.9;npc.bracos[1].rotation.x*=.9}
   }
 }
