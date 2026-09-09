@@ -57,9 +57,38 @@ const carro=criarVeiculo({
   motoristaVisivel:false,
 });
 
+// ===== REAÇÃO NATURAL À BATIDA =====
+// O Veiculo.js já reconhece impacto forte comparando o deslocamento pedido com o que realmente
+// conseguiu andar e derruba a velocidade para ~15%. Aqui usamos essa queda brusca como sinal da
+// pancada. Por alguns décimos o carro engata uma ré curta automaticamente: ele se afasta da parede
+// em vez de ficar colado nela. Só vale para impacto para a frente; freada normal não dispara porque
+// não consegue perder 75% da velocidade em um único quadro.
+let recuoImpacto=0,velAnterior=0;
+const RECUO_DURACAO=.24,VEL_MIN_IMPACTO=2.8;
+
 export function carroMontado(){return carro.montado()}
 export function alternarCarro(){carro.alternar()}
-export function atualizarCarro(dt,keys,joyX=0,joyY=0,alavanca=0,re=false){return carro.atualizar(dt,keys,joyX,joyY,alavanca,re)}
+export function atualizarCarro(dt,keys,joyX=0,joyY=0,alavanca=0,re=false){
+  const montado=carro.montado();
+  if(!montado){recuoImpacto=0;velAnterior=0;return carro.atualizar(dt,keys,joyX,joyY,alavanca,re)}
+
+  if(recuoImpacto>0){
+    recuoImpacto=Math.max(0,recuoImpacto-dt);
+    const ativo=carro.atualizar(dt,keys,joyX,joyY,0,true);
+    velAnterior=carro.velocidade();
+    return ativo;
+  }
+
+  const antes=carro.velocidade();
+  const ativo=carro.atualizar(dt,keys,joyX,joyY,alavanca,re);
+  const depois=carro.velocidade();
+
+  if(antes>VEL_MIN_IMPACTO&&depois>=0&&depois<antes*.25){
+    recuoImpacto=RECUO_DURACAO;
+  }
+  velAnterior=depois;
+  return ativo;
+}
 // Teto em m/s, pra alavanca de acelerador saber até onde vai a escada de km/h.
 export function maxVelCarro(){return carro.maxVel()}
 // Onde ele está parado, pro radar (null enquanto não carregou, e null quando o jogador está
