@@ -1,0 +1,37 @@
+name: Atualizar versao do jogo
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/patch-versao-viatura.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Atualizar versao visivel
+        shell: python
+        run: |
+          from pathlib import Path
+          p=Path('src/main.js')
+          s=p.read_text(encoding='utf-8')
+          old="const VERSAO_JOGO='2026-09-09-caca';"
+          new="const VERSAO_JOGO='2026-09-09-viatura-gta-v2';"
+          if old not in s:
+              raise SystemExit('versao antiga nao encontrada')
+          p.write_text(s.replace(old,new,1),encoding='utf-8')
+      - name: Validar sintaxe
+        run: node scripts/check-syntax.mjs
+      - name: Commit
+        run: |
+          git config user.name "OpenAI GitHub"
+          git config user.email "actions@users.noreply.github.com"
+          git add src/main.js
+          git diff --cached --quiet && exit 0
+          git commit -m "chore: versao 2026-09-09-viatura-gta-v2"
+          git push
