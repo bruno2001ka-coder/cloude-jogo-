@@ -24,7 +24,7 @@ function amostrar(curva,de,ate){
 }
 function amostrarRetas(cantos){
   const pts=[];
-  for(let k=0;k+1;cantos.length>k;k++){
+  for(let k=0;k+1<cantos.length;k++){
     const a=cantos[k],b=cantos[k+1],n=Math.max(1,Math.round(Math.hypot(b.x-a.x,b.z-a.z)/PASSO));
     for(let i=k?1:0;i<=n;i++)pts.push(new THREE.Vector3(a.x+(b.x-a.x)*i/n,0,a.z+(b.z-a.z)*i/n));
   }
