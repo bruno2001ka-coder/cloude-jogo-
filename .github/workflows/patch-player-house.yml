@@ -1,3 +1,4 @@
+# Segunda gravação: o workflow já existe na branch, então este push dispara a integração.
 name: Integrar casa do jogador
 
 on:
@@ -25,7 +26,6 @@ jobs:
                   raise SystemExit(f'{nome}: marcador nao encontrado')
               return s.replace(old, new, 1)
 
-          # Corrige pai da janela no modulo recem-criado.
           p=Path('src/CasaJogador.js')
           s=p.read_text(encoding='utf-8')
           s=troca(s,
@@ -34,8 +34,6 @@ jobs:
             'janela da casa')
           p.write_text(s,encoding='utf-8')
 
-          # Carrega a casa depois do WorldGenerator: o plato ja existe e a casa entra no mesmo sistema
-          # de portas/casas ocas usado pela Economy.
           p=Path('src/main.js')
           s=p.read_text(encoding='utf-8')
           s=troca(s,
@@ -64,7 +62,6 @@ instalarSalvamentoAoSair();
           s=troca(s,old,new,'spawn de nova partida')
           p.write_text(s,encoding='utf-8')
 
-          # Release.
           p=Path('package.json')
           data=json.loads(p.read_text(encoding='utf-8'))
           data['version']='0.3.2'
