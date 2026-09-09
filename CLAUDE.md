@@ -328,6 +328,48 @@ metros, com o clipe de ANDAR tocando. Mexer nesse número **não traz o deslize 
 
 ---
 
+## A viatura nos becos
+
+*"quero a viatura andando nos becos tbm, tem uns que dá pra andar sim eu ando."*
+
+Ele estava certo, e o comentário do `Viatura.js` estava errado — **ele mediu o PIOR beco (2,45 m) e
+concluiu sobre todos**. Pergunta errada: "o pior cabe?" não é "quais cabem?".
+
+Medindo os 19, varrendo o corpo dela (0,86 × 1,90) deitado na tangente:
+
+```
+passagem mais estreita 2,10 m · viatura 0,86 m · sobra 0,62 m de cada lado
+19 de 19 passam de ponta a ponta
+```
+
+**O que impedia não era largura, era como SAIR.** Beco é sem saída, e voltar de ré é a queixa que
+criou o anel (*"eles vai certinho mais volta de ré kkkk"*). A mesma medição deu a resposta de graça:
+as pontas mortas **não terminam em parede, terminam no morro livre** (6 m de folga). Então ela sobe,
+dá o retorno lá em cima e desce. Zero ré.
+
+**O retorno é uma GOTA, não um meio-círculo.** Meio-círculo devolve o carro paralelo mas **2R de
+lado** — 5 m, num beco de 2,1 m. A curva tinha que se dobrar pra voltar ao eixo, e curva dobrada é
+bico: o `u` cresce e o mapa anda pra trás. O teste acusou "1 quadro de ré" em 7 dos 8 desvios. Gota
+(270° pra um lado, 90° pro outro) devolve no eixo, 2R atrás, virada 180°.
+
+E a gota é **integrada, não derivada**: a conta fecha no papel, mas eu errei o sinal do segundo arco
+escrevendo à mão e o teste reprovou de novo. Andar o caminho (gira o rumo, avança na direção dele) não
+tem sinal pra errar. É a mesma lição do esterço e do toldo.
+
+**A recusa mora no código, não no teste.** `montarDesvios` varre o traçado montado e descarta o que
+não passa — a CatmullRom arredonda a boca do beco, e boca de beco é quina de casa. Dos 11 becos com
+boca na rua, **5 viram desvio**.
+
+**E os desvios são montados TARDE, no primeiro quadro.** Na carga do módulo os colisores ainda não
+foram fundidos (`otimizarObstaculos` junta caixas, e a fundida é MAIOR). Montando cedo, um desvio
+passava na conferência e raspava no jogo — o teste pegou, 2 pontos no primeiro metro.
+
+Medido em 6 min de ronda: entra em beco 10×, sai 10×, **0 quadros dentro de parede, 0 de ré**, e
+continua atendendo ocorrência (desembarca a 2,4 m do alvo). `BECO_CHANCE` é 0,12 porque a 0,4 ela
+passava 195 s dos 360 s dentro de beco — virava patrulha de beco.
+
+---
+
 ## Tiro: som e projétil
 
 **O som** era uma senoide de 185 Hz com envelope, mais um estalo com modulação a 90 Hz. Senoide com

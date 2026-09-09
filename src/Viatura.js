@@ -1,17 +1,26 @@
-// ===== AS VIATURAS: DUAS, E SÓ NA RUA =====
+// ===== AS VIATURAS: DUAS, NA RUA E NOS BECOS QUE CABEM =====
 //
 // O Bruno levantou o problema antes de eu chegar nele: "o problema é os colisores e as paredes, eles
-// vão bater né". Ele estava certo, e os números do mapa confirmam:
-//     via principal 5,20 m livres · via baixa 5,35 m · beco mais apertado 2,45 m
-// A viatura tem 1,90 m de comprimento. Nas ruas sobra espaço; num beco de 2,45 m ela nem consegue
-// fazer a curva de entrada — o raio de giro de um carro é muito maior que isso. E pior: a polícia
-// navega pela malha de PEDESTRE, calculada com 25 cm de folga. Um carro nela cortaria quina e
-// atravessaria parede.
+// vão bater né". Ele estava certo sobre o RISCO, e a resposta continua sendo a mesma: a viatura anda
+// sobre CURVAS PRONTAS (a via, e agora também o beco), nunca navegando livre. Ela não tem para onde
+// errar. A malha de PEDESTRE, com 25 cm de folga, continua fora de questão pra um carro.
 //
-// A saída não é melhorar o desvio: é a viatura NUNCA SAIR DA RUA. Ela anda sobre a própria curva da
-// via (`viaPrincipal` e `viaBaixa`, que já existem no traçado), então não há como bater — ela não
-// tem para onde errar. É também o que acontece de verdade: viatura não sobe viela, quem sobe é o
-// policial a pé, e isso o jogo já faz.
+// ===== O QUE MUDOU, E POR QUE O QUE ESTAVA ESCRITO AQUI ESTAVA ERRADO =====
+// Este comentário dizia "a viatura NUNCA SAI DA RUA", justificando com um número só: o beco mais
+// apertado tem 2,45 m. Ele mediu o PIOR beco e concluiu sobre TODOS — que é a pergunta errada. O
+// Bruno viu na hora: "quero a viatura andando nos becos tbm, tem uns que dá pra andar sim eu ando".
+//
+// Medido beco por beco, varrendo o corpo dela (0,86 x 1,90) deitado na tangente contra o mesmo
+// `colideObstaculoXZ` que barra o carro no jogo:
+//     passagem mais estreita 2,10 m · viatura 0,86 m de largura · sobra 0,62 m de cada lado
+//     19 de 19 becos passam de ponta a ponta
+// (a régua foi validada antes: um corpo de 5 m é barrado em 17 dos 19, e o centro de uma casa bate.
+// Régua que aprova tudo não estava medindo nada.)
+//
+// O que impedia não era largura, era COMO SAIR — beco é sem saída, e voltar de ré é a queixa que
+// criou o anel. A mesma medição deu a resposta: as pontas mortas dos becos não terminam em parede,
+// terminam no morro livre, com 6 m de folga. Então ela sobe, DÁ O RETORNO LÁ EM CIMA e desce.
+// Ver `montarDesvios` mais abaixo.
 //
 // ===== A ROTA É UM ANEL, E ISSO NÃO É ENFEITE =====
 // A primeira versão punha uma viatura em cada via, indo até a ponta e VOLTANDO. O Bruno viu na hora:
@@ -50,8 +59,8 @@ import*as THREE from'three';
 import{GLTFLoader}from'three/addons/loaders/GLTFLoader.js';
 import{scene}from'./core.js';
 import{obterElevacao,alturaDoChaoDesenhado}from'./Terrain.js';
-import{viaPrincipal,viaBaixa}from'./Favela.js';
-import{registrarCaixa,marcarObstaculoMovel}from'./Physics.js';
+import{viaPrincipal,viaBaixa,becos}from'./Favela.js';
+import{registrarCaixa,marcarObstaculoMovel,colideObstaculoXZ}from'./Physics.js';
 
 const COMPRIMENTO=1.90,LARGURA=.86,ALTURA_COLISAO=.85;
 const ENTRE_EIXOS=.70;
@@ -161,22 +170,30 @@ const VEL_CRUZEIRO=9,ACEL=3.2,FREIO=5.5;
 // quanto ela corre — velocidade sozinha faria ela cortar a esquina.
 const LATERAL_RONDA=4.5,LATERAL_ATENDENDO=8;
 const VEL_ATENDENDO=14;
-function montarPerfil(latMax,vMax){
+// O perfil vale pra QUALQUER caminho, não só pro anel — é o que deixa o desvio de beco herdar a
+// mesma física de freio e curva em vez de ganhar uma velocidade inventada. `fechado` diz se o
+// caminho volta nele mesmo (o anel volta; o desvio de beco começa e acaba na rua).
+function montarPerfilDe(curva,comprimento,latMax,vMax,fechado=true){
+  const passo=comprimento/N_PERFIL;
   const v=new Float32Array(N_PERFIL);
   for(let i=0;i<N_PERFIL;i++){
-    const u=i/N_PERFIL;
-    const a=ROTA.getTangentAt(u),b=ROTA.getTangentAt((u+2/N_PERFIL)%1);
+    const u=i/N_PERFIL,u2=Math.min(1,u+2/N_PERFIL);
+    const a=curva.getTangentAt(fechado?u:Math.min(u,.999)),b=curva.getTangentAt(fechado?(u+2/N_PERFIL)%1:u2);
     const ang=Math.abs(Math.atan2(a.x*b.z-a.z*b.x,a.x*b.x+a.z*b.z));
-    const raio=ang>1e-6?(2*PASSO_PERFIL)/ang:1e9;
+    const raio=ang>1e-6?(2*passo)/ang:1e9;
     v[i]=Math.min(vMax,Math.sqrt(latMax*raio));
   }
+  // Caminho aberto tem que CHEGAR PARADO? Não: ele desemboca na rua, então o fim herda a velocidade
+  // de rua. O que ele não pode é entrar rápido demais numa curva mais adiante — e disso a passada de
+  // trás pra frente já cuida.
   for(let passada=0;passada<2;passada++)
     for(let k=N_PERFIL-1;k>=0;k--){
-      const prox=v[(k+1)%N_PERFIL];
-      v[k]=Math.min(v[k],Math.sqrt(prox*prox+2*FREIO*PASSO_PERFIL));
+      const prox=fechado?v[(k+1)%N_PERFIL]:(k+1<N_PERFIL?v[k+1]:v[N_PERFIL-1]);
+      v[k]=Math.min(v[k],Math.sqrt(prox*prox+2*FREIO*passo));
     }
   return v;
 }
+const montarPerfil=(latMax,vMax)=>montarPerfilDe(ROTA,COMPRIMENTO_DA_ROTA,latMax,vMax,true);
 const PERFIL_RONDA=montarPerfil(LATERAL_RONDA,VEL_CRUZEIRO);
 const PERFIL_ATENDENDO=montarPerfil(LATERAL_ATENDENDO,VEL_ATENDENDO);
 const tetoEm=(perfil,u)=>perfil[Math.min(N_PERFIL-1,Math.floor(((u%1)+1)%1*N_PERFIL))];
@@ -193,6 +210,170 @@ const MAO=1.0;
 // rota. Chegando perto, quem está passando muda de faixa: -0,6 contra +1,0 são 1,6 m entre os
 // centros, e com 0,86 m de largura cada uma sobra 0,74 m de vão. Volta pra mão dela depois.
 const MAO_DESVIANDO=-.6,PERTO_PRA_DESVIAR=9,TROCA_DE_FAIXA=2.5;
+
+// ===== E ELA ENTRA NOS BECOS =====
+// "quero a viatura andando nos becos tbm, tem uns que dá pra andar sim eu ando." Ele está certo, e o
+// comentário no alto deste arquivo estava errado — ele decidiu que NENHUM beco servia medindo UM
+// número, o do beco mais apertado (2,45 m). Isso responde "o pior cabe?", não "quais cabem?".
+//
+// Medido beco por beco, varrendo o corpo dela (0,86 x 1,90) deitado na tangente contra o mesmo
+// `colideObstaculoXZ` que barra o carro no jogo:
+//     passagem mais estreita 2,10 m · viatura 0,86 m · sobra 0,62 m de cada lado
+//     19 de 19 becos passam de ponta a ponta com 12 cm de folga
+// (a régua foi validada antes de eu acreditar nela: um corpo de 5 m é barrado em 17 dos 19, e o
+// centro de uma casa bate. Régua que aprova tudo não estava medindo nada.)
+//
+// O QUE FALTAVA NÃO ERA LARGURA, ERA COMO SAIR. Beco é sem saída: nenhum tem as duas pontas na rua,
+// e voltar de ré é justamente a queixa antiga dele ("eles vai certinho mais volta de ré kkkk"), que
+// é a razão de o anel existir. A medida deu a resposta de graça: as pontas mortas dos becos NÃO
+// terminam em parede — terminam no morro livre, com 6 m de folga. Onde cabe 6 m cabe retorno.
+// Conferido nos 11 becos que têm boca na rua: todos os 11 aceitam um retorno de 2,5 m de raio (um
+// deles precisa de 3). Então ela SOBE, DÁ A VOLTA LÁ EM CIMA e DESCE. Zero ré, e a promessa do anel
+// segue de pé.
+const BECO_BOCA_MAX=4;        // até onde a boca do beco pode estar da rua pra servir de entrada
+const BECO_APROXIMACAO=11;    // quanto de rua entra no desvio antes e depois da boca
+// A subida e a descida usam o MESMO eixo do beco. Cheguei a deslocar 30 cm pra cada lado, e o teste
+// reprovou: o retorno lá em cima não emendava com as duas pernas deslocadas e sobrava um bico —
+// 1 quadro de ré em 8 dos 11 desvios. Num vão de 2,1 m ela anda no meio de qualquer jeito.
+const BECO_LATERAL=2.2,BECO_VEL=4.5;// ela anda DEVAGAR no beco: é a única velocidade honesta ali
+// COM QUE FREQUÊNCIA ELA PEGA UM DESVIO. Não é gosto, é medido: com 0,4 ela passou 195 s dos 360 s
+// de ronda dentro de beco — mais da metade do tempo, ou seja, deixaria de ser patrulha de rua e
+// viraria patrulha de beco. O anel tem 283 m a ~8 m/s (35 s por volta) e são 5 bocas; a 0,12 ela
+// pega um beco a cada duas voltas, que é o que faz a coisa ser um acontecimento e não uma rotina.
+const BECO_CHANCE=.12;
+const RETORNO_RAIOS=[2.5,3,3.5,4,5];
+// O corpo dela cabe neste ponto, com este rumo? Mesma pergunta que o teste faz, feita aqui dentro
+// pra o desvio se recusar sozinho se o mapa mudar — melhor perder um beco do que ganhar uma viatura
+// dentro de uma parede.
+function corpoCabe(cx,cz,rumo,folga=.12){
+  const y=alturaDoChaoDesenhado(cx,cz)+.1;
+  const L=LARGURA/2+folga,C=COMPRIMENTO/2+folga;
+  const sx=Math.sin(rumo),cs=Math.cos(rumo);
+  for(const[dl,dc]of[[-L,-C],[L,-C],[-L,C],[L,C],[-L,0],[L,0]])
+    if(colideObstaculoXZ(cx+cs*dl+sx*dc,cz-sx*dl+cs*dc,y,.02,.02,.9))return false;
+  return true;
+}
+// ===== O RETORNO É UMA GOTA, E O MEIO-CÍRCULO NÃO SERVE =====
+// A primeira versão fazia meio-círculo: vira 180° e pronto. O teste reprovou 8 dos 11 desvios com
+// "1 quadro de ré", e a causa é geométrica, não de código: um meio-círculo de raio R devolve o carro
+// PARALELO, mas deslocado 2R de lado. Pra R=2,5 são 5 m — e o beco tem 2,1 m de largura. A curva
+// tinha que se dobrar pra voltar ao eixo, e curva que se dobra é bico: o `u` cresce e o mapa anda
+// pra trás. É o mesmo defeito que matou o anel grande, registrado no comentário do alto deste
+// arquivo. O teste pegou de novo, e a lição é a mesma: o bico não se conserta afinando o passo.
+//
+// A manobra certa é a que motorista faz numa rua sem saída larga: entra na área livre, gira 270°
+// pra um lado e 90° pro outro. A conta fecha em zero — o desvio lateral do primeiro arco é desfeito
+// pelo segundo — e ela sai DE VOLTA NO EIXO do beco, 2R atrás do ponto onde entrou, com o nariz
+// apontando pra descida. Nenhum quadro andando pra trás.
+//   arco 1: 270° pra um lado, raio R    -> chega a 2R de lado e R pra frente
+//   arco 2:  90° pro outro, raio R      -> devolve ao eixo, virada 180° no total
+// Devolve os pontos e quanto do beco a descida tem que pular (2R), ou null se não couber.
+function retornoNoAlto(fim,rumo,lado,R){
+  // ===== INTEGRADA, NÃO DERIVADA =====
+  // A conta fecha no papel (270° − 90° = 180° de virada, e o deslocamento lateral do primeiro arco é
+  // desfeito pelo segundo), mas eu errei o SINAL do segundo arco escrevendo à mão e o teste devolveu
+  // "1 quadro de ré" em 7 dos 8 desvios. É exatamente a armadilha que já está no CLAUDE.md: ângulo
+  // derivado por convenção não é confiável. Então aqui o caminho é ANDADO, não deduzido — a cada
+  // passo eu giro o rumo e avanço na direção dele, que é o que o carro faz. Não tem sinal pra errar.
+  const PASSO_ANG=Math.PI/12;// 15°
+  let x=fim.x,z=fim.z,h=rumo;
+  const pts=[];
+  const trecho=(voltas,sentido)=>{
+    for(let a=0;a<voltas-1e-9;a+=PASSO_ANG){
+      h+=sentido*PASSO_ANG;
+      x+=Math.sin(h)*R*PASSO_ANG;z+=Math.cos(h)*R*PASSO_ANG;
+      if(!corpoCabe(x,z,h))return false;
+      pts.push(new THREE.Vector3(x,0,z));
+    }
+    return true;
+  };
+  if(!trecho(Math.PI*1.5,lado))return null;// 270° pra um lado
+  if(!trecho(Math.PI*.5,-lado))return null;// 90° pro outro: devolve ela no eixo, virada 180°
+  return{pts,recuo:2*R};
+}
+// Monta um desvio por beco: rua -> boca -> sobe -> retorno -> desce -> rua, de novo.
+function montarDesvios(){
+  const lista=[];
+  for(const beco of becos){
+    const A=beco.getPointAt(0),B=beco.getPointAt(1);
+    const uA=uMaisPerto(A),uB=uMaisPerto(B);
+    const pA=ROTA.getPointAt(uA),pB=ROTA.getPointAt(uB);
+    const dA=Math.hypot(pA.x-A.x,pA.z-A.z),dB=Math.hypot(pB.x-B.x,pB.z-B.z);
+    if(Math.min(dA,dB)>BECO_BOCA_MAX)continue;// nenhuma ponta encosta na rua: não dá pra entrar
+    const bocaEmA=dA<=dB,uBoca=bocaEmA?uA:uB;
+    // sobe da boca até a ponta morta
+    const nSub=Math.max(6,Math.ceil(beco.getLength()/1.2));
+    const eixo=[],normal=[],tangente=[];
+    for(let k=0;k<=nSub;k++){
+      const t0=bocaEmA?k/nSub:1-k/nSub;
+      const p=beco.getPointAt(t0),tg=beco.getTangentAt(t0);
+      // Se a boca é a ponta B, ela percorre o beco AO CONTRÁRIO: a tangente de marcha inverte, e com
+      // ela a normal. Guardar as duas explicitamente em vez de derivar uma da outra na hora — derivar
+      // ângulo por convenção é a armadilha que mais mordeu neste projeto (ver o sinal do esterço).
+      const sinal=bocaEmA?1:-1;
+      const tx=tg.x*sinal,tz=tg.z*sinal;
+      eixo.push(p);tangente.push({x:tx,z:tz});normal.push({x:-tz,z:tx});
+    }
+    const fim=eixo[eixo.length-1],tgFim=tangente[tangente.length-1];
+    // `corpoCabe` põe o comprimento no eixo (sin rumo, cos rumo), então rumo = atan2(tx,tz).
+    const rumoFim=Math.atan2(tgFim.x,tgFim.z);
+    let arco=null,recuo=0;
+    for(const R of RETORNO_RAIOS){
+      for(const lado of[1,-1]){const t=retornoNoAlto(fim,rumoFim,lado,R);if(t){arco=t.pts;recuo=t.recuo;break}}
+      if(arco)break;
+    }
+    if(!arco)continue;// sem retorno lá em cima, ela ficaria presa: este beco não entra
+    const pts=[];
+    const uEntra=(uBoca-BECO_APROXIMACAO/COMPRIMENTO_DA_ROTA+1)%1;
+    const uSai=(uBoca+BECO_APROXIMACAO/COMPRIMENTO_DA_ROTA)%1;
+    const passos=Math.ceil(BECO_APROXIMACAO/1.5);
+    for(let k=0;k<=passos;k++)pts.push(ROTA.getPointAt((uEntra+(k/passos)*(BECO_APROXIMACAO/COMPRIMENTO_DA_ROTA))%1));
+    // SOBE pelo eixo do beco...
+    for(let k=0;k<eixo.length;k++)pts.push(new THREE.Vector3(eixo[k].x,0,eixo[k].z));
+    for(const a of arco)pts.push(a);
+    // ...e DESCE pelo mesmo eixo. A gota devolve ela 2R atrás do fim, então a descida começa daí —
+    // repetir os pontos que a manobra já cobriu poria dois pontos colados na CatmullRom, e dois
+    // pontos colados viram nó (é o mesmo motivo do `slice(1)` no cruzamento das duas vias).
+    let pular=0,somado=0;
+    for(let k=eixo.length-1;k>0&&somado<recuo;k--){
+      somado+=Math.hypot(eixo[k].x-eixo[k-1].x,eixo[k].z-eixo[k-1].z);pular++;
+    }
+    for(let k=eixo.length-1-pular;k>=0;k--)pts.push(new THREE.Vector3(eixo[k].x,0,eixo[k].z));
+    for(let k=0;k<=passos;k++)pts.push(ROTA.getPointAt((uBoca+(k/passos)*(BECO_APROXIMACAO/COMPRIMENTO_DA_ROTA))%1));
+    const curva=new THREE.CatmullRomCurve3(pts,false,'catmullrom',.5);
+    const comp=curva.getLength();
+    // ===== E ELA SÓ ACEITA O DESVIO SE DIRIGIR ELE INTEIRO =====
+    // Montar o caminho não prova nada: a CatmullRom ARREDONDA a boca do beco, e boca de beco é quina
+    // de casa — o teste pegou 3 desvios raspando parede e 4 com um quadro de ré na manobra. Não dá
+    // pra confiar na lista de becos que "cabem": o que tem que caber é ESTE traçado.
+    // Então a recusa mora aqui, e não no teste. Duas cobranças, as mesmas que o teste faz:
+    //   · o corpo dela passa em todo ponto do desvio;
+    //   · ela nunca anda pra trás (produto escalar do passo com a tangente).
+    // Beco que não passa simplesmente não vira desvio. Perder um beco é barato; entregar a viatura
+    // dentro de uma parede, ou dando ré, não é — ré é a queixa original dele.
+    const n=Math.max(24,Math.ceil(comp/.4));
+    let serve=true,ant=curva.getPointAt(0);
+    for(let k=0;k<=n&&serve;k++){
+      const u=k/n,p=curva.getPointAt(u),t=curva.getTangentAt(u);
+      if(!corpoCabe(p.x,p.z,Math.atan2(t.x,t.z),.10))serve=false;
+      if(k>0&&(p.x-ant.x)*t.x+(p.z-ant.z)*t.z<0)serve=false;
+      ant=p;
+    }
+    if(!serve)continue;
+    lista.push({curva,comp,uEntra,uSai,
+      perfil:montarPerfilDe(curva,comp,BECO_LATERAL,BECO_VEL,false)});
+  }
+  return lista;
+}
+// ===== MONTADOS TARDE, DE PROPÓSITO =====
+// Na carga deste módulo os colisores ainda não foram FUNDIDOS (Physics.otimizarObstaculos junta
+// caixas que compartilham topo, e a caixa fundida é MAIOR que as duas). Montando aqui, um desvio
+// passava na conferência e batia no jogo — o teste pegou: 2 pontos raspando logo no primeiro metro.
+// Então a montagem espera o primeiro quadro, quando o mundo já está inteiro e fundido. É uma vez só.
+let DESVIOS=null;
+function desvios(){if(DESVIOS===null)DESVIOS=montarDesvios();return DESVIOS}
+export function __desvios(){return desvios().map(d=>({comp:+d.comp.toFixed(1),uEntra:+d.uEntra.toFixed(4),uSai:+d.uSai.toFixed(4)}))}
+export function __curvaDesvio(i){return desvios()[i]?.curva??null}
 
 const viaturas=[];
 let modelo=null;
@@ -216,7 +397,10 @@ function criarViatura(u0){
   const luzes=[lampada(0x3366ff,-.18),lampada(0xff3322,.18)];
   const caixa=new THREE.Box3(new THREE.Vector3(0,-9999,0),new THREE.Vector3(.01,-9998.99,.01));
   marcarObstaculoMovel(registrarCaixa(caixa,'viatura'));
-  return{grupo,u:u0,luzes,caixa,piscaT:0,vel:0,mao:MAO,atendendo:false,desembarcou:false};
+  return{grupo,u:u0,luzes,caixa,piscaT:0,vel:0,mao:MAO,atendendo:false,desembarcou:false,
+    // Desvio de beco em curso: qual, e quanto dele já andou (em metros). `u` fica CONGELADO na
+    // boca enquanto isso, pra a conta de despacho continuar sabendo onde ela está no anel.
+    desvio:null,sDesvio:0};
 }
 
 // Onde no anel fica o ponto mais perto de um alvo. 300 amostras em ~283 m dá 0,9 m de resolução, e o
@@ -232,13 +416,20 @@ function uMaisPerto(alvo){
 }
 
 function assentar(v){
-  const eixo=ROTA.getPointAt(v.u),t=ROTA.getTangentAt(v.u);
+  // O CAMINHO ATUAL, que nem sempre é o anel. No desvio de beco ela anda numa curva própria, e é ela
+  // que manda na posição e no rumo — o resto daqui pra baixo não muda uma linha.
+  const emDesvio=v.desvio!==null;
+  const via=emDesvio?v.desvio.curva:ROTA;
+  const t01=emDesvio?Math.min(1,Math.max(0,v.sDesvio/v.desvio.comp)):v.u;
+  const eixo=via.getPointAt(t01),t=via.getTangentAt(t01);
   // A frente do jogo é (-sen, -cos) do yaw. Igualando à tangente do anel sai o yaw direto — e como o
   // `u` só ANDA PRA FRENTE, o nariz nunca fica ao contrário. Era daí que vinha o "volta de ré".
   const rumo=Math.atan2(-t.x,-t.z);
   // Sai do eixo pra faixa em que ela está agora. A perpendicular da tangente, sempre pro mesmo lado
   // do anel inteiro — duas viaturas no mesmo sentido ficam na mesma mão, como carro de verdade.
-  const p={x:eixo.x-t.z*v.mao,z:eixo.z+t.x*v.mao};
+  // No beco ela anda no EIXO: a mão de 1,0 m é de via de 5,2 m; num beco de 2,1 m ela poria a
+  // viatura com a lateral dentro da parede. O deslocamento de subida/descida já está na curva.
+  const p={x:eixo.x-t.z*(emDesvio?0:v.mao),z:eixo.z+t.x*(emDesvio?0:v.mao)};
   const fx=t.x,fz=t.z;
   // Assenta no chão DESENHADO, igual aos veículos do jogador (ver o comentário longo em
   // `assentar`, no Veiculo.js): a curva analítica difere da malha visível em até 8,9 cm, e a viatura
@@ -284,6 +475,13 @@ new GLTFLoader().load('assets/viatura.glb',gltf=>{
 // anel de distância — e passam uma pela outra no cruzamento de vez em quando, que é bonito de ver.
 viaturas.push(criarViatura(0),criarViatura(.5));
 
+// O passo deste quadro passou por cima de `marca`? O anel dá a volta em 1, então um passo que cruza
+// o zero (de 0,99 pra 0,01) não é "andou pra trás" — é a volta fechando. Sem tratar isso, o desvio
+// que fica logo depois do zero nunca dispararia.
+function cruzou(de,ate,marca){
+  if(ate>=de)return marca>de&&marca<=ate;
+  return marca>de||marca<=ate;
+}
 // Quanto do anel falta, indo PRA FRENTE, entre `de` e `ate`. Sempre positivo: o anel é de mão única.
 function faltaAte(de,ate){let d=ate-de;if(d<0)d+=1;return d*COMPRIMENTO_DA_ROTA}
 
@@ -331,6 +529,11 @@ export function atualizarViaturas(dt,alvo,segurar){
     const destino=uMaisPerto(alvo);
     let melhor=Infinity;
     for(const v of viaturas){
+      // QUEM ESTÁ NO BECO NÃO ATENDE. O destino é um `u` do ANEL, e ela não está no anel — despachar
+      // ela seria mandar frear pra um ponto que não existe no caminho em que está. Ela termina o
+      // desvio (são poucos segundos) e a outra vai. Se as duas estiverem em beco, a ocorrência espera
+      // o primeiro que sair, que é o comportamento certo e não um travamento.
+      if(v.desvio)continue;
       const d=faltaAte(v.u,destino);
       if(d<melhor){melhor=d;despachada=v}
     }
@@ -340,6 +543,22 @@ export function atualizarViaturas(dt,alvo,segurar){
     const atendendo=v===despachada;
     v.atendendo=atendendo;
 
+    // ===== NO BECO ELA ANDA NO CAMINHO DO BECO =====
+    // Mesma física de sempre — teto por curvatura, acelera e freia com limite. O que muda é o
+    // caminho e o perfil dele. Sai do desvio quando acaba a curva, e volta pro anel no `uSai`, que é
+    // adiante da boca: ela desemboca na rua já no rumo do anel, sem manobra.
+    if(v.desvio){
+      const tetoB=v.desvio.perfil[Math.min(N_PERFIL-1,Math.floor(v.sDesvio/v.desvio.comp*N_PERFIL))];
+      const lim=tetoB>v.vel?ACEL*dt:FREIO*dt;
+      v.vel+=Math.max(-lim,Math.min(lim,tetoB-v.vel));
+      if(v.vel<0)v.vel=0;
+      v.sDesvio+=v.vel*dt;
+      if(v.sDesvio>=v.desvio.comp){v.u=v.desvio.uSai;v.desvio=null;v.sDesvio=0}
+      v.mao+=Math.max(-TROCA_DE_FAIXA*dt,Math.min(TROCA_DE_FAIXA*dt,MAO-v.mao));
+      v.piscaT=0;for(const l of v.luzes)l.material.emissiveIntensity=.2;
+      assentar(v);
+      continue;
+    }
     // ===== O TETO DE VELOCIDADE DESTE PEDAÇO DE RUA =====
     let teto=tetoEm(atendendo?PERFIL_ATENDENDO:PERFIL_RONDA,v.u);
     let falta=Infinity;
@@ -357,7 +576,20 @@ export function atualizarViaturas(dt,alvo,segurar){
     if(v.vel<0)v.vel=0;
     // Anda, sem nunca passar do ponto de parada.
     const anda=Math.min(v.vel*dt,atendendo?Math.max(0,falta-CHEGOU):Infinity);
+    const uAntes=v.u;
     v.u=(v.u+anda/COMPRIMENTO_DA_ROTA)%1;
+    // ===== ENTROU NO BECO? =====
+    // Só de ronda (com ocorrência ela tem mais o que fazer), só se a outra não estiver naquele mesmo
+    // beco (duas viaturas num vão de 2,1 m é pior que qualquer bug de rota), e por sorteio — beco
+    // toda volta viraria trenzinho de novo.
+    if(!atendendo&&!alvo){
+      for(const d of desvios()){
+        if(!cruzou(uAntes,v.u,d.uEntra))continue;
+        if(viaturas.some(o=>o!==v&&o.desvio===d))break;
+        if(Math.random()<BECO_CHANCE){v.desvio=d;v.sDesvio=0;v.u=d.uEntra}
+        break;
+      }
+    }
 
     // ===== DESVIA DE QUEM ESTÁ PARADO NA RUA =====
     // A que está parada mantém a mão dela; a que está passando muda de faixa, e volta depois. Suave,
@@ -399,6 +631,7 @@ export function __viaturas(){
   return viaturas.map(v=>({x:+v.grupo.position.x.toFixed(2),z:+v.grupo.position.z.toFixed(2),
     rumo:+v.grupo.rotation.y.toFixed(3),u:+v.u.toFixed(4),
     vel:+v.vel.toFixed(2),atendendo:v.atendendo,mao:+v.mao.toFixed(2),
+    desvio:v.desvio?desvios().indexOf(v.desvio):null,sDesvio:+v.sDesvio.toFixed(1),
     piscando:v.luzes[0].material.emissiveIntensity>1||v.luzes[1].material.emissiveIntensity>1,
     caixa:{minX:v.caixa.min.x,minY:v.caixa.min.y,minZ:v.caixa.min.z,
            maxX:v.caixa.max.x,maxY:v.caixa.max.y,maxZ:v.caixa.max.z}}));
