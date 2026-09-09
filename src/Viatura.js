@@ -10,9 +10,10 @@ const CHEGOU=2,PERSEGUICAO_DUAS=3;
 const VEL_CRUZEIRO=9,VEL_ATENDENDO=14,VEL_BUSCA=4.2,ACEL=3.2,FREIO=5.5;
 const LATERAL_RONDA=4.5,LATERAL_ATENDENDO=8;
 const MAO=1,MAO_DESVIANDO=-.6,PERTO_PRA_DESVIAR=9,TROCA_DE_FAIXA=2.5;
-const PERSEGUICAO_RECALCULA=.35,INTERCEPTA_MAX=3.5,ALVO_VEL_MAX=11;
-const ACESSO_DIRETO_MAX=38,DESEMBARQUE_SEM_ACESSO=5.5;
+const PERSEGUICAO_RECALCULA=.55,INTERCEPTA_MAX=4.5,ALVO_VEL_MAX=11;
+const DESEMBARQUE_SEM_ACESSO=5.5;
 const PASSO_VALIDACAO=.45,FOLGA_ROTA=.18,INCLINACAO_MAX=Math.tan(22*Math.PI/180);
+const MAPA_LIMITE=124,GRADE_VEICULO=4,BUSCA_MAX_NOS=5200;
 const N_PERFIL=320;
 
 // ===== ANEL DE PATRULHA =====
@@ -82,8 +83,13 @@ const tetoEm=(perfil,u)=>perfil[Math.min(N_PERFIL-1,Math.floor((((u%1)+1)%1)*N_P
 function faltaAte(de,ate){let d=ate-de;if(d<0)d+=1;return d*COMPRIMENTO_DA_ROTA}
 function uMaisPerto(alvo){return uMaisPertoDe(ROTA,alvo,360)}
 
-// ===== VALIDAÇÃO DE ACESSO VEICULAR =====
+// ===== NAVEGAÇÃO VEICULAR GLOBAL =====
+// Primeiro tenta um corredor direto/curto. Se não der, usa A* numa grade que cobre o mapa inteiro.
+// Cada aresta só existe se o corpo completo da viatura passa sem tocar parede e sem subir inclinação
+// absurda. Assim ela pode abandonar o anel, contornar quarteirões e voltar a recalcular enquanto o
+// jogador corre, sem usar a malha de pedestre como se carro tivesse 25 cm de largura.
 function corpoCabe(cx,cz,rumo,folga=FOLGA_ROTA){
+  if(Math.abs(cx)>MAPA_LIMITE||Math.abs(cz)>MAPA_LIMITE)return false;
   const y=alturaDoChaoDesenhado(cx,cz)+.1,L=LARGURA/2+folga,C=COMPRIMENTO/2+folga;
   const sx=Math.sin(rumo),cs=Math.cos(rumo);
   for(const[dl,dc]of[[-L,-C],[L,-C],[-L,C],[L,C],[-L,0],[L,0]])
@@ -112,37 +118,91 @@ function curvaLivre(curva){
   }
   return true;
 }
+function curvaPorPontos(pontos){
+  if(pontos.length<2)return null;
+  if(pontos.length===2)return new THREE.LineCurve3(new THREE.Vector3(pontos[0].x,0,pontos[0].z),new THREE.Vector3(pontos[1].x,0,pontos[1].z));
+  const suave=new THREE.CatmullRomCurve3(pontos.map(p=>new THREE.Vector3(p.x,0,p.z)),false,'centripetal',.35);
+  if(curvaLivre(suave))return suave;
+  const path=new THREE.CurvePath();
+  for(let i=0;i+1<pontos.length;i++)path.add(new THREE.LineCurve3(
+    new THREE.Vector3(pontos[i].x,0,pontos[i].z),new THREE.Vector3(pontos[i+1].x,0,pontos[i+1].z)));
+  return path;
+}
+function heapPush(heap,item){
+  heap.push(item);let i=heap.length-1;
+  while(i>0){const p=(i-1)>>1;if(heap[p].f<=item.f)break;heap[i]=heap[p];i=p}heap[i]=item;
+}
+function heapPop(heap){
+  if(!heap.length)return null;const raiz=heap[0],fim=heap.pop();if(!heap.length)return raiz;
+  let i=0;while(true){let l=i*2+1;if(l>=heap.length)break;let r=l+1,c=r<heap.length&&heap[r].f<heap[l].f?r:l;if(heap[c].f>=fim.f)break;heap[i]=heap[c];i=c}heap[i]=fim;return raiz;
+}
+function buscarRotaGlobal(inicio,fim){
+  const passo=GRADE_VEICULO;
+  const gx=Math.round(fim.x/passo),gz=Math.round(fim.z/passo),sx=Math.round(inicio.x/passo),sz=Math.round(inicio.z/passo);
+  const chave=(x,z)=>`${x},${z}`,ponto=(x,z)=>({x:x*passo,z:z*passo});
+  const limite=Math.floor(MAPA_LIMITE/passo),abertos=[],gScore=new Map(),pais=new Map(),fechados=new Set(),arestas=new Map();
+  const h=(x,z)=>Math.hypot(x-gx,z-gz)*passo;
+  const sk=chave(sx,sz);gScore.set(sk,0);heapPush(abertos,{x:sx,z:sz,f:h(sx,sz)});
+  let melhor={x:sx,z:sz,d:h(sx,sz)},final=null,visitados=0;
+  const dirs=[[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
+  while(abertos.length&&visitados++<BUSCA_MAX_NOS){
+    const atual=heapPop(abertos),ak=chave(atual.x,atual.z);if(fechados.has(ak))continue;fechados.add(ak);
+    const ap=ponto(atual.x,atual.z),distFim=Math.hypot(ap.x-fim.x,ap.z-fim.z);
+    if(distFim<melhor.d)melhor={x:atual.x,z:atual.z,d:distFim};
+    if(distFim<=passo*1.6&&segmentoLivre(ap,fim)){final={x:atual.x,z:atual.z,completo:true};break}
+    for(const[dx,dz]of dirs){
+      const nx=atual.x+dx,nz=atual.z+dz;if(Math.abs(nx)>limite||Math.abs(nz)>limite)continue;
+      const nk=chave(nx,nz);if(fechados.has(nk))continue;
+      const np=ponto(nx,nz),ek=ak<nk?`${ak}|${nk}`:`${nk}|${ak}`;
+      let livre=arestas.get(ek);if(livre===undefined){livre=segmentoLivre(ap,np);arestas.set(ek,livre)}if(!livre)continue;
+      const custo=(gScore.get(ak)??Infinity)+Math.hypot(dx,dz)*passo,ant=gScore.get(nk);
+      if(ant!==undefined&&custo>=ant)continue;
+      gScore.set(nk,custo);pais.set(nk,ak);heapPush(abertos,{x:nx,z:nz,f:custo+h(nx,nz)});
+    }
+  }
+  if(!final){
+    if(melhor.d>=Math.hypot(inicio.x-fim.x,inicio.z-fim.z)-2)return null;
+    final={x:melhor.x,z:melhor.z,completo:false};
+  }
+  const pontosGrade=[],coord=new Map();
+  for(const k of gScore.keys()){const[x,z]=k.split(',').map(Number);coord.set(k,{x,z})}
+  let k=chave(final.x,final.z);while(k){const c=coord.get(k)??(()=>{const[x,z]=k.split(',').map(Number);return{x,z}})();pontosGrade.push(ponto(c.x,c.z));k=pais.get(k)}
+  pontosGrade.reverse();
+  const pontos=[{x:inicio.x,z:inicio.z},...pontosGrade.slice(1)];
+  if(final.completo)pontos.push({x:fim.x,z:fim.z});
+  // Suaviza a grade pulando nós quando existe visão veicular direta. Isso transforma o zigue-zague
+  // de A* em curvas/retas longas e reduz drasticamente o número de quinas dirigidas.
+  const limpos=[pontos[0]];let i=0;
+  while(i<pontos.length-1){let j=pontos.length-1;for(;j>i+1;j--)if(segmentoLivre(pontos[i],pontos[j]))break;limpos.push(pontos[j]);i=j}
+  return{pontos:limpos,completo:final.completo};
+}
 function montarCaminhoLivre(inicio,fim){
-  const d=Math.hypot(fim.x-inicio.x,fim.z-inicio.z);if(d<.25||d>ACESSO_DIRETO_MAX)return null;
+  const d=Math.hypot(fim.x-inicio.x,fim.z-inicio.z);if(d<.25)return null;
   if(segmentoLivre(inicio,fim)){
-    const curva=new THREE.LineCurve3(new THREE.Vector3(inicio.x,0,inicio.z),new THREE.Vector3(fim.x,0,fim.z));
-    return{curva,comp:d,perfil:montarPerfilDe(curva,d,LATERAL_ATENDENDO,VEL_ATENDENDO,false)};
+    const curva=curvaPorPontos([inicio,fim]);
+    return{curva,comp:d,perfil:montarPerfilDe(curva,d,LATERAL_ATENDENDO,VEL_ATENDENDO,false),completo:true};
   }
   const dx=(fim.x-inicio.x)/d,dz=(fim.z-inicio.z)/d,nx=-dz,nz=dx;
   for(const desloc of[5,-5,9,-9,14,-14]){
     const m={x:(inicio.x+fim.x)/2+nx*desloc,z:(inicio.z+fim.z)/2+nz*desloc};
     if(!segmentoLivre(inicio,m)||!segmentoLivre(m,fim))continue;
-    const curva=new THREE.CatmullRomCurve3([
-      new THREE.Vector3(inicio.x,0,inicio.z),new THREE.Vector3(m.x,0,m.z),new THREE.Vector3(fim.x,0,fim.z)
-    ],false,'centripetal',.5);
-    if(!curvaLivre(curva))continue;
+    const curva=curvaPorPontos([inicio,m,fim]);if(!curva)continue;
     const comp=curva.getLength();
-    return{curva,comp,perfil:montarPerfilDe(curva,comp,LATERAL_ATENDENDO,VEL_ATENDENDO,false)};
+    return{curva,comp,perfil:montarPerfilDe(curva,comp,LATERAL_ATENDENDO,VEL_ATENDENDO,false),completo:true};
   }
-  return null;
+  const global=buscarRotaGlobal(inicio,fim);if(!global||global.pontos.length<2)return null;
+  const curva=curvaPorPontos(global.pontos);if(!curva)return null;const comp=curva.getLength();
+  return{curva,comp,perfil:montarPerfilDe(curva,comp,LATERAL_ATENDENDO,VEL_ATENDENDO,false),completo:global.completo};
 }
 
-// Becos continuam disponíveis como informação de debug e como evidência de acesso: não são usados
-// como trilho obrigatório durante uma perseguição; a rota dinâmica só entra quando o corpo do carro cabe.
+// Mantidos para debug/compatibilidade com os testes existentes.
 let DESVIOS=null;
 function desvios(){
-  if(DESVIOS)return DESVIOS;
-  DESVIOS=[];
+  if(DESVIOS)return DESVIOS;DESVIOS=[];
   for(const beco of becos){
     const a=beco.getPointAt(0),b=beco.getPointAt(1),ua=uMaisPerto(a),ub=uMaisPerto(b);
-    const da=Math.hypot(ROTA.getPointAt(ua).x-a.x,ROTA.getPointAt(ua).z-a.z),db=Math.hypot(ROTA.getPointAt(ub).x-b.x,ROTA.getPointAt(ub).z-b.z);
-    if(Math.min(da,db)>4)continue;
-    DESVIOS.push({curva:beco,comp:beco.getLength(),uEntra:da<=db?ua:ub,uSai:da<=db?ua:ub});
+    const pa=ROTA.getPointAt(ua),pb=ROTA.getPointAt(ub),da=Math.hypot(pa.x-a.x,pa.z-a.z),db=Math.hypot(pb.x-b.x,pb.z-b.z);
+    if(Math.min(da,db)<=4)DESVIOS.push({curva:beco,comp:beco.getLength(),uEntra:da<=db?ua:ub,uSai:da<=db?ua:ub});
   }
   return DESVIOS;
 }
@@ -157,7 +217,7 @@ function criarViatura(u0){
   const luzes=[lampada(0x3366ff,-.18),lampada(0xff3322,.18)],caixa=new THREE.Box3(new THREE.Vector3(0,-9999,0),new THREE.Vector3(.01,-9998.99,.01));
   marcarObstaculoMovel(registrarCaixa(caixa,'viatura'));
   return{grupo,u:u0,luzes,caixa,piscaT:0,vel:0,mao:MAO,atendendo:false,desembarcou:false,destino:u0,
-    rotaDinamica:null,sRota:0,baseU:u0,semAcesso:false,modoBusca:false};
+    rotaDinamica:null,sRota:0,baseU:u0,semAcesso:false,modoBusca:false,retornando:false};
 }
 function caminhoAtual(v){
   if(v.rotaDinamica){const t=Math.min(1,Math.max(0,v.sRota/v.rotaDinamica.comp));return{curva:v.rotaDinamica.curva,t,fora:true}}
@@ -196,22 +256,17 @@ function atualizarVelocidadeAlvo(alvo){
 function pontoInterceptacao(v,alvo,velAlvo){
   if(!alvo||alvo.quente===false)return{x:alvo.x,z:alvo.z};
   const d=Math.hypot(alvo.x-v.grupo.position.x,alvo.z-v.grupo.position.z),lead=Math.min(INTERCEPTA_MAX,d/Math.max(6,VEL_ATENDENDO));
-  return{x:alvo.x+velAlvo.x*lead,z:alvo.z+velAlvo.z*lead};
+  return{x:THREE.MathUtils.clamp(alvo.x+velAlvo.x*lead,-MAPA_LIMITE,MAPA_LIMITE),z:THREE.MathUtils.clamp(alvo.z+velAlvo.z*lead,-MAPA_LIMITE,MAPA_LIMITE)};
 }
 function planejar(v,alvo,velAlvo){
   const previsto=pontoInterceptacao(v,alvo,velAlvo),inicio={x:v.grupo.position.x,z:v.grupo.position.z};
   const caminho=montarCaminhoLivre(inicio,previsto);
   if(caminho){
     if(!v.rotaDinamica)v.baseU=v.u;
-    v.rotaDinamica=caminho;v.sRota=0;v.semAcesso=false;v.modoBusca=alvo.quente===false;v.desembarcou=false;
+    v.rotaDinamica=caminho;v.sRota=0;v.semAcesso=!caminho.completo;v.modoBusca=alvo.quente===false;v.desembarcou=false;v.retornando=false;
     return;
   }
-  // Se um recálculo falhar DEPOIS de a viatura já ter saído do anel, ela continua pela última rota
-  // válida em vez de reaparecer instantaneamente no `u` antigo do anel. Ao chegar, a equipe desce e
-  // termina a aproximação a pé.
   if(v.rotaDinamica){v.semAcesso=true;v.modoBusca=alvo.quente===false;return}
-  // Sem corredor veicular a partir da rua: aproxima pelo anel até o ponto acessível mais próximo e
-  // prepara o desembarque. A partir dali o NavMesh dos policiais assume a perseguição.
   v.sRota=0;v.destino=uMaisPerto(previsto);v.semAcesso=true;v.modoBusca=alvo.quente===false;v.desembarcou=false;
 }
 function tentarVoltarAoAnel(v){
@@ -224,10 +279,8 @@ function tentarVoltarAoAnel(v){
 const despachadas=[];
 export function atualizarViaturas(dt,alvo,segurar){
   if(!modelo)return null;
-  let desembarque=null;
-  relogioPlano=Math.max(0,relogioPlano-dt);
+  let desembarque=null;relogioPlano=Math.max(0,relogioPlano-dt);
   const querem=alvo&&alvo.perseguicao&&(alvo.nivel??0)>=PERSEGUICAO_DUAS?2:1;
-
   if(!alvo&&!segurar){
     amostraAlvo=null;
     for(const v of despachadas){if(v.rotaDinamica&&!v.retornando)tentarVoltarAoAnel(v);v.atendendo=false}
@@ -235,36 +288,29 @@ export function atualizarViaturas(dt,alvo,segurar){
   }
   if(alvo&&despachadas.length<querem){
     const destino=uMaisPerto(alvo);let escolhida=null,melhor=Infinity;
-    for(const v of viaturas){if(despachadas.includes(v))continue;const d=faltaAte(v.u,destino);if(d<melhor){melhor=d;escolhida=v}}
+    for(const v of viaturas){if(despachadas.includes(v))continue;const d=v.rotaDinamica?Math.hypot(v.grupo.position.x-alvo.x,v.grupo.position.z-alvo.z):faltaAte(v.u,destino);if(d<melhor){melhor=d;escolhida=v}}
     if(escolhida){escolhida.destino=destino;escolhida.baseU=escolhida.u;escolhida.retornando=false;despachadas.push(escolhida)}
   }
-
   const velAlvo=atualizarVelocidadeAlvo(alvo);
-  if(alvo&&alvo.perseguicao&&despachadas.length&&relogioPlano<=0){
-    for(const v of despachadas)planejar(v,alvo,velAlvo);
-    relogioPlano=PERSEGUICAO_RECALCULA;
-  }else if(alvo&&!alvo.perseguicao&&despachadas.length&&relogioPlano<=0){
-    for(const v of despachadas)if(!v.rotaDinamica)planejar(v,alvo,{x:0,z:0});
-    relogioPlano=.8;
+  if(alvo&&despachadas.length&&relogioPlano<=0){
+    for(const v of despachadas)planejar(v,alvo,alvo.perseguicao?velAlvo:{x:0,z:0});
+    relogioPlano=alvo.perseguicao?PERSEGUICAO_RECALCULA:.8;
   }
-
   for(const v of viaturas){
     const atendendo=despachadas.includes(v);v.atendendo=atendendo;
     if(v.rotaDinamica){
       const r=v.rotaDinamica,idx=Math.min(N_PERFIL-1,Math.floor(Math.min(.999,v.sRota/r.comp)*N_PERFIL));
-      let teto=r.perfil[idx]??VEL_ATENDENDO;
-      const falta=Math.max(0,r.comp-v.sRota),vaiParar=atendendo&&!v.retornando;
+      let teto=r.perfil[idx]??VEL_ATENDENDO;const falta=Math.max(0,r.comp-v.sRota),vaiParar=atendendo&&!v.retornando;
       if(v.modoBusca)teto=Math.min(teto,VEL_BUSCA);
       if(vaiParar)teto=Math.min(teto,Math.sqrt(Math.max(0,2*FREIO*Math.max(0,falta-CHEGOU))));
       const lim=teto>v.vel?ACEL*dt:FREIO*dt;v.vel+=Math.max(-lim,Math.min(lim,teto-v.vel));if(v.vel<0)v.vel=0;
       v.sRota+=Math.min(v.vel*dt,vaiParar?Math.max(0,falta-CHEGOU):Infinity);
       if(v.retornando&&v.sRota>=r.comp-.1){v.rotaDinamica=null;v.sRota=0;v.u=v.baseU;v.retornando=false}
-      if(vaiParar&&!v.desembarcou&&falta<=CHEGOU+.12&&v.vel<.35){v.desembarcou=true;desembarque={x:v.grupo.position.x,z:v.grupo.position.z}}
+      if(vaiParar&&!v.desembarcou&&falta<=CHEGOU+.15&&v.vel<.4){v.desembarcou=true;desembarque={x:v.grupo.position.x,z:v.grupo.position.z}}
     }else{
       let teto=tetoEm(atendendo?PERFIL_ATENDENDO:PERFIL_RONDA,v.u),falta=Infinity;
       if(atendendo){
-        falta=faltaAte(v.u,v.destino);
-        const precisaParar=v.semAcesso||!alvo||alvo.quente!==false;
+        falta=faltaAte(v.u,v.destino);const precisaParar=v.semAcesso||!alvo||alvo.quente!==false;
         if(precisaParar)teto=Math.min(teto,Math.sqrt(Math.max(0,2*FREIO*Math.max(0,falta-CHEGOU))));
         else if(falta<22||falta>COMPRIMENTO_DA_ROTA-22)teto=Math.min(teto,VEL_BUSCA);
       }
@@ -273,7 +319,6 @@ export function atualizarViaturas(dt,alvo,segurar){
       v.u=(v.u+anda/COMPRIMENTO_DA_ROTA)%1;
       if(atendendo&&v.semAcesso&&!v.desembarcou&&falta<=DESEMBARQUE_SEM_ACESSO&&v.vel<.4){v.desembarcou=true;desembarque={x:v.grupo.position.x,z:v.grupo.position.z}}
     }
-
     let maoAlvo=MAO;
     if(!atendendo&&!v.rotaDinamica)for(const outra of viaturas){if(outra===v||outra.vel>.3)continue;const d=Math.min(faltaAte(v.u,outra.u),faltaAte(outra.u,v.u));if(d<PERTO_PRA_DESVIAR){maoAlvo=MAO_DESVIANDO;break}}
     v.mao+=Math.max(-TROCA_DE_FAIXA*dt,Math.min(TROCA_DE_FAIXA*dt,maoAlvo-v.mao));
