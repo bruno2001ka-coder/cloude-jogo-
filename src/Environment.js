@@ -4,6 +4,7 @@ import{RGBELoader}from'three/addons/loaders/RGBELoader.js';
 import{scene,camera,renderer}from'./core.js';
 import{predioMat}from'./Skyline.js';
 import{janela,janelaAcesa}from'./Materials.js';
+import'./FavelaVisualUpgrade.js';
 
 const HORIZONTE_COLOR=0xcfe3ea;
 scene.fog=new THREE.FogExp2(HORIZONTE_COLOR,.013);
