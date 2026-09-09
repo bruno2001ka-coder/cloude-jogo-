@@ -4,6 +4,7 @@
 // e `atualizarPortas` anima a folha sem criar um segundo sistema de interação.
 import*as THREE from'three';
 import{scene}from'./core.js';
+import{player}from'./Player.js';
 import{obterElevacao}from'./Terrain.js';
 import{registrarObstaculo,registrarCaixa,marcarSemFusao,marcarObstaculoMovel,superficiesAndaveis}from'./Physics.js';
 import{matReboco,matTelha,matMadeira,matConcreto,bmat,uvPorMetro,criarSombraContato}from'./Materials.js';
@@ -78,7 +79,7 @@ for(const[dx,dz,w,d]of[[0,PROF/2,LARG+.16,.14],[0,-PROF/2,LARG+.16,.14],[LARG/2,
 
 // Janela lateral simples para a casa não parecer um galpão fechado.
 const vidro=new THREE.MeshPhysicalMaterial({color:0x8fc0cf,roughness:.18,metalness:.05,transparent:true,opacity:.72});
-{const p=mundo(-LARG/2-.015,-.65);peca(new THREE.BoxGeometry(.04,1.0,1.45),vidro,p.x,PISO+1.55,p.z,GIRO,false,false)}
+{const p=mundo(-LARG/2-.015,-.65);peca(new THREE.BoxGeometry(.04,1.0,1.45),vidro,p.x,PISO+1.55,p.z,GIRO,grupo,false)}
 
 // Placa CASA acima da porta. Um CanvasTexture pequeno custa um único material e deixa a casa reconhecível
 // de longe sem criar outra UI permanente na tela.
@@ -123,3 +124,7 @@ export function pontoInicialCasaJogador(){const p=mundo(0,-.55);return{x:p.x,y:P
 export function posicionarJogadorNaCasa(jogador){
   if(!jogador)return false;const p=pontoInicialCasaJogador();jogador.position.set(p.x,p.y,p.z);jogador.rotation.y=GIRO;return true;
 }
+
+// Este módulo é avaliado antes do bloco `carregar()` do main. Portanto nova partida fica aqui dentro;
+// se houver save, o próprio Save.js roda logo depois e restaura a posição salva por cima desta.
+posicionarJogadorNaCasa(player);
