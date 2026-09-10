@@ -1,177 +1,70 @@
-// ===== JARDINS DO MORRO — CASAS EM LOTES VALIDADOS =====
-// O bairro nasce depois das ruas. Cada lote e testado contra TODOS os corredores, a CJ,
-// os outros lotes e o relevo. Nao existe mais rampa longa de garagem nem platô do lote inteiro.
+// ===== JARDINS DO MORRO — 5 QUARTEIROES RESIDENCIAIS =====
+// Casas so nascem depois da rede viaria. Cada lote e testado contra TODAS as ruas, CJ, relevo e vizinhos.
 import*as THREE from'three';
 import{scene}from'./core.js';
 import{obterElevacao}from'./Terrain.js';
 import{registrarCaixa}from'./Physics.js';
 import{matConcreto,matMadeira}from'./Materials.js';
-import{vias,corredorTotal,pontoEmCorredorViario}from'./NobleDistrictPlan.js';
+import{vias,corredorTotal,pontoEmCorredorViario,QUARTEIROES}from'./NobleDistrictPlan.js';
 import{levanteContraQuina,PASSO_DA_FITA}from'./Favela.js';
 
-const grupo=new THREE.Group();grupo.name='bairro-nobre-casas-validadas';scene.add(grupo);
-const LOTE_W=6.15,LOTE_D=5.25,MARGEM_LOTES=.38,MAX_CASAS=14;
+const grupo=new THREE.Group();grupo.name='bairro-nobre-5-quarteiroes';scene.add(grupo);
+const LOTE_W=5.45,LOTE_D=4.75,MARGEM=.30,MAX_CASAS=30;
 
-// Muitos candidatos, poucos aceitos. A ordem intercala avenida e alamedas para o bairro nao ficar
-// todo concentrado numa rua. A geracao e deterministica: o mapa nao muda a cada carregamento.
-const CANDIDATOS=[];
-const US=[.11,.19,.27,.35,.43,.51,.59,.67,.75,.83,.89];
-for(let k=0;k<US.length;k++)for(let vi=0;vi<vias.length;vi++)for(const lado of[-1,1]){
-  const u=US[k];
-  if(vi===0&&u>.87)continue;// deixa a emenda com a favela completamente livre
-  CANDIDATOS.push({via:vias[vi],u,lado,extra:.46+((k+vi+(lado>0?1:0))%3)*.12});
-}
+function mundoLocal(l,lx,lz){const c=Math.cos(l.giro),s=Math.sin(l.giro);return{x:l.cx+lx*c+lz*s,z:l.cz-lx*s+lz*c}}
+function amostrar(l,w=l.w,d=l.d,n=5){let min=Infinity,max=-Infinity;for(let ix=0;ix<n;ix++)for(let iz=0;iz<n;iz++){const p=mundoLocal(l,-w/2+w*ix/(n-1),-d/2+d*iz/(n-1)),h=obterElevacao(p.x,p.z);min=Math.min(min,h);max=Math.max(max,h)}return{min,max}}
+function cotaFrente(l){let h=-Infinity;for(let i=0;i<7;i++){const p=mundoLocal(l,-l.w/2+l.w*i/6,l.d/2-.18);h=Math.max(h,obterElevacao(p.x,p.z))}return h+.055}
+function foraDasRuas(l){for(let ix=0;ix<7;ix++)for(let iz=0;iz<7;iz++){const p=mundoLocal(l,-l.w/2+l.w*ix/6,-l.d/2+l.d*iz/6);if(pontoEmCorredorViario(p.x,p.z,.14))return false}return true}
+function cantos(l,m=MARGEM){const w=l.w+2*m,d=l.d+2*m;return[[-w/2,-d/2],[w/2,-d/2],[w/2,d/2],[-w/2,d/2]].map(([x,z])=>mundoLocal(l,x,z))}
+function proj(P,ax,az){let min=Infinity,max=-Infinity;for(const p of P){const v=p.x*ax+p.z*az;min=Math.min(min,v);max=Math.max(max,v)}return{min,max}}
+function sobrepoe(a,b){const A=cantos(a),B=cantos(b);for(const P of[A,B])for(let i=0;i<4;i++){const p=P[i],q=P[(i+1)%4],ex=q.x-p.x,ez=q.z-p.z,len=Math.hypot(ex,ez)||1,ax=-ez/len,az=ex/len,pa=proj(A,ax,az),pb=proj(B,ax,az);if(pa.max<pb.min||pb.max<pa.min)return false}return true}
+function loteDe(c){const p=c.via.curva.getPointAt(c.u),t=c.via.curva.getTangentAt(c.u).normalize(),nx=-t.z*c.lado,nz=t.x*c.lado;const dist=corredorTotal(c.via)+LOTE_D/2+c.extra;const l={cx:p.x+nx*dist,cz:p.z+nz*dist,giro:Math.atan2(-nx,-nz),w:LOTE_W,d:LOTE_D,via:c.via,u:c.u,p,t,nx,nz,bloco:c.bloco};const h=amostrar(l);l.min=h.min;l.max=h.max;l.desnivel=h.max-h.min;l.cota=cotaFrente(l);const bx=p.x+nx*c.via.largura/2,bz=p.z+nz*c.via.largura/2;l.ruaY=levanteContraQuina(bx,bz,PASSO_DA_FITA)+.002;l.acesso=l.cota-l.ruaY;return l}
 
-function mundoLocal(lote,lx,lz){
-  const c=Math.cos(lote.giro),s=Math.sin(lote.giro);
-  return{x:lote.cx+lx*c+lz*s,z:lote.cz-lx*s+lz*c};
+// Avenida: duas frentes por quarteirao, sem usar a faixa de cruzamento.
+const candidatos=[];
+for(const q of QUARTEIROES){
+  const span=q.u1-q.u0;
+  for(const f of[.30,.70])for(const lado of[-1,1])candidatos.push({via:vias[0],u:q.u0+span*f,lado,extra:.28,bloco:q.id});
 }
-function amostrarRetangulo(lote,w=lote.w,d=lote.d,n=5){
-  let min=Infinity,max=-Infinity;
-  for(let ix=0;ix<n;ix++)for(let iz=0;iz<n;iz++){
-    const lx=-w/2+w*ix/(n-1),lz=-d/2+d*iz/(n-1),p=mundoLocal(lote,lx,lz),h=obterElevacao(p.x,p.z);
-    min=Math.min(min,h);max=Math.max(max,h);
-  }
-  return{min,max};
-}
-function cotaDaFrente(lote){
-  // A casa se assenta pela frente/soleira, igual a logica madura das casas do morro.
-  // Isso evita levantar a casa inteira porque o fundo do lote sobe alguns metros.
-  let cota=-Infinity;
-  for(let i=0;i<7;i++)for(const recuo of[0,.42]){
-    const lx=-lote.w/2+lote.w*i/6,lz=lote.d/2-recuo,p=mundoLocal(lote,lx,lz);
-    cota=Math.max(cota,obterElevacao(p.x,p.z));
-  }
-  return cota+.055;
-}
-function loteForaDosCorredores(lote){
-  // Grade 7x7: pega inclusive uma curva atravessando o meio do lote.
-  for(let ix=0;ix<7;ix++)for(let iz=0;iz<7;iz++){
-    const lx=-lote.w/2+lote.w*ix/6,lz=-lote.d/2+lote.d*iz/6,p=mundoLocal(lote,lx,lz);
-    if(pontoEmCorredorViario(p.x,p.z,.20))return false;
-  }
-  return true;
-}
-function cantos(lote,m=MARGEM_LOTES){
-  const w=lote.w+2*m,d=lote.d+2*m;
-  return[[-w/2,-d/2],[w/2,-d/2],[w/2,d/2],[-w/2,d/2]].map(([x,z])=>mundoLocal(lote,x,z));
-}
-function proj(pts,ax,az){let min=Infinity,max=-Infinity;for(const p of pts){const v=p.x*ax+p.z*az;min=Math.min(min,v);max=Math.max(max,v)}return{min,max}}
-function sobrepoe(a,b){
-  const A=cantos(a),B=cantos(b);
-  for(const P of[A,B])for(let i=0;i<4;i++){
-    const p=P[i],q=P[(i+1)%4],ex=q.x-p.x,ez=q.z-p.z,len=Math.hypot(ex,ez)||1,ax=-ez/len,az=ex/len;
-    const pa=proj(A,ax,az),pb=proj(B,ax,az);if(pa.max<pb.min||pb.max<pa.min)return false;
-  }
-  return true;
-}
-function candidatoParaLote(c){
-  const p=c.via.curva.getPointAt(c.u),t=c.via.curva.getTangentAt(c.u).normalize();
-  const nx=-t.z*c.lado,nz=t.x*c.lado;
-  const dist=corredorTotal(c.via)+LOTE_D/2+c.extra;
-  const cx=p.x+nx*dist,cz=p.z+nz*dist,giro=Math.atan2(-nx,-nz);
-  const lote={cx,cz,giro,w:LOTE_W,d:LOTE_D,via:c.via,u:c.u,p,t,nx,nz};
-  const h=amostrarRetangulo(lote,LOTE_W,LOTE_D,5);lote.min=h.min;lote.max=h.max;lote.desnivel=h.max-h.min;
-  lote.cota=cotaDaFrente(lote);
-  // A referencia de acesso e a MESMA superficie de asfalto usada pela favela, na beira da pista.
-  const bx=p.x+nx*(c.via.largura/2),bz=p.z+nz*(c.via.largura/2);
-  lote.ruaY=levanteContraQuina(bx,bz,PASSO_DA_FITA)+.002;
-  lote.acesso=lote.cota-lote.ruaY;
-  return lote;
-}
+// Transversais: casas no terco externo, nunca coladas no cruzamento central.
+for(let vi=1;vi<vias.length;vi++)for(const u of[.13,.27,.73,.87])for(const lado of[-1,1])candidatos.push({via:vias[vi],u,lado,extra:.24,bloco:Math.min(5,vi+1)});
 
-const lotes=[];const rejeitados={corredor:0,desnivel:0,acesso:0,sobreposicao:0};
-for(const c of CANDIDATOS){
-  if(lotes.length>=MAX_CASAS)break;
-  const lote=candidatoParaLote(c);
-  if(!loteForaDosCorredores(lote)){rejeitados.corredor++;continue}
-  if(lote.desnivel>3.45){rejeitados.desnivel++;continue}
-  // Sem ponte/rampa artificial: aceita apenas terreno em que a frente da casa ainda conversa com a rua.
-  if(Math.abs(lote.acesso)>1.85){rejeitados.acesso++;continue}
-  if(lotes.some(o=>sobrepoe(lote,o))){rejeitados.sobreposicao++;continue}
-  lotes.push(lote);
-}
+const lotes=[],rej={rua:0,relevo:0,acesso:0,vizinho:0};
+for(const c of candidatos){if(lotes.length>=MAX_CASAS)break;const l=loteDe(c);if(!foraDasRuas(l)){rej.rua++;continue}if(l.desnivel>3.1){rej.relevo++;continue}if(Math.abs(l.acesso)>1.55){rej.acesso++;continue}if(lotes.some(o=>sobrepoe(l,o))){rej.vizinho++;continue}lotes.push(l)}
 
-// ===== RENDER LEVE: PECAS REPETIDAS INSTANCIADAS =====
-const box=new THREE.BoxGeometry(1,1,1),painelGeo=new THREE.BoxGeometry(1,1,.045),copaGeo=new THREE.DodecahedronGeometry(1,1),troncoGeo=new THREE.CylinderGeometry(.07,.10,1,7);
-const branco=new THREE.MeshStandardMaterial({color:0xffffff,roughness:.78,metalness:0});
-const acentoMat=new THREE.MeshStandardMaterial({color:0xffffff,roughness:.72,metalness:0});
-const concreto=matConcreto();
-const escuro=new THREE.MeshStandardMaterial({color:0x303537,roughness:.46,metalness:.62});
-const vidro=new THREE.MeshStandardMaterial({color:0x6fa2ad,roughness:.10,metalness:.10,transparent:true,opacity:.50,depthWrite:false});
-const madeira=matMadeira(0x69492f);
-const grama=new THREE.MeshStandardMaterial({color:0x557348,roughness:1,metalness:0});
-const solar=new THREE.MeshStandardMaterial({color:0x17262b,roughness:.18,metalness:.55});
-const folha=new THREE.MeshStandardMaterial({color:0x4f7046,roughness:1,flatShading:true});
-const batches={
-  parede:{geo:box,mat:branco,it:[]},acento:{geo:box,mat:acentoMat,it:[]},concreto:{geo:box,mat:concreto,it:[]},
-  metal:{geo:box,mat:escuro,it:[]},vidro:{geo:painelGeo,mat:vidro,it:[]},madeira:{geo:box,mat:madeira,it:[]},
-  grama:{geo:box,mat:grama,it:[]},solar:{geo:box,mat:solar,it:[]},copa:{geo:copaGeo,mat:folha,it:[]},tronco:{geo:troncoGeo,mat:madeira,it:[]}
-};
-const eixoY=new THREE.Vector3(0,1,0),tmpColor=new THREE.Color();
-function item(tipo,lote,lx,ly,lz,sx,sy,sz,cor=null,giroExtra=0){
-  const p=mundoLocal(lote,lx,lz),q=new THREE.Quaternion().setFromAxisAngle(eixoY,lote.giro+giroExtra);
-  batches[tipo].it.push({p:new THREE.Vector3(p.x,lote.cota+ly,p.z),q,s:new THREE.Vector3(sx,sy,sz),cor});
-}
-function finalizar(tipo,sombra=true){
-  const b=batches[tipo];if(!b.it.length)return;
-  const inst=new THREE.InstancedMesh(b.geo,b.mat,b.it.length),m=new THREE.Matrix4();
-  inst.name=`bairro-nobre-${tipo}`;inst.castShadow=sombra;inst.receiveShadow=true;
-  for(let i=0;i<b.it.length;i++){
-    const a=b.it[i];m.compose(a.p,a.q,a.s);inst.setMatrixAt(i,m);if(a.cor!==null)inst.setColorAt(i,tmpColor.setHex(a.cor));
-  }
-  inst.instanceMatrix.needsUpdate=true;if(inst.instanceColor)inst.instanceColor.needsUpdate=true;grupo.add(inst);
-}
-function registrarCasa(lote,w,d,h,fundacao){
-  let minX=Infinity,maxX=-Infinity,minZ=Infinity,maxZ=-Infinity;
-  for(const lx of[-w/2,w/2])for(const lz of[-d/2,d/2]){const p=mundoLocal(lote,lx,lz);minX=Math.min(minX,p.x);maxX=Math.max(maxX,p.x);minZ=Math.min(minZ,p.z);maxZ=Math.max(maxZ,p.z)}
-  registrarCaixa(new THREE.Box3(new THREE.Vector3(minX,lote.cota-fundacao-.05,minZ),new THREE.Vector3(maxX,lote.cota+h+.45,maxZ)),'casa-bairro-nobre');
-}
-
-const cores=[0xeee9df,0xe2e4df,0xefe8db,0xdadfdc,0xeee6dc,0xe7e2d8];
-const acentos=[0x6b5a4d,0x57646a,0x8a715d,0x4f6258,0x786257,0x59606a];
+// ===== CASAS: poucos draw calls, varias silhuetas =====
+const box=new THREE.BoxGeometry(1,1,1),painel=new THREE.BoxGeometry(1,1,.04),copa=new THREE.DodecahedronGeometry(1,1),tronco=new THREE.CylinderGeometry(.07,.1,1,7);
+const mats={
+ parede:new THREE.MeshStandardMaterial({color:0xffffff,roughness:.8,vertexColors:true}),
+ acento:new THREE.MeshStandardMaterial({color:0xffffff,roughness:.7,vertexColors:true}),
+ concreto:matConcreto(),metal:new THREE.MeshStandardMaterial({color:0x303438,roughness:.48,metalness:.58}),
+ vidro:new THREE.MeshStandardMaterial({color:0x73a7b2,roughness:.12,metalness:.08,transparent:true,opacity:.48,depthWrite:false}),
+ madeira:matMadeira(0x6b4b33),grama:new THREE.MeshStandardMaterial({color:0x557348,roughness:1}),
+ solar:new THREE.MeshStandardMaterial({color:0x18272d,roughness:.2,metalness:.52}),folha:new THREE.MeshStandardMaterial({color:0x4d7046,roughness:1,flatShading:true})};
+const B={parede:{g:box,m:mats.parede,a:[]},acento:{g:box,m:mats.acento,a:[]},concreto:{g:box,m:mats.concreto,a:[]},metal:{g:box,m:mats.metal,a:[]},vidro:{g:painel,m:mats.vidro,a:[]},madeira:{g:box,m:mats.madeira,a:[]},grama:{g:box,m:mats.grama,a:[]},solar:{g:box,m:mats.solar,a:[]},copa:{g:copa,m:mats.folha,a:[]},tronco:{g:tronco,m:mats.madeira,a:[]}};
+const EY=new THREE.Vector3(0,1,0),C=new THREE.Color();
+function item(k,l,x,y,z,sx,sy,sz,cor=null,giro=0){const p=mundoLocal(l,x,z),q=new THREE.Quaternion().setFromAxisAngle(EY,l.giro+giro);B[k].a.push({p:new THREE.Vector3(p.x,l.cota+y,p.z),q,s:new THREE.Vector3(sx,sy,sz),cor})}
+function fechar(k,sombra=true){const b=B[k];if(!b.a.length)return;const im=new THREE.InstancedMesh(b.g,b.m,b.a.length),M=new THREE.Matrix4();im.name=`nobre-${k}`;im.receiveShadow=true;im.castShadow=sombra;for(let i=0;i<b.a.length;i++){const a=b.a[i];M.compose(a.p,a.q,a.s);im.setMatrixAt(i,M);if(a.cor!==null)im.setColorAt(i,C.setHex(a.cor))}im.instanceMatrix.needsUpdate=true;if(im.instanceColor)im.instanceColor.needsUpdate=true;im.frustumCulled=false;grupo.add(im)}
+function colisor(l,w,d,h,f){let x0=Infinity,x1=-Infinity,z0=Infinity,z1=-Infinity;for(const x of[-w/2,w/2])for(const z of[-d/2,d/2]){const p=mundoLocal(l,x,z);x0=Math.min(x0,p.x);x1=Math.max(x1,p.x);z0=Math.min(z0,p.z);z1=Math.max(z1,p.z)}registrarCaixa(new THREE.Box3(new THREE.Vector3(x0,l.cota-f-.05,z0),new THREE.Vector3(x1,l.cota+h+.3,z1)),'casa-bairro-nobre')}
+const cores=[0xf1ece2,0xe4e7e3,0xe9e2d8,0xdce3e1,0xeee8de,0xdedbd4,0xe8e8e3],acentos=[0x66584c,0x54636a,0x806b59,0x4d6258,0x765e52,0x59616c];
 for(let i=0;i<lotes.length;i++){
-  const l=lotes[i],dois=(i%4)!==2,w=5.12+(i%3)*.16,d=3.62+(i%2)*.10;
-  const terrenoCasa=amostrarRetangulo(l,w+.28,d+.28,5);
-  const fundacao=Math.max(.22,l.cota-terrenoCasa.min+.16);
-  // FUNDACAO SOMENTE SOB A CASA. O bloco antigo cobria o lote inteiro e parecia uma plataforma/rampa.
-  item('concreto',l,0,-fundacao/2,-.28,w+.30,fundacao,d+.30);
-  // Pequeno piso de garagem dentro do proprio lote; nao cruza terreno ate a rua.
-  item('concreto',l,-1.02,.045,1.55,2.18,.07,1.18);
-  // Jardim pequeno na cota da frente, sem tapar a encosta inteira.
-  item('grama',l,1.34,.028,1.50,2.05,.045,1.22);
-
-  const h1=2.55,h2=dois?2.22:0,H=h1+h2;
-  item('parede',l,0,h1/2,-.28,w,h1,d,cores[i%cores.length]);
-  if(dois)item('parede',l,.42,h1+h2/2,-.42,w*.70,h2,d*.82,cores[(i+1)%cores.length]);
-  item('acento',l,w/2-.61,H/2,-.25,.68,H+.16,d+.08,acentos[i%acentos.length]);
-
-  // Portao, porta e vidro — variacoes pequenas evitam fileira clonada.
-  item('metal',l,-1.02,.86,d/2-.29,2.12,1.70,.07);
-  item('madeira',l,1.30,.98,d/2-.285,.66,1.96,.075);
-  item('vidro',l,1.29,1.55,d/2-.24,.78,.76,1);
-  if(dois){
-    item('vidro',l,.32,h1+1.13,d*.41,1.66,.92,1);
-    item('concreto',l,.32,h1+.06,d/2+.03,2.04,.10,.72);
-    item('vidro',l,.32,h1+.43,d/2+.41,1.94,.58,1);
-  }else item('vidro',l,.74,1.46,d/2-.24,1.12,.88,1);
-
-  item('concreto',l,0,H+.09,-.28,w+.18,.18,d+.18);
-  if(i%3!==1){item('solar',l,-.63,H+.25,-.34,1.02,.05,.62);item('solar',l,.63,H+.25,-.34,1.02,.05,.62)}
-
-  // Muros baixos respeitam a frente do lote e deixam a arquitetura visivel.
-  item('parede',l,-2.24,.39,l.d/2-.06,1.00,.78,.12,cores[i%cores.length]);
-  item('parede',l,2.08,.39,l.d/2-.06,1.20,.78,.12,cores[i%cores.length]);
-  item('metal',l,-.42,.37,l.d/2,2.44,.72,.055);
-
-  // Uma arvore por lote, alternando o lado. Ela apoia no terreno real, nao na plataforma da casa.
-  const ax=(i%2?-2.05:2.05),az=1.70,ap=mundoLocal(l,ax,az),ay=obterElevacao(ap.x,ap.z)-l.cota;
-  item('tronco',l,ax,ay+.58,az,1,1.15,1);
-  item('copa',l,ax,ay+1.45,az,.43,.56,.43);
-
-  registrarCasa(l,w,d,H,fundacao);
+ const l=lotes[i],baixo=l.bloco>=5,dois=!baixo&&i%4!==2,w=4.75+(i%3)*.14,d=3.38+(i%2)*.12;
+ const t=amostrar(l,w+.22,d+.22),f=Math.max(.2,l.cota-t.min+.14),h1=2.48,h2=dois?2.10:0,H=h1+h2;
+ item('concreto',l,0,-f/2,-.18,w+.22,f,d+.22);
+ item('parede',l,0,h1/2,-.18,w,h1,d,cores[i%cores.length]);
+ if(dois)item('parede',l,(i%2?.35:-.35),h1+h2/2,-.34,w*.72,h2,d*.80,cores[(i+2)%cores.length]);
+ item('acento',l,w/2-.55,H/2,-.18,.58,H+.12,d+.04,acentos[i%acentos.length]);
+ item('metal',l,-.86,.79,d/2-.25,1.82,1.56,.07);item('madeira',l,1.18,.92,d/2-.245,.58,1.84,.075);
+ item('vidro',l,1.10,1.42,d/2-.205,.72,.66,1);
+ if(dois){item('vidro',l,.20,h1+1.02,d*.40,1.45,.78,1);item('concreto',l,.20,h1+.05,d/2+.02,1.78,.09,.60);item('vidro',l,.20,h1+.38,d/2+.34,1.70,.50,1)}
+ else item('vidro',l,.55,1.35,d/2-.205,1.00,.72,1);
+ item('concreto',l,0,H+.08,-.18,w+.14,.16,d+.14);
+ if(!baixo&&i%3!==1){item('solar',l,-.55,H+.22,-.30,.92,.04,.55);item('solar',l,.55,H+.22,-.30,.92,.04,.55)}
+ // Frente mais urbana: muro baixo, portao e jardim compacto; nada cruza a rua.
+ item('parede',l,-1.92,.34,l.d/2-.04,.72,.68,.10,cores[i%cores.length]);item('parede',l,1.90,.34,l.d/2-.04,.76,.68,.10,cores[i%cores.length]);item('metal',l,-.34,.32,l.d/2,2.18,.62,.05);
+ const ax=i%2?-1.92:1.92,az=1.54,p=mundoLocal(l,ax,az),dy=obterElevacao(p.x,p.z)-l.cota;item('tronco',l,ax,dy+.52,az,1,1.02,1);item('copa',l,ax,dy+1.25,az,.36,.48,.36);
+ colisor(l,w,d,H,f);
 }
-for(const k of Object.keys(batches))finalizar(k,k!=='vidro'&&k!=='solar');
-
-console.info('[bairro-nobre-casas] candidatos=%d aprovados=%d/%d | rejeitados=%o | rampas=0',CANDIDATOS.length,lotes.length,MAX_CASAS,rejeitados);
+for(const k of Object.keys(B))fechar(k,k!=='vidro'&&k!=='solar');
+console.info('[bairro-nobre] quarteiroes=%d candidatos=%d casas=%d/%d rejeitados=%o',QUARTEIROES.length,candidatos.length,lotes.length,MAX_CASAS,rej);
 export{lotes as lotesNobres};
