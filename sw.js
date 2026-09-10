@@ -1,7 +1,7 @@
 // Service worker do Quintal 3D.
 // Navegacao e codigo usam rede primeiro SEM cache HTTP para cada release aparecer imediatamente.
 // Assets pesados continuam cache-first para o PWA abrir rapido e funcionar offline.
-const VERSAO='quintal3d-v74-fps';
+const VERSAO='quintal3d-v75-nobre-0325';
 const CASCA=[
   './',
   './index.html',
@@ -22,6 +22,13 @@ self.addEventListener('activate',ev=>{
   ev.waitUntil((async()=>{
     for(const nome of await caches.keys())if(nome!==VERSAO)await caches.delete(nome);
     await self.clients.claim();
+    // Uma nova versao do SW significa uma nova release do jogo. Paginas/PWAs que ja estavam
+    // abertos ainda mantem o grafo ES Modules antigo na memoria mesmo depois do Pages atualizar.
+    // Recarrega cada cliente UMA VEZ nesta ativacao para remontar os modulos com a release atual.
+    const clientes=await self.clients.matchAll({type:'window',includeUncontrolled:true});
+    for(const cliente of clientes){
+      try{await cliente.navigate(cliente.url)}catch(e){}
+    }
   })());
 });
 
