@@ -1,7 +1,7 @@
 // Service worker do Quintal 3D.
 // Navegacao e codigo usam rede primeiro SEM cache HTTP para cada release aparecer imediatamente.
 // Assets pesados continuam cache-first para o PWA abrir rapido e funcionar offline.
-const VERSAO='quintal3d-v75-nobre-0325';
+const VERSAO='quintal3d-v76-nobre-0326';
 const CASCA=[
   './',
   './index.html',
@@ -22,59 +22,23 @@ self.addEventListener('activate',ev=>{
   ev.waitUntil((async()=>{
     for(const nome of await caches.keys())if(nome!==VERSAO)await caches.delete(nome);
     await self.clients.claim();
-    // Uma nova versao do SW significa uma nova release do jogo. Paginas/PWAs que ja estavam
-    // abertos ainda mantem o grafo ES Modules antigo na memoria mesmo depois do Pages atualizar.
-    // Recarrega cada cliente UMA VEZ nesta ativacao para remontar os modulos com a release atual.
     const clientes=await self.clients.matchAll({type:'window',includeUncontrolled:true});
-    for(const cliente of clientes){
-      try{await cliente.navigate(cliente.url)}catch(e){}
-    }
+    for(const cliente of clientes){try{await cliente.navigate(cliente.url)}catch(e){}}
   })());
 });
 
 async function guardar(req,resp){
-  try{
-    if(resp&&(resp.ok||resp.type==='opaque'))(await caches.open(VERSAO)).put(req,resp.clone());
-  }catch(e){}
+  try{if(resp&&(resp.ok||resp.type==='opaque'))(await caches.open(VERSAO)).put(req,resp.clone())}catch(e){}
   return resp;
 }
-
-async function buscarFresco(req){
-  // O cache interno do navegador tambem pode segurar JS por alguns minutos no GitHub Pages.
-  // `no-store` obriga a consultar a versao publicada agora, nao a copia HTTP da sessao anterior.
-  return fetch(req,{cache:'no-store'});
-}
+async function buscarFresco(req){return fetch(req,{cache:'no-store'})}
 
 self.addEventListener('fetch',ev=>{
-  const req=ev.request;
-  if(req.method!=='GET')return;
-
+  const req=ev.request;if(req.method!=='GET')return;
   if(req.mode==='navigate'){
-    ev.respondWith((async()=>{
-      try{return await guardar(req,await buscarFresco(req))}
-      catch(e){return (await caches.match(req))||(await caches.match('./index.html'))||Response.error()}
-    })());
-    return;
+    ev.respondWith((async()=>{try{return await guardar(req,await buscarFresco(req))}catch(e){return(await caches.match(req))||(await caches.match('./index.html'))||Response.error()}})());return;
   }
-
-  const pathname=new URL(req.url).pathname;
-  const ehCodigo=/\.(js|css|webmanifest)$/i.test(pathname);
-  if(ehCodigo){
-    ev.respondWith((async()=>{
-      try{return await guardar(req,await buscarFresco(req))}
-      catch(e){return (await caches.match(req))||Response.error()}
-    })());
-    return;
-  }
-
-  // Modelos, texturas, imagens e CDN: resposta instantanea do cache; atualiza em segundo plano.
-  ev.respondWith((async()=>{
-    const guardado=await caches.match(req);
-    if(guardado){
-      fetch(req).then(r=>guardar(req,r)).catch(()=>{});
-      return guardado;
-    }
-    try{return await guardar(req,await fetch(req))}
-    catch(e){return Response.error()}
-  })());
+  const pathname=new URL(req.url).pathname,ehCodigo=/\.(js|css|webmanifest)$/i.test(pathname);
+  if(ehCodigo){ev.respondWith((async()=>{try{return await guardar(req,await buscarFresco(req))}catch(e){return(await caches.match(req))||Response.error()}})());return;}
+  ev.respondWith((async()=>{const guardado=await caches.match(req);if(guardado){fetch(req).then(r=>guardar(req,r)).catch(()=>{});return guardado}try{return await guardar(req,await fetch(req))}catch(e){return Response.error()}})());
 });
