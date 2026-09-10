@@ -69,7 +69,7 @@ function criarFita(curva,largura,material,{offset=0,altura=.003,passo=.72,passoL
   }
   const row=colunas+1;
   for(let i=0;i<linhas;i++)for(let j=0;j<colunas;j++){
-    const a=i*row+j,b=a+1,c=a+row+1,d=a+row;idx.push(a,d,b,b,d,c);
+    const a=i*row+j,b=a+1,c=a+row+1,d=a+row;idx.push(a,b,d,b,c,d);
   }
   const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
   g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));g.setAttribute('uv1',g.attributes.uv.clone());
@@ -123,8 +123,6 @@ function criarMarcacoes(curva,largura){
 
 infraestruturaVia(avenidaNobre,6.4,true);
 infraestruturaVia(topoCJ,5.4,false);
-infraestruturaVia(alamedaOeste,5.1,false);
-infraestruturaVia(alamedaLeste,5.1,false);
 
 // ===== POSTES DE REDE, FIOS E ILUMINACAO =====
 const postes=[];
@@ -219,9 +217,54 @@ function endereco(curva,u,lado,dist=9.5){
   const p=curva.getPointAt(u),t=curva.getTangentAt(u).normalize(),nx=-t.z*lado,nz=t.x*lado,cx=p.x+nx*dist,cz=p.z+nz*dist;
   return{cx,cz,giro:Math.atan2(-nx,-nz),p,t,nx,nz};
 }
-function criarCasaLuxo(curva,u,lado,idx){
-  const e=endereco(curva,u,lado,9.25+(idx%2)*.5),w=6.35+(idx%3)*.45,d=5.15+(idx%2)*.55,dois=idx%4!==1;
-  const loteW=w+2.05,loteD=d+2.65,{cota,min}=cotaPlana(e.cx,e.cz,e.giro,loteW,loteD),g=new THREE.Group();
+
+// ===== PLANEJAMENTO GEOMETRICO: RUA PRIMEIRO, LOTE DEPOIS =====
+const VIAS_PLANEJADAS=[
+  {nome:'avenida',curva:avenidaNobre,reserva:5.0},
+  {nome:'acesso-cj',curva:topoCJ,reserva:4.4},
+];
+const lotesPlanejados=[{cx:31.3,cz:71.7,giro:0,w:12,d:10,nome:'CJ'}];
+function distanciaPontoRetangulo(px,pz,r){
+  const dx=px-r.cx,dz=pz-r.cz,c=Math.cos(r.giro),sn=Math.sin(r.giro);
+  const lx=dx*c-dz*sn,lz=dx*sn+dz*c,qx=Math.abs(lx)-r.w/2,qz=Math.abs(lz)-r.d/2;
+  if(qx<=0&&qz<=0)return Math.max(qx,qz);
+  return Math.hypot(Math.max(0,qx),Math.max(0,qz));
+}
+function projecaoLote(r,ex,ez){
+  const c=Math.cos(r.giro),sn=Math.sin(r.giro);
+  return Math.abs(c*ex-sn*ez)*r.w/2+Math.abs(sn*ex+c*ez)*r.d/2;
+}
+function lotesSeTocam(a,b,folga=.8){
+  const dx=b.cx-a.cx,dz=b.cz-a.cz;
+  for(const r of[a,b]){
+    const c=Math.cos(r.giro),sn=Math.sin(r.giro),eixos=[[c,-sn],[sn,c]];
+    for(const[ex,ez]of eixos)
+      if(Math.abs(dx*ex+dz*ez)>projecaoLote(a,ex,ez)+projecaoLote(b,ex,ez)+folga)return false;
+  }
+  return true;
+}
+function corredorLivre(lote){
+  for(const via of VIAS_PLANEJADAS){
+    const n=Math.max(20,Math.ceil(via.curva.getLength()/.35));
+    for(let i=0;i<=n;i++){
+      const p=via.curva.getPointAt(i/n);
+      if(distanciaPontoRetangulo(p.x,p.z,lote)<via.reserva)return false;
+    }
+  }
+  return true;
+}
+function reservarLote(lote){
+  if(!corredorLivre(lote)){console.warn('[bairro-nobre] lote rejeitado por invadir via:',lote.nome);return false}
+  for(const outro of lotesPlanejados)if(lotesSeTocam(lote,outro,.8)){
+    console.warn('[bairro-nobre] lote rejeitado por sobreposicao:',lote.nome,'x',outro.nome);return false;
+  }
+  lotesPlanejados.push(lote);return true;
+}
+function criarCasaLuxo(curva,u,lado,idx,dist){
+  const e=endereco(curva,u,lado,dist),w=5.7+(idx%3)*.3,d=4.7+(idx%2)*.35,dois=idx%4!==1;
+  const loteW=w+1.5,loteD=d+1.9;
+  if(!reservarLote({cx:e.cx,cz:e.cz,giro:e.giro,w:loteW,d:loteD,nome:`casa-${idx}`}))return false;
+  const{cota,min}=cotaPlana(e.cx,e.cz,e.giro,loteW,loteD),g=new THREE.Group();
   g.position.set(e.cx,cota,e.cz);g.rotation.y=e.giro;g.name=`casa-nobre-${idx}`;bairro.add(g);
   const baseH=Math.max(.24,cota-min+.12),parede=matReboco(coresCasa[idx%coresCasa.length]),acento=matReboco(coresAcento[idx%coresAcento.length]);
   pecaLocal(g,new THREE.BoxGeometry(loteW,baseH,loteD),concreto,0,-baseH/2,0,false);
@@ -268,19 +311,27 @@ function criarCasaLuxo(curva,u,lado,idx){
   // Luz de fachada sem criar PointLight em toda residencia.
   pecaLocal(g,new THREE.BoxGeometry(.12,.22,.07),emissivo,w/2-1.64,1.92,d/2+.10,false);
   caixaRotacionada(e.cx,e.cz,e.giro,w,d,cota-.35,cota+altura+.48,'casa-bairro-nobre');
+  return true;
 }
 
-const us=[.12,.22,.32,.43,.55,.67,.78];let casaId=0;
-for(const u of us)for(const lado of[-1,1]){
-  // Reserva a lateral oeste do miolo para a praca.
-  if(u===.55&&lado===-1)continue;criarCasaLuxo(avenidaNobre,u,lado,casaId++);
+const SITES_CASA=[
+  [.55,-1,9.3],[.40,1,9.3],[.14,1,9.3],[.65,-1,9.3],
+  [.33,1,12.9],[.40,1,17.1],[.26,-1,14.7],[.59,-1,17.7],
+  [.47,1,18.3],[.66,-1,17.7],[.68,-1,17.7],[.33,1,20.7],
+  [.23,-1,22.5],[.40,1,24.9]
+];
+let casaId=0;
+for(let idx=0;idx<SITES_CASA.length;idx++){
+  const[u,lado,dist]=SITES_CASA[idx];
+  if(criarCasaLuxo(avenidaNobre,u,lado,idx,dist))casaId++;
 }
-for(const[curva,base]of[[alamedaOeste,40],[alamedaLeste,50]])for(const lado of[-1,1])criarCasaLuxo(curva,.63,lado,base+lado+2);
 
 // Dois predios baixos na chegada da favela fazem a transicao de densidade: bairro nobre residencial
 // em cima, edificacao mais urbana embaixo, antes de entrar no tecido apertado da favela.
-function criarPredio(u,lado,id){
-  const e=endereco(avenidaNobre,u,lado,10.2),w=7.4,d=6.0,{cota,min}=cotaPlana(e.cx,e.cz,e.giro,8.5,7.0),g=new THREE.Group();
+function criarPredio(u,lado,id,dist){
+  const e=endereco(avenidaNobre,u,lado,dist),w=7.4,d=6.0;
+  if(!reservarLote({cx:e.cx,cz:e.cz,giro:e.giro,w:8.5,d:7.0,nome:`predio-${id}`}))return false;
+  const{cota,min}=cotaPlana(e.cx,e.cz,e.giro,8.5,7.0),g=new THREE.Group();
   g.position.set(e.cx,cota,e.cz);g.rotation.y=e.giro;bairro.add(g);
   const fund=Math.max(.3,cota-min+.15),parede=matReboco(id?0xd9d7cf:0xe8e4da),h=7.35;
   pecaLocal(g,new THREE.BoxGeometry(8.5,fund,7),concreto,0,-fund/2,0,false);
@@ -293,11 +344,13 @@ function criarPredio(u,lado,id){
   pecaLocal(g,new THREE.BoxGeometry(w+.65,.48,.035),vidro,0,3.28,d/2+.98,false);
   caixaRotacionada(e.cx,e.cz,e.giro,w,d,cota-.4,cota+h+.3,'predio-bairro-nobre');
 }
-criarPredio(.88,-1,0);criarPredio(.88,1,1);
+criarPredio(.96,-1,0,18.0);criarPredio(.96,1,1,10.5);
 
 // ===== PRACA CENTRAL =====
 function criarPraca(){
-  const e=endereco(avenidaNobre,.55,-1,11.2),W=8.6,D=6.6,{cota,min}=cotaPlana(e.cx,e.cz,e.giro,W,D),g=new THREE.Group();g.position.set(e.cx,cota,e.cz);g.rotation.y=e.giro;bairro.add(g);
+  const e=endereco(avenidaNobre,.48275862068965514,1,10.5),W=8.6,D=6.6;
+  if(!reservarLote({cx:e.cx,cz:e.cz,giro:e.giro,w:W,d:D,nome:'praca'}))return;
+  const{cota,min}=cotaPlana(e.cx,e.cz,e.giro,W,D),g=new THREE.Group();g.position.set(e.cx,cota,e.cz);g.rotation.y=e.giro;bairro.add(g);
   const fund=Math.max(.18,cota-min+.08);pecaLocal(g,new THREE.BoxGeometry(W,fund,D),calcadaMat,0,-fund/2,0,false);superficiesAndaveis.push(g.children[0]);
   // Fonte baixa central.
   pecaLocal(g,new THREE.CylinderGeometry(1.08,1.18,.28,24),pedra,0,.14,0,false);
@@ -337,4 +390,4 @@ for(const u of[.18,.40,.64,.82]){
   mesh(new THREE.CylinderGeometry(.11,.14,.48,10),hidranteMat,x,y+.24,z,bairro,false);mesh(new THREE.SphereGeometry(.13,8,5),hidranteMat,x,y+.51,z,bairro,false);
 }
 
-console.info('[bairro-nobre] %s | casas=%d predios=2 postes=%d arvores=%d | ligacao favela=(31,1.2)',BAIRRO_NOBRE.nome,casaId+4,postes.length,arvN);
+console.info('[bairro-nobre] %s | casas=%d predios=2 lotes-validados=%d postes=%d arvores=%d | corredor viario protegido',BAIRRO_NOBRE.nome,casaId,lotesPlanejados.length,postes.length,arvN);
