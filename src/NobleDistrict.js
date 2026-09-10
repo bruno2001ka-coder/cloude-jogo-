@@ -112,11 +112,11 @@ function criarMarcacoes(curva,largura){
   }
   tampas.instanceMatrix.needsUpdate=true;bairro.add(tampas);
   const grelhaGeo=new THREE.BoxGeometry(.54,.025,.22),grelhas=new THREE.InstancedMesh(grelhaGeo,metalEscuro,12);
-  let k=0;const m4=new THREE.Matrix4(),q=new THREE.Quaternion(),sc=new THREE.Vector3(1,1,1),pos=new THREE.Vector3(),ey=new THREE.Vector3(0,1,0);
+  let k=0;const m42=new THREE.Matrix4(),q2=new THREE.Quaternion(),sc2=new THREE.Vector3(1,1,1),pos2=new THREE.Vector3(),ey2=new THREE.Vector3(0,1,0);
   for(let i=0;i<6;i++)for(const lado of[-1,1]){
     const u=.10+i*.15,p=curva.getPointAt(u),t=curva.getTangentAt(u).normalize(),nx=-t.z,nz=t.x;
-    const x=p.x+nx*lado*(largura/2-.28),z=p.z+nz*lado*(largura/2-.28);q.setFromAxisAngle(ey,Math.atan2(t.x,t.z));
-    pos.set(x,hRua(x,z)+.018,z);m4.compose(pos,q,sc);grelhas.setMatrixAt(k++,m4);
+    const x=p.x+nx*lado*(largura/2-.28),z=p.z+nz*lado*(largura/2-.28);q2.setFromAxisAngle(ey2,Math.atan2(t.x,t.z));
+    pos2.set(x,hRua(x,z)+.018,z);m42.compose(pos2,q2,sc2);grelhas.setMatrixAt(k++,m42);
   }
   grelhas.instanceMatrix.needsUpdate=true;bairro.add(grelhas);
 }
