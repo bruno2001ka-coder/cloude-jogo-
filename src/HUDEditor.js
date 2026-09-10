@@ -3,7 +3,8 @@ import'./GameplayPolish.js';
 import'./Performance.js';
 import'./PerformanceManager.js';
 import'./CasaJogador.js';
-import'./NobleDistrict.js';
+// Bairro nobre antigo desativado enquanto a planta urbana e recalculada.
+import'./NobleDistrictRoads.js';
 import'./AnimalVisualUpgrade.js';
 // v2 separa retrato e paisagem. O v1 aplicava a mesma porcentagem nas duas orientacoes e fazia HUD,
 // radar e botoes se empilharem quando o celular girava.
@@ -38,4 +39,3 @@ addEventListener('keydown',e=>{if(e.code==='Escape'&&editando){e.preventDefault(
 let resizeT=0;addEventListener('resize',()=>{clearTimeout(resizeT);resizeT=setTimeout(()=>{if(editando&&layoutAtual){aplicar(layoutAtual);return}if(modoTela()!==modoAtual)aplicarModoAtual()},120)});
 aplicarModoAtual();
 export function isHUDEditando(){return editando}
-export function iniciarEditorHUD(){if(!editando)abrir()}
