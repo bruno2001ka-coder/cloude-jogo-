@@ -1,44 +1,54 @@
 // ===== JARDINS DO MORRO — CASAS EM LOTES VALIDADOS =====
-// As residencias so existem depois que o lote passa por: corredor viario, protecao da CJ,
-// sobreposicao com outros lotes, desnivel do terreno e diferenca de cota ate a rua.
+// O bairro nasce depois das ruas. Cada lote e testado contra TODOS os corredores, a CJ,
+// os outros lotes e o relevo. Nao existe mais rampa longa de garagem nem platô do lote inteiro.
 import*as THREE from'three';
 import{scene}from'./core.js';
 import{obterElevacao}from'./Terrain.js';
-import{registrarCaixa,superficiesAndaveis}from'./Physics.js';
+import{registrarCaixa}from'./Physics.js';
 import{matConcreto,matMadeira}from'./Materials.js';
-import{vias,corredorTotal,pontoEmCorredorViario,alturaPerfil}from'./NobleDistrictPlan.js';
+import{vias,corredorTotal,pontoEmCorredorViario}from'./NobleDistrictPlan.js';
+import{levanteContraQuina,PASSO_DA_FITA}from'./Favela.js';
 
 const grupo=new THREE.Group();grupo.name='bairro-nobre-casas-validadas';scene.add(grupo);
-const avenida=vias[0];
-const LOTE_W=6.4,LOTE_D=5.6,MARGEM_LOTES=.45;
+const LOTE_W=6.15,LOTE_D=5.25,MARGEM_LOTES=.38,MAX_CASAS=14;
 
-// Estes cinco pontos foram medidos contra a planta atual. Mesmo assim sao validados novamente em
-// runtime: se a via mudar no futuro, uma casa invalida simplesmente deixa de nascer.
-const CANDIDATOS=[
-  {via:avenida,u:.04,lado:-1,extra:2.0},
-  {via:avenida,u:.04,lado: 1,extra:3.5},
-  {via:avenida,u:.21333333333333332,lado:1,extra:2.0},
-  {via:avenida,u:.32888888888888884,lado:1,extra:2.0},
-  {via:avenida,u:.6177777777777778,lado:-1,extra:2.0},
-];
+// Muitos candidatos, poucos aceitos. A ordem intercala avenida e alamedas para o bairro nao ficar
+// todo concentrado numa rua. A geracao e deterministica: o mapa nao muda a cada carregamento.
+const CANDIDATOS=[];
+const US=[.11,.19,.27,.35,.43,.51,.59,.67,.75,.83,.89];
+for(let k=0;k<US.length;k++)for(let vi=0;vi<vias.length;vi++)for(const lado of[-1,1]){
+  const u=US[k];
+  if(vi===0&&u>.87)continue;// deixa a emenda com a favela completamente livre
+  CANDIDATOS.push({via:vias[vi],u,lado,extra:.46+((k+vi+(lado>0?1:0))%3)*.12});
+}
 
 function mundoLocal(lote,lx,lz){
   const c=Math.cos(lote.giro),s=Math.sin(lote.giro);
   return{x:lote.cx+lx*c+lz*s,z:lote.cz-lx*s+lz*c};
 }
-function amostrarLote(lote,n=5){
+function amostrarRetangulo(lote,w=lote.w,d=lote.d,n=5){
   let min=Infinity,max=-Infinity;
   for(let ix=0;ix<n;ix++)for(let iz=0;iz<n;iz++){
-    const lx=-lote.w/2+lote.w*ix/(n-1),lz=-lote.d/2+lote.d*iz/(n-1),p=mundoLocal(lote,lx,lz),h=obterElevacao(p.x,p.z);
+    const lx=-w/2+w*ix/(n-1),lz=-d/2+d*iz/(n-1),p=mundoLocal(lote,lx,lz),h=obterElevacao(p.x,p.z);
     min=Math.min(min,h);max=Math.max(max,h);
   }
   return{min,max};
 }
+function cotaDaFrente(lote){
+  // A casa se assenta pela frente/soleira, igual a logica madura das casas do morro.
+  // Isso evita levantar a casa inteira porque o fundo do lote sobe alguns metros.
+  let cota=-Infinity;
+  for(let i=0;i<7;i++)for(const recuo of[0,.42]){
+    const lx=-lote.w/2+lote.w*i/6,lz=lote.d/2-recuo,p=mundoLocal(lote,lx,lz);
+    cota=Math.max(cota,obterElevacao(p.x,p.z));
+  }
+  return cota+.055;
+}
 function loteForaDosCorredores(lote){
-  // Grade densa 7x7, nao apenas os quatro cantos. Isso pega uma curva de rua atravessando o meio.
+  // Grade 7x7: pega inclusive uma curva atravessando o meio do lote.
   for(let ix=0;ix<7;ix++)for(let iz=0;iz<7;iz++){
     const lx=-lote.w/2+lote.w*ix/6,lz=-lote.d/2+lote.d*iz/6,p=mundoLocal(lote,lx,lz);
-    if(pontoEmCorredorViario(p.x,p.z,.30))return false;
+    if(pontoEmCorredorViario(p.x,p.z,.20))return false;
   }
   return true;
 }
@@ -61,23 +71,28 @@ function candidatoParaLote(c){
   const dist=corredorTotal(c.via)+LOTE_D/2+c.extra;
   const cx=p.x+nx*dist,cz=p.z+nz*dist,giro=Math.atan2(-nx,-nz);
   const lote={cx,cz,giro,w:LOTE_W,d:LOTE_D,via:c.via,u:c.u,p,t,nx,nz};
-  const h=amostrarLote(lote,5);lote.min=h.min;lote.max=h.max;lote.cota=h.max+.08;lote.desnivel=h.max-h.min;
-  lote.ruaY=alturaPerfil(c.via,c.u)+.035;lote.acesso=lote.cota-lote.ruaY;
+  const h=amostrarRetangulo(lote,LOTE_W,LOTE_D,5);lote.min=h.min;lote.max=h.max;lote.desnivel=h.max-h.min;
+  lote.cota=cotaDaFrente(lote);
+  // A referencia de acesso e a MESMA superficie de asfalto usada pela favela, na beira da pista.
+  const bx=p.x+nx*(c.via.largura/2),bz=p.z+nz*(c.via.largura/2);
+  lote.ruaY=levanteContraQuina(bx,bz,PASSO_DA_FITA)+.002;
+  lote.acesso=lote.cota-lote.ruaY;
   return lote;
 }
 
-const lotes=[];
+const lotes=[];const rejeitados={corredor:0,desnivel:0,acesso:0,sobreposicao:0};
 for(const c of CANDIDATOS){
+  if(lotes.length>=MAX_CASAS)break;
   const lote=candidatoParaLote(c);
-  if(!loteForaDosCorredores(lote))continue;
-  if(lote.desnivel>2.9)continue;
-  // Garagem nao pode nascer varios metros acima ou abaixo da rua.
-  if(Math.abs(lote.acesso)>1.10)continue;
-  if(lotes.some(o=>sobrepoe(lote,o)))continue;
+  if(!loteForaDosCorredores(lote)){rejeitados.corredor++;continue}
+  if(lote.desnivel>3.45){rejeitados.desnivel++;continue}
+  // Sem ponte/rampa artificial: aceita apenas terreno em que a frente da casa ainda conversa com a rua.
+  if(Math.abs(lote.acesso)>1.85){rejeitados.acesso++;continue}
+  if(lotes.some(o=>sobrepoe(lote,o))){rejeitados.sobreposicao++;continue}
   lotes.push(lote);
 }
 
-// ===== RENDER EM LOTES: PECAS REPETIDAS SAO INSTANCIADAS =====
+// ===== RENDER LEVE: PECAS REPETIDAS INSTANCIADAS =====
 const box=new THREE.BoxGeometry(1,1,1),painelGeo=new THREE.BoxGeometry(1,1,.045),copaGeo=new THREE.DodecahedronGeometry(1,1),troncoGeo=new THREE.CylinderGeometry(.07,.10,1,7);
 const branco=new THREE.MeshStandardMaterial({color:0xffffff,roughness:.78,metalness:0});
 const acentoMat=new THREE.MeshStandardMaterial({color:0xffffff,roughness:.72,metalness:0});
@@ -107,63 +122,56 @@ function finalizar(tipo,sombra=true){
   }
   inst.instanceMatrix.needsUpdate=true;if(inst.instanceColor)inst.instanceColor.needsUpdate=true;grupo.add(inst);
 }
-function registrarCasa(lote,w,d,h){
+function registrarCasa(lote,w,d,h,fundacao){
   let minX=Infinity,maxX=-Infinity,minZ=Infinity,maxZ=-Infinity;
   for(const lx of[-w/2,w/2])for(const lz of[-d/2,d/2]){const p=mundoLocal(lote,lx,lz);minX=Math.min(minX,p.x);maxX=Math.max(maxX,p.x);minZ=Math.min(minZ,p.z);maxZ=Math.max(maxZ,p.z)}
-  registrarCaixa(new THREE.Box3(new THREE.Vector3(minX,lote.cota-.2,minZ),new THREE.Vector3(maxX,lote.cota+h+.45,maxZ)),'casa-bairro-nobre');
-}
-function rampaGaragem(lote){
-  const frente=mundoLocal(lote,-1.05,lote.d/2-.03);
-  const borda={x:lote.p.x+lote.nx*(lote.via.largura/2+.18),z:lote.p.z+lote.nz*(lote.via.largura/2+.18)};
-  const tx=lote.t.x,tz=lote.t.z,meia=1.12;
-  const verts=[
-    frente.x-tx*meia,lote.cota+.045,frente.z-tz*meia,
-    frente.x+tx*meia,lote.cota+.045,frente.z+tz*meia,
-    borda.x+tx*meia,lote.ruaY+.055,borda.z+tz*meia,
-    borda.x-tx*meia,lote.ruaY+.055,borda.z-tz*meia
-  ];
-  const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(verts,3));g.setIndex([0,1,3,1,2,3]);g.computeVertexNormals();
-  const m=new THREE.Mesh(g,concreto);m.name='acesso-garagem-nobre';m.receiveShadow=true;grupo.add(m);superficiesAndaveis.push(m);
+  registrarCaixa(new THREE.Box3(new THREE.Vector3(minX,lote.cota-fundacao-.05,minZ),new THREE.Vector3(maxX,lote.cota+h+.45,maxZ)),'casa-bairro-nobre');
 }
 
-const cores=[0xeee9df,0xe2e4df,0xefe8db,0xdadfdc,0xeee6dc];
-const acentos=[0x6b5a4d,0x57646a,0x8a715d,0x4f6258,0x786257];
+const cores=[0xeee9df,0xe2e4df,0xefe8db,0xdadfdc,0xeee6dc,0xe7e2d8];
+const acentos=[0x6b5a4d,0x57646a,0x8a715d,0x4f6258,0x786257,0x59606a];
 for(let i=0;i<lotes.length;i++){
-  const l=lotes[i],dois=i!==2,baseH=Math.max(.25,l.cota-l.min+.12),w=5.25+(i%2)*.18,d=3.72;
-  // Terraco nivelado: cobre o lote inteiro e transforma o corte/aterro em muro de arrimo legivel.
-  item('concreto',l,0,-baseH/2,0,l.w,baseH,l.d);
-  item('grama',l,.65,.035,.22,l.w-1.55,.055,l.d-.42);
-  // Entrada da garagem em piso duro.
-  item('concreto',l,-1.05,.065,1.62,2.28,.09,2.25);
+  const l=lotes[i],dois=(i%4)!==2,w=5.12+(i%3)*.16,d=3.62+(i%2)*.10;
+  const terrenoCasa=amostrarRetangulo(l,w+.28,d+.28,5);
+  const fundacao=Math.max(.22,l.cota-terrenoCasa.min+.16);
+  // FUNDACAO SOMENTE SOB A CASA. O bloco antigo cobria o lote inteiro e parecia uma plataforma/rampa.
+  item('concreto',l,0,-fundacao/2,-.28,w+.30,fundacao,d+.30);
+  // Pequeno piso de garagem dentro do proprio lote; nao cruza terreno ate a rua.
+  item('concreto',l,-1.02,.045,1.55,2.18,.07,1.18);
+  // Jardim pequeno na cota da frente, sem tapar a encosta inteira.
+  item('grama',l,1.34,.028,1.50,2.05,.045,1.22);
+
   const h1=2.55,h2=dois?2.22:0,H=h1+h2;
-  item('parede',l,0,h1/2,-.34,w,h1,d,cores[i%cores.length]);
-  if(dois)item('parede',l,.46,h1+h2/2,-.48,w*.70,h2,d*.82,cores[(i+1)%cores.length]);
-  // Volume vertical de pedra/reboco escuro.
-  item('acento',l,w/2-.64,H/2,-.30,.72,H+.16,d+.08,acentos[i%acentos.length]);
-  // Portao, porta e janelas frontais.
-  item('metal',l,-1.05,.86,d/2-.30,2.20,1.70,.07);
-  item('madeira',l,1.35,.98,d/2-.295,.66,1.96,.075);
-  item('vidro',l,1.34,1.55,d/2-.245,.78,.76,1);
+  item('parede',l,0,h1/2,-.28,w,h1,d,cores[i%cores.length]);
+  if(dois)item('parede',l,.42,h1+h2/2,-.42,w*.70,h2,d*.82,cores[(i+1)%cores.length]);
+  item('acento',l,w/2-.61,H/2,-.25,.68,H+.16,d+.08,acentos[i%acentos.length]);
+
+  // Portao, porta e vidro — variacoes pequenas evitam fileira clonada.
+  item('metal',l,-1.02,.86,d/2-.29,2.12,1.70,.07);
+  item('madeira',l,1.30,.98,d/2-.285,.66,1.96,.075);
+  item('vidro',l,1.29,1.55,d/2-.24,.78,.76,0xffffff);
   if(dois){
-    item('vidro',l,.35,h1+1.13,d*.41,1.72,.92,1);
-    item('concreto',l,.35,h1+.06,d/2+.03,2.12,.10,.76);
-    item('vidro',l,.35,h1+.43,d/2+.43,2.02,.58,1);
-  }else item('vidro',l,.78,1.46,d/2-.245,1.18,.88,1);
-  // Platibanda e dois paineis solares em casas alternadas.
-  item('concreto',l,0,H+.09,-.34,w+.18,.18,d+.18);
-  if(i%2===0){item('solar',l,-.67,H+.25,-.40,1.10,.05,.66);item('solar',l,.67,H+.25,-.40,1.10,.05,.66)}
-  // Muro frontal baixo deixa fachada visivel, sem virar fortaleza.
-  item('parede',l,-2.30,.42,l.d/2-.05,1.10,.84,.12,cores[i%cores.length]);
-  item('parede',l,2.12,.42,l.d/2-.05,1.38,.84,.12,cores[i%cores.length]);
-  item('metal',l,-.45,.40,l.d/2,2.50,.78,.055);
-  // Paisagismo: duas arvores pequenas e macicos verdes na frente.
-  for(const sx of[-2.18,2.20]){
-    item('tronco',l,sx,.60,1.75,1,1.18,1);
-    item('copa',l,sx,1.48,1.75,.44,.58,.44);
-  }
-  registrarCasa(l,w,d,H);rampaGaragem(l);
+    item('vidro',l,.32,h1+1.13,d*.41,1.66,.92,0xffffff);
+    item('concreto',l,.32,h1+.06,d/2+.03,2.04,.10,.72);
+    item('vidro',l,.32,h1+.43,d/2+.41,1.94,.58,0xffffff);
+  }else item('vidro',l,.74,1.46,d/2-.24,1.12,.88,0xffffff);
+
+  item('concreto',l,0,H+.09,-.28,w+.18,.18,d+.18);
+  if(i%3!==1){item('solar',l,-.63,H+.25,-.34,1.02,.05,.62);item('solar',l,.63,H+.25,-.34,1.02,.05,.62)}
+
+  // Muros baixos respeitam a frente do lote e deixam a arquitetura visivel.
+  item('parede',l,-2.24,.39,l.d/2-.06,1.00,.78,.12,cores[i%cores.length]);
+  item('parede',l,2.08,.39,l.d/2-.06,1.20,.78,.12,cores[i%cores.length]);
+  item('metal',l,-.42,.37,l.d/2,2.44,.72,.055);
+
+  // Uma arvore por lote, alternando o lado. Ela apoia no terreno real, nao na plataforma da casa.
+  const ax=(i%2?-2.05:2.05),az=1.70,ap=mundoLocal(l,ax,az),ay=obterElevacao(ap.x,ap.z)-l.cota;
+  item('tronco',l,ax,ay+.58,az,1,1.15,1);
+  item('copa',l,ax,ay+1.45,az,.43,.56,.43);
+
+  registrarCasa(l,w,d,H,fundacao);
 }
 for(const k of Object.keys(batches))finalizar(k,k!=='vidro'&&k!=='solar');
 
-console.info('[bairro-nobre-casas] candidatos=%d aprovados=%d | todos fora da via e com acesso validado',CANDIDATOS.length,lotes.length);
+console.info('[bairro-nobre-casas] candidatos=%d aprovados=%d/%d | rejeitados=%o | rampas=0',CANDIDATOS.length,lotes.length,MAX_CASAS,rejeitados);
 export{lotes as lotesNobres};
