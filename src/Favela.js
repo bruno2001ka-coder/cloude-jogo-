@@ -1297,7 +1297,7 @@ export function levanteContraQuina(x,z,r){
   }
   return h0+levante;
 }
-function fitaDaVia(curva,largura,terra=false){
+export function fitaDaVia(curva,largura,terra=false){
   const total=curva.getLength(),n=Math.max(4,Math.round(total/PASSO_LARGURA));
   const pos=[],nor=[],uv=[],cor=[],idx=[];
   // Meia-largura de cada coluna, de uma beira à outra, e o quanto cada uma puxa pra cor de terra.
@@ -1364,7 +1364,7 @@ function fitaDaVia(curva,largura,terra=false){
 // jogo lê `Physics.js`, não isto: a viatura sobe a guia sem bater numa parede invisível de 14 cm, e
 // o jogador atravessa andando, como se atravessa um meio-fio de verdade.
 const MEIOFIO_ALT=.14,MEIOFIO_LARG=.22;
-function meioFioDaVia(curva,largura){
+export function meioFioDaVia(curva,largura){
   const total=curva.getLength(),n=Math.max(4,Math.round(total/1.5));
   const pos=[],nor=[],uv=[],idx=[];
   const emp=(x,y,z,nx,ny,nz,u,v)=>{pos.push(x,y,z);nor.push(nx,ny,nz);uv.push(u,v);return pos.length/3-1};
