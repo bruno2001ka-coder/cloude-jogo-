@@ -3,8 +3,9 @@ import'./GameplayPolish.js';
 import'./Performance.js';
 import'./PerformanceManager.js';
 import'./CasaJogador.js';
-// Bairro nobre antigo desativado enquanto a planta urbana e recalculada.
+// Bairro nobre reconstruido em ordem: vias calculadas primeiro, lotes/casas validados depois.
 import'./NobleDistrictRoads.js';
+import'./NobleDistrictHouses.js';
 import'./AnimalVisualUpgrade.js';
 // v2 separa retrato e paisagem. O v1 aplicava a mesma porcentagem nas duas orientacoes e fazia HUD,
 // radar e botoes se empilharem quando o celular girava.
