@@ -1,92 +1,124 @@
-// ===== JARDINS DO MORRO — CASAS DENSAS E VARIADAS / 5 QUARTEIROES =====
-// Regra: ruas primeiro. Casas tentam posicoes previsiveis por quarteirao e, se necessario,
-// afastam-se da via ate encontrar lote livre. Vegetacao publica nunca nasce aqui.
+// ===== JARDINS DO MORRO — CASAS NO PADRAO ESTRUTURAL DA FAVELA =====
+// Esta geracao segue a arquitetura que ja funciona em Favela.js:
+// 1) lote e dado; visual e fisica saem dele;
+// 2) parede do terreo desce ate o terreno em volta, casa nao boia;
+// 3) geometria de casa e FUNDIDA por material — nao InstancedMesh PBR;
+// 4) colisores saem do lote, nao de Box3().setFromObject();
+// 5) varias familias de fachada/telhado usam os materiais PBR compartilhados do jogo.
 import*as THREE from'three';
+import{mergeGeometries}from'three/addons/utils/BufferGeometryUtils.js';
 import{scene}from'./core.js';
 import{obterElevacao}from'./Terrain.js';
 import{registrarCaixa}from'./Physics.js';
-import{matConcreto,matMadeira}from'./Materials.js';
+import{matReboco,matTelha,matConcreto,matMadeira,uvPorMetro,bmat}from'./Materials.js';
 import{vias,corredorTotal,pontoEmCorredorViario,QUARTEIROES}from'./NobleDistrictPlan.js';
 
-const grupo=new THREE.Group();grupo.name='bairro-nobre-casas';scene.add(grupo);
-const LOTE_W=4.80,LOTE_D=4.35,MARGEM=.28,MAX_CASAS=36;
+const grupo=new THREE.Group();grupo.name='bairro-nobre-casas-fundidas';scene.add(grupo);
+const LOTE_W=4.45,LOTE_D=4.25,MARGEM=.18,MAX_CASAS=34;
+const pilhas=new Map();
+const EY=new THREE.Vector3(0,1,0),EZ=new THREE.Vector3(0,0,1);
 
+function acumular(mat,geo){if(!pilhas.has(mat))pilhas.set(mat,[]);pilhas.get(mat).push(geo)}
+function caixa(mat,w,h,d,x,y,z,giro=0,tiltZ=0){
+  const g=new THREE.BoxGeometry(w,h,d);uvPorMetro(g);
+  const qYaw=new THREE.Quaternion().setFromAxisAngle(EY,giro);
+  const qTilt=new THREE.Quaternion().setFromAxisAngle(EZ,tiltZ);
+  const q=qYaw.multiply(qTilt),m=new THREE.Matrix4().compose(new THREE.Vector3(x,y,z),q,new THREE.Vector3(1,1,1));
+  g.applyMatrix4(m);acumular(mat,g);return g;
+}
 function mundoLocal(l,lx,lz){const c=Math.cos(l.giro),s=Math.sin(l.giro);return{x:l.cx+lx*c+lz*s,z:l.cz-lx*s+lz*c}}
-function amostrar(l,w=l.w,d=l.d,n=5){let min=Infinity,max=-Infinity;for(let ix=0;ix<n;ix++)for(let iz=0;iz<n;iz++){const p=mundoLocal(l,-w/2+w*ix/(n-1),-d/2+d*iz/(n-1)),h=obterElevacao(p.x,p.z);min=Math.min(min,h);max=Math.max(max,h)}return{min,max}}
-function cotaFrente(l){let soma=0,n=0;for(let i=0;i<7;i++){const p=mundoLocal(l,-l.w/2+l.w*i/6,l.d/2-.16),h=obterElevacao(p.x,p.z);soma+=h;n++}return soma/n+.08}
-function foraDasRuas(l){for(let ix=0;ix<7;ix++)for(let iz=0;iz<7;iz++){const p=mundoLocal(l,-l.w/2+l.w*ix/6,-l.d/2+l.d*iz/6);if(pontoEmCorredorViario(p.x,p.z,.05))return false}return true}
+function caixaLote(l,mat,w,h,d,lx,y,lz,tiltZ=0){const p=mundoLocal(l,lx,lz);caixa(mat,w,h,d,p.x,y,p.z,l.giro,tiltZ)}
 function cantos(l,m=MARGEM){const w=l.w+2*m,d=l.d+2*m;return[[-w/2,-d/2],[w/2,-d/2],[w/2,d/2],[-w/2,d/2]].map(([x,z])=>mundoLocal(l,x,z))}
 function proj(P,ax,az){let min=Infinity,max=-Infinity;for(const p of P){const v=p.x*ax+p.z*az;min=Math.min(min,v);max=Math.max(max,v)}return{min,max}}
 function sobrepoe(a,b){const A=cantos(a),B=cantos(b);for(const P of[A,B])for(let i=0;i<4;i++){const p=P[i],q=P[(i+1)%4],ex=q.x-p.x,ez=q.z-p.z,len=Math.hypot(ex,ez)||1,ax=-ez/len,az=ex/len,pa=proj(A,ax,az),pb=proj(B,ax,az);if(pa.max<pb.min||pb.max<pa.min)return false}return true}
-function loteDe(c,extra){const p=c.via.curva.getPointAt(c.u),t=c.via.curva.getTangentAt(c.u).normalize(),nx=-t.z*c.lado,nz=t.x*c.lado;const dist=corredorTotal(c.via)+LOTE_D/2+extra;const l={cx:p.x+nx*dist,cz:p.z+nz*dist,giro:Math.atan2(-nx,-nz),w:LOTE_W,d:LOTE_D,via:c.via,u:c.u,bloco:c.bloco,lado:c.lado};const h=amostrar(l);l.min=h.min;l.max=h.max;l.cota=cotaFrente(l);return l}
+function foraDasRuas(l){for(let ix=0;ix<5;ix++)for(let iz=0;iz<5;iz++){const p=mundoLocal(l,-l.w/2+l.w*ix/4,-l.d/2+l.d*iz/4);if(pontoEmCorredorViario(p.x,p.z,.04))return false}return true}
+function cotaDaSoleira(l){let soma=0,n=0;for(let i=0;i<7;i++){const p=mundoLocal(l,-l.w/2+l.w*i/6,l.d/2-.12);soma+=obterElevacao(p.x,p.z);n++}return soma/n+.06}
+function menorTerrenoEmVolta(l,w,d){let menor=Infinity;for(const sx of[-1,1])for(const sz of[-1,1])for(const fora of[0,1.2]){const p=mundoLocal(l,sx*(w/2+fora),sz*(d/2+fora));menor=Math.min(menor,obterElevacao(p.x,p.z))}for(const[dx,dz]of[[0,d/2+1.2],[0,-d/2-1.2],[w/2+1.2,0],[-w/2-1.2,0]]){const p=mundoLocal(l,dx,dz);menor=Math.min(menor,obterElevacao(p.x,p.z))}return menor}
+function loteDe(via,u,lado,extra,bloco){const p=via.curva.getPointAt(u),t=via.curva.getTangentAt(u).normalize(),nx=-t.z*lado,nz=t.x*lado,dist=corredorTotal(via)+LOTE_D/2+extra;const l={cx:p.x+nx*dist,cz:p.z+nz*dist,giro:Math.atan2(-nx,-nz),w:LOTE_W,d:LOTE_D,via,u,lado,bloco};l.baseY=cotaDaSoleira(l);return l}
 
 const lotes=[];
-function tentar(c,obrigatoria=false){
-  // Em encosta, afastar o lote e muito mais seguro que apagar a casa inteira.
-  for(const extra of[.18,.75,1.35,2.05,2.85]){
-    const l=loteDe(c,extra);
+function tentar(via,u,lado,bloco,obrig=false){
+  for(const extra of[.16,.55,1.0,1.55,2.2]){
+    const l=loteDe(via,u,lado,extra,bloco);
     if(!foraDasRuas(l))continue;
     if(lotes.some(o=>sobrepoe(l,o)))continue;
     lotes.push(l);return true;
   }
-  if(obrigatoria)console.warn('[bairro-nobre] lote obrigatorio sem espaco',c.bloco,c.via.nome,c.u,c.lado);
+  if(obrig)console.warn('[bairro-nobre] frente sem lote',via.nome,u,lado,bloco);
   return false;
 }
 
-// BASE GARANTIDA: 2 casas por quarteirao na avenida = 10 casas.
-for(const q of QUARTEIROES){const u=(q.u0+q.u1)/2;for(const lado of[-1,1])tentar({via:vias[0],u,lado,bloco:q.id},true)}
-// DENSIDADE PRINCIPAL: duas posicoes em cada ponta das quatro transversais = ate +16 casas.
-for(let vi=1;vi<vias.length;vi++)for(const u of[.16,.84])for(const lado of[-1,1])tentar({via:vias[vi],u,lado,bloco:Math.min(5,vi+1)},true);
-// PREENCHIMENTO: completa fachadas sem ocupar cruzamentos.
-for(const q of QUARTEIROES){const span=q.u1-q.u0;for(const f of[.27,.73])for(const lado of[-1,1]){if(lotes.length<MAX_CASAS)tentar({via:vias[0],u:q.u0+span*f,lado,bloco:q.id})}}
-for(let vi=1;vi<vias.length;vi++)for(const u of[.28,.72])for(const lado of[-1,1]){if(lotes.length<MAX_CASAS)tentar({via:vias[vi],u,lado,bloco:Math.min(5,vi+1)})}
+// 4 quarteiroes principais: duas frentes na avenida + quatro frentes nas coletoras.
+// Os pontos ficam longe dos tres cruzamentos (.24/.48/.72), portanto existe frente edificavel real.
+for(const [u,bloco] of [[.32,1],[.40,2],[.56,3],[.64,4]])for(const lado of[-1,1])tentar(vias[0],u,lado,bloco,true);
+for(const [vi,blocoA,blocoB] of [[1,1,3],[2,2,4]]){
+  for(const u of[.16,.34])for(const lado of[-1,1])tentar(vias[vi],u,lado,blocoA,true);
+  for(const u of[.66,.84])for(const lado of[-1,1])tentar(vias[vi],u,lado,blocoB,true);
+}
+// Quinto quarteirao: alca de transicao, densa mas sem fechar a juncao com a favela.
+for(const u of[.18,.36,.62,.80])for(const lado of[-1,1])tentar(vias[6],u,lado,5,true);
+// Preenchimento adicional nas pontas das transversais, onde nao ha intersecao com a avenida.
+for(const vi of[3,4,5])for(const u of[.12,.88])for(const lado of[-1,1]){if(lotes.length<MAX_CASAS)tentar(vias[vi],u,lado,vi-2)}
 
-// ===== RENDER INSTANCIADO: 5 FAMILIAS ARQUITETONICAS =====
-const box=new THREE.BoxGeometry(1,1,1),painel=new THREE.BoxGeometry(1,1,.04);
-const mats={
- parede:new THREE.MeshStandardMaterial({color:0xffffff,roughness:.80,vertexColors:true}),
- acento:new THREE.MeshStandardMaterial({color:0xffffff,roughness:.68,vertexColors:true}),
- concreto:matConcreto(),metal:new THREE.MeshStandardMaterial({color:0x303438,roughness:.48,metalness:.58}),
- vidro:new THREE.MeshStandardMaterial({color:0x73a7b2,roughness:.12,metalness:.08,transparent:true,opacity:.48,depthWrite:false}),
- madeira:matMadeira(0x6b4b33),telha:new THREE.MeshStandardMaterial({color:0xffffff,roughness:.88,vertexColors:true}),
- solar:new THREE.MeshStandardMaterial({color:0x18272d,roughness:.2,metalness:.52})};
-const B={parede:{g:box,m:mats.parede,a:[]},acento:{g:box,m:mats.acento,a:[]},concreto:{g:box,m:mats.concreto,a:[]},metal:{g:box,m:mats.metal,a:[]},vidro:{g:painel,m:mats.vidro,a:[]},madeira:{g:box,m:mats.madeira,a:[]},telha:{g:box,m:mats.telha,a:[]},solar:{g:box,m:mats.solar,a:[]}};
-const EY=new THREE.Vector3(0,1,0),C=new THREE.Color();
-function item(k,l,x,y,z,sx,sy,sz,cor=null,giro=0,tiltZ=0){const p=mundoLocal(l,x,z),q=new THREE.Quaternion().setFromEuler(new THREE.Euler(0,l.giro+giro,tiltZ));B[k].a.push({p:new THREE.Vector3(p.x,l.cota+y,p.z),q,s:new THREE.Vector3(sx,sy,sz),cor})}
-function fechar(k,sombra=true){const b=B[k];if(!b.a.length)return;const im=new THREE.InstancedMesh(b.g,b.m,b.a.length),M=new THREE.Matrix4();im.name=`nobre-${k}`;im.receiveShadow=true;im.castShadow=sombra;for(let i=0;i<b.a.length;i++){const a=b.a[i];M.compose(a.p,a.q,a.s);im.setMatrixAt(i,M);if(a.cor!==null)im.setColorAt(i,C.setHex(a.cor))}im.instanceMatrix.needsUpdate=true;if(im.instanceColor)im.instanceColor.needsUpdate=true;im.frustumCulled=false;grupo.add(im)}
-function colisor(l,w,d,h,f){let x0=Infinity,x1=-Infinity,z0=Infinity,z1=-Infinity;for(const x of[-w/2,w/2])for(const z of[-d/2,d/2]){const p=mundoLocal(l,x,z);x0=Math.min(x0,p.x);x1=Math.max(x1,p.x);z0=Math.min(z0,p.z);z1=Math.max(z1,p.z)}registrarCaixa(new THREE.Box3(new THREE.Vector3(x0,l.cota-f-.05,z0),new THREE.Vector3(x1,l.cota+h+.35,z1)),'casa-bairro-nobre')}
-const cores=[0xf2eadf,0xd7e3e1,0xe7d7c7,0xd6d9e1,0xe8e4d6,0xcfded2,0xead9d9,0xd8d0c5,0xe4e7ec,0xded4e8,0xe8dfc8,0xcfd8dc];
-const acentos=[0x704d3d,0x3f5f68,0x806a54,0x4e5c70,0x786154,0x49685b,0x76505b,0x5f554b];
-const telhas=[0x8b4d36,0x9f6245,0x6e4a3b,0x7b5b4b];
+const CORES=[0xf0e7dc,0xd7e2df,0xe8d2bf,0xcfd6df,0xe6e0cf,0xd2dfd0,0xe7d6d8,0xd9d0c3,0xe6e7eb,0xddd3e7,0xe7dfc9,0xcbd7db];
+const ACENTOS=[0x704d3d,0x3f5f68,0x806a54,0x4e5c70,0x786154,0x49685b,0x76505b,0x5f554b,0x41535f];
+const TELHAS=[0x8d4d34,0xa56547,0x765044,0x6e5d53,0x8a6a54];
+const vidro=bmat(0x29444d),metal=bmat(0x303438),cimento=matConcreto();
+const madeiraEscura=matMadeira(0x5e3e2b),madeiraClara=matMadeira(0x8b6848);
+
+function paredeTerrea(l,mat,w,h,d,lx=0,lz=0){const menor=menorTerrenoEmVolta(l,w,d),af=Math.min(5.2,Math.max(.20,l.baseY-menor+.24)),altura=h+af,cy=l.baseY+h/2-af/2;caixaLote(l,mat,w,altura,d,lx,cy,lz);return af}
+function janelaFrente(l,lx,y,lz,w=.84,h=.72){caixaLote(l,vidro,w,h,.055,lx,y,lz)}
+function portaFrente(l,lx,y,lz,w=.72,h=1.82,clara=false){caixaLote(l,clara?madeiraClara:madeiraEscura,w,h,.07,lx,y,lz)}
+function garagem(l,lx,y,lz,w=1.65,h=1.48){caixaLote(l,metal,w,h,.07,lx,y,lz)}
+function laje(l,w,d,y){caixaLote(l,cimento,w,.14,d,0,y,0)}
+function telhadoDuasAguas(l,w,d,y,cor){const mat=matTelha(cor),painelW=w*.56;caixaLote(l,mat,painelW,.10,d+.24,-w*.235,y,0,.18);caixaLote(l,mat,painelW,.10,d+.24,w*.235,y,0,-.18)}
+function muretaFrente(l,mat){caixaLote(l,mat,.72,.55,.10,-1.58,l.baseY+.275,l.d/2-.04);caixaLote(l,mat,.72,.55,.10,1.58,l.baseY+.275,l.d/2-.04);caixaLote(l,metal,1.78,.50,.05,-.18,l.baseY+.25,l.d/2)}
+
+function colisorFatiado(l,w,d,h,af){
+  const fatias=4,fd=d/fatias;
+  for(let i=0;i<fatias;i++){
+    const lz=-d/2+fd*(i+.5),p=mundoLocal(l,0,lz),c=Math.abs(Math.cos(l.giro)),s=Math.abs(Math.sin(l.giro)),W=w*c+fd*s,D=w*s+fd*c;
+    registrarCaixa(new THREE.Box3(new THREE.Vector3(p.x-W/2,l.baseY-af-.05,p.z-D/2),new THREE.Vector3(p.x+W/2,l.baseY+h+.35,p.z+D/2)),'casa-bairro-nobre');
+  }
+}
 
 for(let i=0;i<lotes.length;i++){
- const l=lotes[i],tipo=i%5,cor=cores[(i*3+l.bloco)%cores.length],ac=acentos[(i+l.bloco)%acentos.length];
- let w=4.05+(i%3)*.16,d=3.05+(i%2)*.14,h1=2.35,h2=0,H=h1;
- if(tipo===1||tipo===3){h2=2.00;H=h1+h2}
- if(tipo===4){w=3.72;d=3.36;h2=2.18;H=h1+h2}
- const t=amostrar(l,w+.26,d+.26),f=Math.min(5.8,Math.max(.30,l.cota-t.min+.22));
- item('concreto',l,0,-f/2,-.12,w+.24,f,d+.24);
- item('parede',l,0,h1/2,-.12,w,h1,d,cor);
- if(h2){const dx=tipo===3?.55:(tipo===4?-.35:.18);item('parede',l,dx,h1+h2/2,-.28,w*(tipo===4?.78:.70),h2,d*.80,cores[(i*5+2)%cores.length])}
- // Cinco silhuetas/fachadas diferentes.
- if(tipo===0){ // terrea horizontal, marquise larga
-   item('acento',l,-1.18,1.18,d/2-.22,.48,2.34,.08,ac);item('concreto',l,.45,2.43,d/2+.12,2.35,.13,.72);item('vidro',l,.78,1.34,d/2-.18,1.18,.82,1);item('metal',l,-.78,.76,d/2-.19,1.45,1.50,.07);
- }else if(tipo===1){ // sobrado moderno assimetrico
-   item('acento',l,w/2-.46,H/2,-.1,.54,H+.08,d+.03,ac);item('vidro',l,.15,h1+1.02,d*.39,1.38,.78,1);item('vidro',l,.92,1.38,d/2-.18,.72,.72,1);item('metal',l,-.82,.78,d/2-.2,1.48,1.54,.07);
- }else if(tipo===2){ // casa de telhado aparente
-   item('acento',l,-1.25,1.12,d/2-.2,.38,2.22,.07,ac);item('vidro',l,.62,1.30,d/2-.18,1.10,.76,1);item('metal',l,-.78,.76,d/2-.19,1.42,1.50,.07);item('telha',l,-w*.24,h1+.28,-.12,w*.56,.10,d+.28,telhas[i%telhas.length],0,.16);item('telha',l,w*.24,h1+.28,-.12,w*.56,.10,d+.28,telhas[i%telhas.length],0,-.16);
- }else if(tipo===3){ // sobrado com varanda
-   item('acento',l,-w/2+.48,H/2,-.12,.52,H+.08,d+.02,ac);item('concreto',l,.44,h1+.04,d/2+.18,2.00,.10,.78);item('vidro',l,.44,h1+.48,d/2+.54,1.86,.62,1);item('vidro',l,.86,1.35,d/2-.18,.82,.74,1);item('metal',l,-.80,.78,d/2-.2,1.45,1.54,.07);
- }else{ // vertical contemporanea estreita
-   item('acento',l,.98,H/2,-.10,.72,H+.10,d+.02,ac);item('vidro',l,-.50,h1+1.05,d*.40,1.05,.92,1);item('vidro',l,.35,1.38,d/2-.18,.66,.82,1);item('metal',l,-.88,.78,d/2-.20,1.36,1.54,.07);
- }
- item('madeira',l,1.25,.92,d/2-.18,.54,1.84,.075);
- item('concreto',l,0,H+.08,-.12,w+.14,.16,d+.14);
- if(tipo!==2&&i%3===0){item('solar',l,-.48,H+.20,-.34,.78,.04,.48);item('solar',l,.48,H+.20,-.34,.78,.04,.48)}
- // Frente compacta, sem arvore dentro do lote.
- item('parede',l,-1.72,.31,l.d/2-.03,.62,.62,.10,cor);item('parede',l,1.70,.31,l.d/2-.03,.66,.62,.10,cor);item('metal',l,-.25,.29,l.d/2,1.90,.56,.05);
- colisor(l,w,d,H,f);
+  const l=lotes[i],tipo=(i+l.bloco*2)%6,cor=CORES[(i*5+l.bloco)%CORES.length],ac=ACENTOS[(i*3+l.bloco)%ACENTOS.length],reboco=matReboco(cor),acento=matReboco(ac),telha=TELHAS[(i+l.bloco)%TELHAS.length];
+  let w=3.75+(i%3)*.18,d=3.02+(i%2)*.18,h1=2.38,h2=0,H=h1,af=0;
+  if(tipo===1||tipo===4){h2=2.02;H=h1+h2}
+  if(tipo===3){w=4.18;d=3.18}
+  if(tipo===5){w=3.62;d=3.34}
+  af=paredeTerrea(l,reboco,w,h1,d,0,-.12);
+
+  if(tipo===0){
+    // Terrea moderna horizontal: marquise, pano de vidro e garagem lateral.
+    caixaLote(l,acento,.46,h1+.04,d+.02,-w/2+.34,l.baseY+h1/2,-.12);janelaFrente(l,.72,l.baseY+1.34,d/2-.16,1.08,.78);garagem(l,-.84,l.baseY+.76,d/2-.17,1.38,1.50);portaFrente(l,1.30,l.baseY+.91,d/2-.17,.58,1.82,true);caixaLote(l,cimento,2.20,.12,.70,.45,l.baseY+h1+.08,d/2+.14);
+    laje(l,w+.14,d+.14,l.baseY+h1+.07);
+  }else if(tipo===1){
+    // Sobrado recuado: volume superior menor + varanda real.
+    caixaLote(l,matReboco(CORES[(i+3)%CORES.length]),w*.70,h2,d*.78,.28,l.baseY+h1+h2/2,-.30);caixaLote(l,acento,.50,H+.10,d+.05,w/2-.34,l.baseY+H/2,-.10);garagem(l,-.82,l.baseY+.78,d/2-.17,1.42,1.54);portaFrente(l,1.20,l.baseY+.91,d/2-.17,.56,1.82);janelaFrente(l,.82,l.baseY+h1+1.00,d*.39,1.25,.78);caixaLote(l,cimento,1.60,.10,.70,.55,l.baseY+h1+.07,d/2+.18);caixaLote(l,metal,1.52,.54,.04,.55,l.baseY+h1+.42,d/2+.53);laje(l,w+.12,d+.12,l.baseY+H+.07);
+  }else if(tipo===2){
+    // Casa de telha aparente, fachada mais classica.
+    caixaLote(l,acento,.34,h1+.02,d+.02,-w/2+.28,l.baseY+h1/2,-.12);garagem(l,-.80,l.baseY+.76,d/2-.17,1.36,1.48);portaFrente(l,1.10,l.baseY+.91,d/2-.17,.62,1.82,true);janelaFrente(l,.48,l.baseY+1.30,d/2-.16,.94,.74);telhadoDuasAguas(l,w+.18,d+.12,l.baseY+h1+.24,telha);
+  }else if(tipo===3){
+    // Planta em L: corpo principal + ala frontal de garagem.
+    const alaW=1.32,alaD=2.30;paredeTerrea(l,acento,alaW,2.18,alaD,-w/2+.52,d*.22);garagem(l,-w/2+.52,l.baseY+.72,d/2+.08,1.08,1.40);portaFrente(l,.72,l.baseY+.91,d/2-.17,.62,1.82);janelaFrente(l,1.18,l.baseY+1.34,d/2-.16,.82,.74);laje(l,w+.12,d+.12,l.baseY+h1+.07);caixaLote(l,cimento,alaW+.12,.12,alaD+.12,-w/2+.52,l.baseY+2.24,d*.22);
+  }else if(tipo===4){
+    // Sobrado vertical com duas cores e pergolado frontal.
+    caixaLote(l,matReboco(CORES[(i+5)%CORES.length]),w*.76,h2,d*.82,-.26,l.baseY+h1+h2/2,-.25);caixaLote(l,acento,.64,H+.08,d+.03,w/2-.42,l.baseY+H/2,-.10);garagem(l,-.86,l.baseY+.78,d/2-.17,1.38,1.54);portaFrente(l,1.16,l.baseY+.91,d/2-.17,.56,1.82,true);janelaFrente(l,-.25,l.baseY+h1+1.02,d*.40,1.02,.88);for(const x of[-.72,0,.72])caixaLote(l,madeiraClara,.08,.08,.92,x,l.baseY+h1+.16,d/2+.24);laje(l,w+.12,d+.12,l.baseY+H+.07);
+  }else{
+    // Transicao para a favela: mais baixa, telha ceramica e volumes menores, sem virar barraco clone.
+    caixaLote(l,acento,.38,h1+.02,d+.02,w/2-.30,l.baseY+h1/2,-.12);portaFrente(l,-1.06,l.baseY+.91,d/2-.17,.66,1.82);janelaFrente(l,.48,l.baseY+1.28,d/2-.16,1.02,.72);janelaFrente(l,1.18,l.baseY+1.28,d/2-.16,.48,.72);telhadoDuasAguas(l,w+.20,d+.16,l.baseY+h1+.24,telha);
+  }
+  muretaFrente(l,reboco);colisorFatiado(l,w,d,H,af);
 }
-for(const k of Object.keys(B))fechar(k,k!=='vidro'&&k!=='solar');
-console.info('[bairro-nobre] quarteiroes=%d casas=%d/%d tipos=5 vegetacao-em-lote=0',QUARTEIROES.length,lotes.length,MAX_CASAS);
+
+for(const[mat,geos]of pilhas){
+  if(!geos.length)continue;
+  const merged=mergeGeometries(geos,false);
+  if(!merged){console.error('[bairro-nobre] fusao falhou',mat.name||mat.type,geos.length);continue}
+  const mesh=new THREE.Mesh(merged,mat);mesh.castShadow=true;mesh.receiveShadow=true;mesh.name='casas-nobres-fundidas';grupo.add(mesh);
+  for(const g of geos)g.dispose();
+}
+console.info('[bairro-nobre] quarteiroes=%d casas=%d/%d render=fusao-pbr tipos=6',QUARTEIROES.length,lotes.length,MAX_CASAS);
 export{lotes as lotesNobres};
