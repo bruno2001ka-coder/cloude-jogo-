@@ -149,12 +149,12 @@ for(let i=0;i<lotes.length;i++){
   // Portao, porta e vidro — variacoes pequenas evitam fileira clonada.
   item('metal',l,-1.02,.86,d/2-.29,2.12,1.70,.07);
   item('madeira',l,1.30,.98,d/2-.285,.66,1.96,.075);
-  item('vidro',l,1.29,1.55,d/2-.24,.78,.76,0xffffff);
+  item('vidro',l,1.29,1.55,d/2-.24,.78,.76,1);
   if(dois){
-    item('vidro',l,.32,h1+1.13,d*.41,1.66,.92,0xffffff);
+    item('vidro',l,.32,h1+1.13,d*.41,1.66,.92,1);
     item('concreto',l,.32,h1+.06,d/2+.03,2.04,.10,.72);
-    item('vidro',l,.32,h1+.43,d/2+.41,1.94,.58,0xffffff);
-  }else item('vidro',l,.74,1.46,d/2-.24,1.12,.88,0xffffff);
+    item('vidro',l,.32,h1+.43,d/2+.41,1.94,.58,1);
+  }else item('vidro',l,.74,1.46,d/2-.24,1.12,.88,1);
 
   item('concreto',l,0,H+.09,-.28,w+.18,.18,d+.18);
   if(i%3!==1){item('solar',l,-.63,H+.25,-.34,1.02,.05,.62);item('solar',l,.63,H+.25,-.34,1.02,.05,.62)}
