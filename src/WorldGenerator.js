@@ -7,6 +7,7 @@ import{obterElevacao}from'./Terrain.js';
 import{registrarObstaculo,registrarCaixa,superficiesAndaveis,marcarObstaculoMovel}from'./Physics.js';
 import{bmat,matTelha,matConcreto,matParedeRural,matTelhaBarroRural,matMadeira,matTerraArada,matTerraBatida,uvPorMetro,janela,porta,agua,posteMat,folhaMat,folhaClara,criarSombraContato}from'./Materials.js';
 import{POLOS}from'./Poles.js';
+import{FAZENDA_CONFIG}from'./FarmConfig.js';
 
 export const bairro=new THREE.Group();scene.add(bairro);
 // ===== QUEM PROJETA SOMBRA =====
@@ -122,56 +123,62 @@ function arvore(x,z,s=1){const g=new THREE.Group();g.position.set(x,obterElevaca
 // acesso nenhum. A entrega agora acontece onde dá pra chegar andando: dentro das casas de cliente,
 // que têm porta (ver `casasCliente` e DeliveryPoints.js).
 
-export const porteiraFazenda={x:0,y:0,z:0,aberta:true,raio:3.6,pivos:[],caixa:null,caixaFechada:null,anguloAtual:0,colisorAtivo:false};
-export const portasCeleiro={x:0,y:0,z:0,aberta:true,raio:3.2,pivos:[],caixa:null,caixaFechada:null,anguloAtual:0,colisorAtivo:false};
+function distanciaAoCorredorFazenda(px,pz){
+  const a=FAZENDA_CONFIG.acesso.a,b=FAZENDA_CONFIG.acesso.b;
+  const dx=b.x-a.x,dz=b.z-a.z,den=dx*dx+dz*dz;
+  const t=den?Math.max(0,Math.min(1,((px-a.x)*dx+(pz-a.z)*dz)/den)):0;
+  return Math.hypot(px-(a.x+dx*t),pz-(a.z+dz*t));
+}
+
+export const porteiraFazenda={x:0,y:0,z:0,aberta:true,raio:3.6,pivos:[],anguloAtual:0};
+export const portasCeleiro={x:0,y:0,z:0,aberta:true,raio:3.2,pivos:[],anguloAtual:0};
+
+// Cada folha móvel tem a própria Box3, calculada da geometria VISUAL depois da rotação.
+// Acaba a troca binária "vão inteiro bloqueado / vão inteiro livre", que criava parede invisível
+// enquanto a porta ainda estava visualmente aberta.
+function atualizarColisoresFolhas(registros){
+  for(const r of registros){
+    r.folha.updateWorldMatrix(true,true);
+    r.caixa.setFromObject(r.folha,true);
+  }
+}
 const PORTA_CELEIRO_ABERTA_RAD=Math.PI*.72;
-const PORTA_CELEIRO_VEL=.95;// rad/s: abre suave, sem teletransportar a folha
+const PORTA_CELEIRO_VEL=.95;
 function aplicarPortasCeleiroImediata(){
   portasCeleiro.anguloAtual=portasCeleiro.aberta?PORTA_CELEIRO_ABERTA_RAD:0;
   for(const{pivo,lado}of portasCeleiro.pivos)pivo.rotation.y=lado*portasCeleiro.anguloAtual;
-  if(portasCeleiro.aberta){sumirCaixa(portasCeleiro.caixa);portasCeleiro.colisorAtivo=false}
-  else{portasCeleiro.caixa.copy(portasCeleiro.caixaFechada);portasCeleiro.colisorAtivo=true}
+  atualizarColisoresFolhas(portasCeleiro.pivos);
 }
 function atualizarPortasCeleiro(dt){
-  if(!portasCeleiro.pivos.length||!portasCeleiro.caixa)return;
+  if(!portasCeleiro.pivos.length)return;
   const alvo=portasCeleiro.aberta?PORTA_CELEIRO_ABERTA_RAD:0;
   const delta=alvo-portasCeleiro.anguloAtual;
-  if(Math.abs(delta)>.0005){
-    portasCeleiro.anguloAtual+=Math.sign(delta)*Math.min(Math.abs(delta),PORTA_CELEIRO_VEL*dt);
-    for(const{pivo,lado}of portasCeleiro.pivos)pivo.rotation.y=lado*portasCeleiro.anguloAtual;
-  }
-  // O vão só fica sem colisor quando as folhas já saíram da passagem. Assim não existe parede
-  // invisível com a porta visualmente aberta, nem passagem liberada atravessando madeira fechada.
-  const deveLiberar=portasCeleiro.anguloAtual>PORTA_CELEIRO_ABERTA_RAD*.58;
-  if(deveLiberar&&portasCeleiro.colisorAtivo){sumirCaixa(portasCeleiro.caixa);portasCeleiro.colisorAtivo=false}
-  else if(!deveLiberar&&!portasCeleiro.colisorAtivo){portasCeleiro.caixa.copy(portasCeleiro.caixaFechada);portasCeleiro.colisorAtivo=true}
+  if(Math.abs(delta)<=.0005)return;
+  const passo=Math.min(Math.abs(delta),PORTA_CELEIRO_VEL*dt);
+  portasCeleiro.anguloAtual+=Math.sign(delta)*passo;
+  if(passo>=Math.abs(delta))portasCeleiro.anguloAtual=alvo;
+  for(const{pivo,lado}of portasCeleiro.pivos)pivo.rotation.y=lado*portasCeleiro.anguloAtual;
+  atualizarColisoresFolhas(portasCeleiro.pivos);
 }
 export function alternarPortasCeleiro(){portasCeleiro.aberta=!portasCeleiro.aberta;return portasCeleiro.aberta}
 export function pertoDasPortasCeleiro(pos){return Math.hypot(pos.x-portasCeleiro.x,pos.z-portasCeleiro.z)<portasCeleiro.raio}
-const PORTEIRA_ABERTA_RAD=Math.PI*.55;// abre pra dentro do sítio, encostando na cerca
-const PORTEIRA_VEL=.72;// rad/s: leva ~2,4 s do fechado ao totalmente aberto
+const PORTEIRA_ABERTA_RAD=Math.PI*.55;
+const PORTEIRA_VEL=.72;
 function aplicarPorteiraImediata(){
   porteiraFazenda.anguloAtual=porteiraFazenda.aberta?PORTEIRA_ABERTA_RAD:0;
   for(const{pivo,lado}of porteiraFazenda.pivos)pivo.rotation.y=lado*porteiraFazenda.anguloAtual;
-  if(porteiraFazenda.aberta){sumirCaixa(porteiraFazenda.caixa);porteiraFazenda.colisorAtivo=false}
-  else{porteiraFazenda.caixa.copy(porteiraFazenda.caixaFechada);porteiraFazenda.colisorAtivo=true}
+  atualizarColisoresFolhas(porteiraFazenda.pivos);
 }
 function atualizarPorteiraFazenda(dt){
-  if(!porteiraFazenda.pivos.length||!porteiraFazenda.caixa)return;
+  if(!porteiraFazenda.pivos.length)return;
   const alvo=porteiraFazenda.aberta?PORTEIRA_ABERTA_RAD:0;
   const delta=alvo-porteiraFazenda.anguloAtual;
-  if(Math.abs(delta)>.0005){
-    porteiraFazenda.anguloAtual+=Math.sign(delta)*Math.min(Math.abs(delta),PORTEIRA_VEL*dt);
-    for(const{pivo,lado}of porteiraFazenda.pivos)pivo.rotation.y=lado*porteiraFazenda.anguloAtual;
-  }
-  // Enquanto a folha ainda ocupa a passagem, o colisor continua fechado. Só libera quando
-  // a abertura já é suficiente para uma pessoa/moto passar sem atravessar madeira.
-  const deveLiberar=porteiraFazenda.anguloAtual>PORTEIRA_ABERTA_RAD*.62;
-  if(deveLiberar&&porteiraFazenda.colisorAtivo){
-    sumirCaixa(porteiraFazenda.caixa);porteiraFazenda.colisorAtivo=false;
-  }else if(!deveLiberar&&!porteiraFazenda.colisorAtivo){
-    porteiraFazenda.caixa.copy(porteiraFazenda.caixaFechada);porteiraFazenda.colisorAtivo=true;
-  }
+  if(Math.abs(delta)<=.0005)return;
+  const passo=Math.min(Math.abs(delta),PORTEIRA_VEL*dt);
+  porteiraFazenda.anguloAtual+=Math.sign(delta)*passo;
+  if(passo>=Math.abs(delta))porteiraFazenda.anguloAtual=alvo;
+  for(const{pivo,lado}of porteiraFazenda.pivos)pivo.rotation.y=lado*porteiraFazenda.anguloAtual;
+  atualizarColisoresFolhas(porteiraFazenda.pivos);
 }
 export function alternarPorteira(){
   // O clique só muda o destino. A animação é física/visual e acontece quadro a quadro.
@@ -190,9 +197,9 @@ export function pertoDaPorteira(pos){
 // Tudo que se repete (mourão, travessa, canteiro, pé de planta) vai em InstancedMesh: são ~330 peças
 // em 4 draw calls. Nada disso é obstáculo — quem trava o jogador na fazenda é só a parede do celeiro,
 // como antes. Pôr a cerca em `obstaculos` mudaria a NavMesh e o caminho da polícia de tabela.
-function criarFazenda(cx,cz){
-  const meiaLarg=13,meiaProf=11;
-  const bx=cx-meiaLarg+5,bz=cz-meiaProf+5,by=obterElevacao(bx,bz);
+function criarFazenda(){
+  const{cx,cz,meiaLarg,meiaProf}=FAZENDA_CONFIG;
+  const bx=FAZENDA_CONFIG.casa.x,bz=FAZENDA_CONFIG.casa.z,by=obterElevacao(bx,bz);
   // Materiais próprios da fazenda: a parede rural e a telha de barro NÃO vêm do conjunto visual
   // da favela. As geometrias e as medidas continuam exatamente as mesmas.
   const paredeCasa=matParedeRural(),madeiraCeleiro=matMadeira(0x8f5737),madeiraCerca=matMadeira(0x765238),ripaEscura=matMadeira(0x4d3728);
@@ -221,10 +228,12 @@ function criarFazenda(cx,cz){
   // --- CELEIRO ---
   // A parede mantém exatamente a caixa de antes (6 x 3,2 x 5 em bx,bz): é o obstáculo registrado e o
   // que `dentroDoCurral` usa pra manter os bichos do lado de fora. Mudar a medida mexeria nos dois.
-  bloco(new THREE.BoxGeometry(6.3,.3,5.3),matConcreto(),bx,by+.15,bz);// base: tira o celeiro do barro
+  const baseCeleiro=bloco(new THREE.BoxGeometry(FAZENDA_CONFIG.casa.baseLargura,FAZENDA_CONFIG.casa.baseAltura,FAZENDA_CONFIG.casa.baseProfundidade),matConcreto(),bx,by+FAZENDA_CONFIG.casa.baseAltura/2,bz);
+  // A laje já existia visualmente, mas não era chão para a física: o personagem ficava 30 cm dentro dela.
+  superficiesAndaveis.push(baseCeleiro);
   // Paredes separadas deixam uma abertura real na fachada. A caixa única antiga bloqueava a porta
   // mesmo quando o portão visual estava aberto; quatro panos mantêm a estrutura fechada e liberam o vão.
-  const ALTURA_CELEIRO=3.2,LARGURA_PORTA_CELEIRO=2.35;
+  const ALTURA_CELEIRO=FAZENDA_CONFIG.casa.altura,LARGURA_PORTA_CELEIRO=FAZENDA_CONFIG.casa.portaVao;
   // Todas as paredes usam largura, altura e espessura na ordem correta da BoxGeometry.
   // A versão anterior trocou altura por profundidade e virou vigas horizontais na fachada.
   const paredeFundo=bloco(new THREE.BoxGeometry(6,ALTURA_CELEIRO,.18),paredeCasa,bx,by+1.6,bz-2.41);
@@ -264,8 +273,7 @@ function criarFazenda(cx,cz){
     if(larg<.25)break;
     bloco(new THREE.BoxGeometry(larg,hDegrau,.14),paredeCasa,bx,by+yTopo-hDegrau/2,bz+lz*2.5);
   }
-  // Portas duplas funcionais do celeiro, com travessas e dobradiças. Nascem abertas para o interior
-  // continuar acessível à navegação; fechar a porta atualiza um único AABB móvel.
+  // Portas duplas funcionais. Cada folha tem colisor móvel próprio, exatamente onde a madeira está.
   const pivosCeleiro=[],LARGURA_FOLHA=LARGURA_PORTA_CELEIRO/2-.05;
   for(const lado of[-1,1]){
     const pivo=new THREE.Group();pivo.position.set(bx+lado*LARGURA_PORTA_CELEIRO/2,by+.35,bz+2.53);bairro.add(pivo);
@@ -281,18 +289,21 @@ function criarFazenda(cx,cz){
     macaneta.rotation.x=Math.PI/2;
     // Duas dobradiças visíveis junto ao pivô: detalhe de acabamento, sem colisor novo.
     for(const alt of[.58,1.86])bloco(new THREE.CylinderGeometry(.035,.035,.16,8),ferragemPorta,lado*(LARGURA_FOLHA/2-.04),alt,.08,folha);
-    pivosCeleiro.push({pivo,lado});
+    const caixaFolha=marcarObstaculoMovel(registrarCaixa(new THREE.Box3(),'porta-celeiro'));
+    pivosCeleiro.push({pivo,lado,folha,caixa:caixaFolha});
   }
-  // Batente da porta: três peças sobre a fachada, sem mudar o vão estrutural nem registrar colisão.
-  bloco(new THREE.BoxGeometry(LARGURA_PORTA_CELEIRO+.28,.14,.16),ripaEscura,bx,by+2.62,bz+2.58);
-  for(const lado of[-1,1])bloco(new THREE.BoxGeometry(.14,2.55,.16),ripaEscura,bx+lado*(LARGURA_PORTA_CELEIRO/2+.07),by+1.31,bz+2.58);
-  const caixaPortasFechadas=new THREE.Box3(new THREE.Vector3(bx-LARGURA_PORTA_CELEIRO/2,by+.2,bz+2.38),new THREE.Vector3(bx+LARGURA_PORTA_CELEIRO/2,by+2.8,bz+2.7));
-  const caixaPortas=new THREE.Box3();sumirCaixa(caixaPortas);registrarCaixa(caixaPortas,'portas-celeiro');marcarObstaculoMovel(caixaPortas);
-  portasCeleiro.x=bx;portasCeleiro.y=by;portasCeleiro.z=bz+2.7;portasCeleiro.pivos=pivosCeleiro;portasCeleiro.caixa=caixaPortas;portasCeleiro.caixaFechada=caixaPortasFechadas;portasCeleiro.aberta=true;aplicarPortasCeleiroImediata();
+  // Batente alinhado à folha: a verga fica ACIMA da porta, nunca atravessando a madeira.
+  bloco(new THREE.BoxGeometry(LARGURA_PORTA_CELEIRO+.28,.14,.16),ripaEscura,bx,by+2.88,bz+2.58);
+  for(const lado of[-1,1])bloco(new THREE.BoxGeometry(.14,2.8,.16),ripaEscura,bx+lado*(LARGURA_PORTA_CELEIRO/2+.07),by+1.4,bz+2.58);
+  // Fecha a faixa de alvenaria entre a porta e a empena sem alterar a altura externa da construção.
+  const vergaParede=bloco(new THREE.BoxGeometry(LARGURA_PORTA_CELEIRO,.25,.18),paredeCasa,bx,by+3.075,bz+2.41);
+  registrarObstaculo(vergaParede,'celeiro');
+  portasCeleiro.x=bx;portasCeleiro.y=by;portasCeleiro.z=bz+2.7;portasCeleiro.pivos=pivosCeleiro;portasCeleiro.aberta=true;aplicarPortasCeleiroImediata();
   bloco(new THREE.BoxGeometry(.9,.7,.1),ripaEscura,bx,by+3.05,bz+2.53);// portinhola do feno, lá em cima
-  // Cocho e barril ao lado do celeiro.
-  bloco(new THREE.BoxGeometry(2.1,.4,.7),ripaEscura,bx-3.4,by+.3,bz-1.6);
-  bloco(new THREE.CylinderGeometry(.35,.4,.7,10),ripaEscura,bx-2.6,by+.35,bz-2.3);
+  // Cocho e barril continuam existindo, mas saem da parede: antes atravessavam o canto traseiro.
+  // Agora formam a área de serviço lateral, fora da porta e fora do corredor da porteira.
+  bloco(new THREE.BoxGeometry(2.1,.4,.7),ripaEscura,bx+4.5,obterElevacao(bx+4.5,bz)+.3,bz);
+  bloco(new THREE.CylinderGeometry(.35,.4,.7,10),ripaEscura,bx+4.3,obterElevacao(bx+4.3,bz-1.2)+.35,bz-1.2);
 
   const m4=new THREE.Matrix4(),posV=new THREE.Vector3(),quatV=new THREE.Quaternion(),escalaV=new THREE.Vector3();
   const eixoY=new THREE.Vector3(0,1,0),eixoX=new THREE.Vector3(1,0,0);
@@ -306,7 +317,7 @@ function criarFazenda(cx,cz){
   const ALTURA_MOURAO=1.25,ALTURAS_TRAVESSA=[.42,.82];
   // A porteira fica no lado LESTE (x = cx+meiaLarg), que é o lado virado pro bairro: é por ali que o
   // jogador chega, e uma entrada no lado errado obrigaria a contornar o sítio inteiro.
-  const PORTEIRA_VAO=3.4,porteiraZ=cz,porteiraX=cx+meiaLarg;
+  const PORTEIRA_VAO=FAZENDA_CONFIG.porteira.vao,porteiraZ=FAZENDA_CONFIG.porteira.z,porteiraX=FAZENDA_CONFIG.porteira.x;
   const vaoZ0=porteiraZ-PORTEIRA_VAO/2,vaoZ1=porteiraZ+PORTEIRA_VAO/2;
   // Trechos retos de cerca. O lado leste vira DOIS trechos, com o vão da porteira entre eles.
   const trechos=[];
@@ -375,15 +386,8 @@ function criarFazenda(cx,cz){
   // Antes a roça era gerada em grade sem olhar esse caminho e três fileiras atravessavam a entrada.
   // Não movemos a casa, a porteira nem os canteiros restantes: só deixamos de criar os segmentos que
   // invadem esse corredor.
-  const acessoA={x:porteiraX-.8,z:porteiraZ};
-  const acessoB={x:bx,z:bz+2.75};
-  const RAIO_CORREDOR_ACESSO=1.9;// 3,8 m livres: cabe a porteira de 3,4 m + pequena folga visual
-  function distanciaAoAcesso(px,pz){
-    const dx=acessoB.x-acessoA.x,dz=acessoB.z-acessoA.z;
-    const den=dx*dx+dz*dz;
-    const t=den?Math.max(0,Math.min(1,((px-acessoA.x)*dx+(pz-acessoA.z)*dz)/den)):0;
-    return Math.hypot(px-(acessoA.x+dx*t),pz-(acessoA.z+dz*t));
-  }
+  const acessoA=FAZENDA_CONFIG.acesso.a,acessoB=FAZENDA_CONFIG.acesso.b;
+  const RAIO_CORREDOR_ACESSO=FAZENDA_CONFIG.acesso.raio;
   const canteiros=[],pes=[];
   const zIni=cz-meiaProf+2.2,zFim=cz+meiaProf-8,xIni=cx-meiaLarg+7.5,xFim=cx+meiaLarg-2.2;
   const comprimento=xFim-xIni,meioX=(xIni+xFim)/2,SEGMENTO_CANTEIRO=1.25;
@@ -393,11 +397,11 @@ function criarFazenda(cx,cz){
     for(let x0=xIni;x0<xFim-.001;x0+=SEGMENTO_CANTEIRO){
       const comp=Math.min(SEGMENTO_CANTEIRO,xFim-x0),mx=x0+comp/2;
       // Soma meia peça ao raio para nenhuma ponta do canteiro invadir a passagem.
-      if(distanciaAoAcesso(mx,z)>RAIO_CORREDOR_ACESSO+comp/2)canteiros.push([mx,z,comp]);
+      if(distanciaAoCorredorFazenda(mx,z)>RAIO_CORREDOR_ACESSO+comp/2)canteiros.push([mx,z,comp]);
     }
     for(let x=xIni+.35;x<=xFim-.35;x+=.62){
       const px=x+(Math.random()-.5)*.16,pz=z+(Math.random()-.5)*.22;
-      if(distanciaAoAcesso(px,pz)>RAIO_CORREDOR_ACESSO+.25)pes.push([px,pz]);
+      if(distanciaAoCorredorFazenda(px,pz)>RAIO_CORREDOR_ACESSO+.25)pes.push([px,pz]);
     }
   }
   const mesaCanteiro=new THREE.InstancedMesh(uvPorMetro(new THREE.BoxGeometry(1,.13,1.02)),matTerraArada(),canteiros.length);
@@ -445,7 +449,9 @@ function criarFazenda(cx,cz){
     bloco(new THREE.BoxGeometry(.2,ALTURA_PORTEIRA+.35,.2),madeiraCerca,
       porteiraX,obterElevacao(porteiraX,batenteZ)+(ALTURA_PORTEIRA+.35)/2-.1,batenteZ);
     const pivo=new THREE.Group();
-    pivo.position.set(porteiraX,yPorteira,batenteZ);
+    // A soleira foi nivelada no Terrain; cada pivô ainda lê a sua cota real para nunca depender
+    // de uma suposição sobre o relevo.
+    pivo.position.set(porteiraX,obterElevacao(porteiraX,batenteZ),batenteZ);
     bairro.add(pivo);
     // Ferragens do batente: dobradiças verticais, só acabamento visual.
     for(const alt of[.42,1.02])bloco(new THREE.CylinderGeometry(.04,.04,.16,8),ferragemPorta,.04,alt,0,pivo);
@@ -465,22 +471,12 @@ function criarFazenda(cx,cz){
     diag.rotation.x=lado*Math.atan2(ALTURA_PORTEIRA-.4,folhaLarg);
     // Trinco/pegador perto do encontro das duas folhas. Fica dentro da silhueta da porteira.
     bloco(new THREE.BoxGeometry(.08,.10,.24),ferragemPorta,.035,.82,-lado*(folhaLarg/2-.16),folha);
-    pivos.push({pivo,lado});
+    const caixaFolha=marcarObstaculoMovel(registrarCaixa(new THREE.Box3(),'porteira'));
+    pivos.push({pivo,lado,folha,caixa:caixaFolha});
   }
-  // O COLISOR é UM só, a caixa do vão inteiro — não um por folha. O que importa pro jogo é se dá pra
-  // passar pelo vão, e uma caixa custa metade da varredura de duas. Mesmo truque do refúgio: a Box3
-  // fica na lista pra sempre e o que muda é o CONTEÚDO dela. Trocar de lista a cada abre/fecha
-  // invalidaria os índices que a NavMesh já rasterizou.
-  const caixaPorteiraFechada=new THREE.Box3(
-    new THREE.Vector3(porteiraX-.2,yPorteira-.6,vaoZ0),
-    new THREE.Vector3(porteiraX+.2,yPorteira+ALTURA_PORTEIRA,vaoZ1));
-  const caixaPorteira=new THREE.Box3();sumirCaixa(caixaPorteira);
-  registrarCaixa(caixaPorteira,'porteira');marcarObstaculoMovel(caixaPorteira);
-  // Nasce ABERTA pelo mesmo motivo que as casas-refúgio: a NavMesh é rasterizada uma vez, depois que
-  // todos os obstáculos entraram, e se o vão estivesse fechado nessa hora a polícia nunca acharia
-  // caminho pra dentro do sítio — nem depois de o jogador abrir a porteira.
+  // Duas caixas móveis acompanham as duas folhas. Quando abertas, ficam junto da madeira aberta;
+  // quando fechadas, encontram-se no centro. Nada some nem aparece antes da animação.
   porteiraFazenda.x=porteiraX;porteiraFazenda.z=porteiraZ;porteiraFazenda.y=yPorteira;
-  porteiraFazenda.caixa=caixaPorteira;porteiraFazenda.caixaFechada=caixaPorteiraFechada;
   porteiraFazenda.pivos=pivos;porteiraFazenda.aberta=true;
   aplicarPorteiraImediata();
 
@@ -490,7 +486,7 @@ function criarFazenda(cx,cz){
 
   return{cx,cz,meiaLarg,meiaProf,celeiro:{x:bx,z:bz,meiaLarg:3.3,meiaProf:2.8}};
 }
-export const FAZENDA=criarFazenda(-86,-50);
+export const FAZENDA=criarFazenda();
 
 // O antigo balcão decorativo do Depósito Rural foi removido daqui. Ele era criado em (-94,-53),
 // enquanto a soleira da porta fica em torno de z=-53,47: apenas ~47 cm de separação. Visualmente
@@ -593,13 +589,13 @@ function criarAnimal(tipo,x,z){
   animais.push(animal);
   return animal;
 }
-[['vaca',-84,-48],['vaca',-80,-53],['porco',-88,-45],['porco',-83,-44],['galinha',-79,-49],['galinha',-81,-46],['galinha',-77,-52]].forEach(a=>criarAnimal(a[0],a[1],a[2]));
+[['vaca',-84,-48],['vaca',-82,-47],['porco',-88,-45],['porco',-83,-44],['galinha',-79,-45],['galinha',-81,-46],['galinha',-78,-57]].forEach(a=>criarAnimal(a[0],a[1],a[2]));
 function dentroDoCurral(x,z){
   if(x<FAZENDA.cx-FAZENDA.meiaLarg+1||x>FAZENDA.cx+FAZENDA.meiaLarg-1||z<FAZENDA.cz-FAZENDA.meiaProf+1||z>FAZENDA.cz+FAZENDA.meiaProf-1)return false;
   const c=FAZENDA.celeiro;
   return!(Math.abs(x-c.x)<c.meiaLarg+.8&&Math.abs(z-c.z)<c.meiaProf+.8);
 }
-function novoAlvoAnimal(){let x,z,t=0;do{x=FAZENDA.cx+(Math.random()*2-1)*(FAZENDA.meiaLarg-2);z=FAZENDA.cz+(Math.random()*2-1)*(FAZENDA.meiaProf-2);t++}while(!dentroDoCurral(x,z)&&t<10);return{x,z}}
+function novoAlvoAnimal(){let x,z,t=0;do{x=FAZENDA.cx+(Math.random()*2-1)*(FAZENDA.meiaLarg-2);z=FAZENDA.cz+(Math.random()*2-1)*(FAZENDA.meiaProf-2);t++}while((!dentroDoCurral(x,z)||distanciaAoCorredorFazenda(x,z)<FAZENDA_CONFIG.acesso.raio+.55)&&t<20);return{x,z}}
 export function atualizarAnimais(dt){
   atualizarPorteiraFazenda(dt);
   atualizarPortasCeleiro(dt);
