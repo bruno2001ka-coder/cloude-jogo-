@@ -5,7 +5,7 @@ import*as THREE from'three';
 import{scene}from'./core.js';
 import{obterElevacao}from'./Terrain.js';
 import{registrarObstaculo,registrarCaixa,superficiesAndaveis,marcarObstaculoMovel,marcarSemFusao}from'./Physics.js';
-import{bmat,matTelha,matConcreto,matParedeRural,matTelhaBarroRural,matMadeira,matTerraArada,matTerraBatida,matPastoFazenda,uvPorMetro,janela,porta,agua,posteMat,folhaMat,folhaClara,criarSombraContato}from'./Materials.js';
+import{bmat,matTelha,matConcreto,matParedeRural,matTelhaBarroRural,matMadeira,matTerraArada,matTerraBatida,uvPorMetro,janela,porta,agua,posteMat,folhaMat,folhaClara,criarSombraContato}from'./Materials.js';
 import{POLOS}from'./Poles.js';
 import{FAZENDA_CONFIG}from'./FarmConfig.js';
 
@@ -410,35 +410,17 @@ function criarFazenda(){
   }
   mesaTravessa.instanceMatrix.needsUpdate=true;bairro.add(mesaTravessa);
 
-  // --- CAMPO DOS ANIMAIS ---
-  // Uma única manta de pasto acompanha o relevo e deixa o setor dos bichos legível de longe.
-  // Não tem colisor próprio: a física continua sendo o terreno real por baixo.
-  const campoAnimais=FAZENDA_CONFIG.animais;
-  const campoL=campoAnimais.maxX-campoAnimais.minX,campoP=campoAnimais.maxZ-campoAnimais.minZ;
-  const campoCx=(campoAnimais.minX+campoAnimais.maxX)/2,campoCz=(campoAnimais.minZ+campoAnimais.maxZ)/2;
-  const geoCampo=new THREE.PlaneGeometry(campoL,campoP,Math.ceil(campoL/1.2),Math.ceil(campoP/1.2));
-  const vc=geoCampo.attributes.position,cotaCampo=obterElevacao(campoCx,campoCz);
-  for(let i=0;i<vc.count;i++){
-    const lx=vc.getX(i),ly=vc.getY(i);
-    vc.setZ(i,obterElevacao(campoCx+lx,campoCz-ly)-cotaCampo);
-  }
-  geoCampo.computeVertexNormals();
-  const uvCampo=geoCampo.attributes.uv.clone();
-  for(let i=0;i<uvCampo.count;i++)uvCampo.setXY(i,uvCampo.getX(i)*campoL/4,uvCampo.getY(i)*campoP/4);
-  geoCampo.setAttribute('uv',uvCampo);geoCampo.setAttribute('uv1',uvCampo);
-  const pastoCampo=new THREE.Mesh(geoCampo,matPastoFazenda());
-  pastoCampo.rotation.x=-Math.PI/2;pastoCampo.position.set(campoCx,cotaCampo+.055,campoCz);
-  pastoCampo.receiveShadow=true;bairro.add(pastoCampo);
-
-  // --- ROÇA: setor NORTE, separado do campo dos animais ---
-  // A roça agora nasce exclusivamente dentro de FAZENDA_CONFIG.cultivo. O intervalo em Z entre
-  // cultivo e animais é de 7,7 m, então uma vaca nunca aparece dentro dos canteiros.
+  // --- ROÇA: CAMPO PRÓPRIO, FORA DOS CURRAIS REAIS ---
+  // A área vem de FarmConfig, o mesmo arquivo que agora alimenta AnimalPens.js. Mesmo se alguém mover
+  // um curral no futuro, a checagem abaixo impede silenciosamente qualquer canteiro de nascer dentro dele.
   const cultivo=FAZENDA_CONFIG.cultivo;
   const RAIO_CORREDOR_ACESSO=FAZENDA_CONFIG.acesso.raio;
   const areaServico=FAZENDA_CONFIG.servico.limpeza;
   const invadeServico=(x,z,meiaX=0,meiaZ=0)=>
     Math.abs(x-areaServico.x)<=areaServico.meiaX+meiaX&&
     Math.abs(z-areaServico.z)<=areaServico.meiaZ+meiaZ;
+  const invadeCurral=(x,z,meiaX=0,meiaZ=0)=>Object.values(FAZENDA_CONFIG.currais).some(c=>
+    Math.abs(x-c.cx)<=c.w/2+meiaX&&Math.abs(z-c.cz)<=c.d/2+meiaZ);
   const canteiros=[],pes=[];
   const zIni=cultivo.minZ,zFim=cultivo.maxZ,xIni=cultivo.minX,xFim=cultivo.maxX;
   const SEGMENTO_CANTEIRO=cultivo.segmento;
@@ -448,11 +430,11 @@ function criarFazenda(){
     for(let x0=xIni;x0<xFim-.001;x0+=SEGMENTO_CANTEIRO){
       const comp=Math.min(SEGMENTO_CANTEIRO,xFim-x0),mx=x0+comp/2;
       // Soma meia peça ao raio para nenhuma ponta do canteiro invadir a passagem.
-      if(distanciaAoCorredorFazenda(mx,z)>RAIO_CORREDOR_ACESSO+comp/2&&!invadeServico(mx,z,comp/2,.51))canteiros.push([mx,z,comp]);
+      if(distanciaAoCorredorFazenda(mx,z)>RAIO_CORREDOR_ACESSO+comp/2&&!invadeServico(mx,z,comp/2,.51)&&!invadeCurral(mx,z,comp/2,.51))canteiros.push([mx,z,comp]);
     }
     for(let x=xIni+.35;x<=xFim-.35;x+=.62){
       const px=x+(Math.random()-.5)*.16,pz=z+(Math.random()-.5)*.22;
-      if(distanciaAoCorredorFazenda(px,pz)>RAIO_CORREDOR_ACESSO+.25&&!invadeServico(px,pz,.25,.25))pes.push([px,pz]);
+      if(distanciaAoCorredorFazenda(px,pz)>RAIO_CORREDOR_ACESSO+.25&&!invadeServico(px,pz,.25,.25)&&!invadeCurral(px,pz,.25,.25))pes.push([px,pz]);
     }
   }
   const mesaCanteiro=new THREE.InstancedMesh(uvPorMetro(new THREE.BoxGeometry(1,.13,1.02)),matTerraArada(),canteiros.length);
