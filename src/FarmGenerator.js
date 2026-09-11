@@ -20,7 +20,7 @@ export const FARM_METRICS={
 };
 
 export const FARM_DEFS=[
-  {id:'fazenda-base',nome:'Fazenda Base',x:-86,z:-50,porte:'media',meiaLarg:13,meiaProf:11,gateMode:'manual',gateStartsOpen:true},
+  {id:'fazenda-base',nome:'Fazenda Base',x:-86,z:-50,porte:'media',meiaLarg:25,meiaProf:21,gateMode:'manual',gateStartsOpen:true},
   {id:'boa-vista',nome:'Sítio Boa Vista',sigla:'BV',x:-145,z:76,raio:30,porte:'media',meiaLarg:30,meiaProf:22,gateMode:'auto',gateStartsOpen:false},
   {id:'vale-cedro',nome:'Fazenda Vale do Cedro',sigla:'VC',x:126,z:112,raio:35,porte:'grande',meiaLarg:35,meiaProf:25,gateMode:'auto',gateStartsOpen:false},
   {id:'ribeirao',nome:'Roça do Ribeirão',sigla:'RR',x:154,z:-86,raio:32,porte:'compacta',meiaLarg:32,meiaProf:23,gateMode:'auto',gateStartsOpen:false},
@@ -44,17 +44,18 @@ const N_MADEIRA=normalProcedural(11),N_TELHA=normalProcedural(37),N_PEDRA=normal
 
 function makeMaterials(seed,owned){
   const add=m=>{owned.add(m);return m};
-  const wallColors=[0xd7c8aa,0xc9d0bd,0xd9c4a9];
+  const wallColors=[0xd9cfbe,0xd6c9b5,0xcebfa8];
   return{
     reboco:add(new THREE.MeshStandardMaterial({color:wallColors[seed%wallColors.length],roughness:.93,metalness:0,normalMap:N_REBOCO,normalScale:new THREE.Vector2(.18,.18)})),
-    madeira:add(new THREE.MeshStandardMaterial({color:0x5b3925,roughness:.80,metalness:.05,normalMap:N_MADEIRA,normalScale:new THREE.Vector2(.28,.28)})),
-    madeiraEsc:add(new THREE.MeshStandardMaterial({color:0x352419,roughness:.84,metalness:.03})),
-    madeiraClara:add(new THREE.MeshStandardMaterial({color:0x725033,roughness:.84,metalness:.04,normalMap:N_MADEIRA,normalScale:new THREE.Vector2(.20,.20)})),
-    telha:add(new THREE.MeshStandardMaterial({color:0xa84c26,roughness:.90,metalness:.02,normalMap:N_TELHA,normalScale:new THREE.Vector2(.28,.28)})),
+    madeira:add(new THREE.MeshStandardMaterial({color:0x4a2e18,roughness:.85,metalness:.04,normalMap:N_MADEIRA,normalScale:new THREE.Vector2(.28,.28)})),
+    madeiraEsc:add(new THREE.MeshStandardMaterial({color:0x3b2414,roughness:.87,metalness:.03})),
+    madeiraClara:add(new THREE.MeshStandardMaterial({color:0x4a2e18,roughness:.85,metalness:.04,normalMap:N_MADEIRA,normalScale:new THREE.Vector2(.20,.20)})),
+    telha:add(new THREE.MeshStandardMaterial({color:0x9e3d1b,roughness:.92,metalness:.01,normalMap:N_TELHA,normalScale:new THREE.Vector2(.28,.28)})),
     pedra:add(new THREE.MeshStandardMaterial({color:0x95856f,roughness:1,metalness:0,normalMap:N_PEDRA,normalScale:new THREE.Vector2(.42,.42)})),
     vidro:add(new THREE.MeshPhysicalMaterial({color:0x718b94,roughness:.08,metalness:.03,transparent:true,opacity:.48,depthWrite:false,clearcoat:.8,side:THREE.DoubleSide})),
     piso:add(new THREE.MeshStandardMaterial({color:0xb9aa91,roughness:.92,metalness:0})),
     terra:add(new THREE.MeshStandardMaterial({color:0x75583d,roughness:1,metalness:0})),
+    grama:add(new THREE.MeshStandardMaterial({color:0x6f824f,roughness:1,metalness:0})),
     palha:add(new THREE.MeshStandardMaterial({color:0xb89a55,roughness:1,metalness:0})),
     tecido:add(new THREE.MeshStandardMaterial({color:0x695549,roughness:1,metalness:0})),
     tecidoClaro:add(new THREE.MeshStandardMaterial({color:0xd7d0c2,roughness:1,metalness:0})),
@@ -131,13 +132,41 @@ function lineBar(parent,a,b,thick,mat,cast=false){
   const m=mesh(parent,new THREE.BoxGeometry(len,thick,thick),mat,cast);
   m.position.addVectors(A,B).multiplyScalar(.5);m.quaternion.setFromUnitVectors(new THREE.Vector3(1,0,0),dir.normalize());return m;
 }
-function roof2(parent,cx,cz,w,d,yEave,yRidge,ry,mat){
-  const half=w/2,rise=yRidge-yEave,ang=Math.atan2(rise,half),len=Math.hypot(half,rise)+.48;
-  for(const side of[-1,1]){
-    const g=new THREE.Group();g.position.set(cx,0,cz);g.rotation.y=ry;parent.add(g);
-    const m=mesh(g,new THREE.BoxGeometry(len,.15,d+.8),mat);
-    m.position.set(side*Math.cos(ang)*len/2,yRidge-Math.sin(ang)*len/2,0);m.rotation.z=-side*ang;
-  }
+function roof2(parent,cx,cz,w,d,yEave,yRidge,ry,mat,gableMat=mat){
+  // Telhado contínuo: as duas águas compartilham EXATAMENTE a mesma linha de cumeeira.
+  // A geometria explícita elimina o vão central que aparecia com caixas inclinadas.
+  const g=new THREE.Group();g.position.set(cx,0,cz);g.rotation.y=ry;parent.add(g);
+  const half=w/2,z0=-d/2,z1=d/2;
+  const panel=(verts,idx)=>{
+    const geo=new THREE.BufferGeometry();
+    geo.setAttribute('position',new THREE.Float32BufferAttribute(verts,3));
+    geo.setIndex(idx);geo.computeVertexNormals();
+    const m=mesh(g,geo,mat);m.castShadow=true;m.receiveShadow=true;return m;
+  };
+  panel([
+    -half,yEave,z0, 0,yRidge,z0,
+    -half,yEave,z1, 0,yRidge,z1
+  ],[0,2,1,2,3,1]);
+  panel([
+    0,yRidge,z0, half,yEave,z0,
+    0,yRidge,z1, half,yEave,z1
+  ],[0,2,1,1,2,3]);
+
+  // Cumeeira física/visual sobrepõe a junta alguns centímetros.
+  const ridge=mesh(g,new THREE.BoxGeometry(.22,.16,d+.08),mat);
+  ridge.position.set(0,yRidge+.035,0);
+
+  // Empenas triangulares fecham frente e fundo; cômodos nunca ficam expostos por cima.
+  const gable=(z,front)=>{
+    const geo=new THREE.BufferGeometry();
+    geo.setAttribute('position',new THREE.Float32BufferAttribute([
+      -half,yEave,z, half,yEave,z, 0,yRidge,z
+    ],3));
+    geo.setIndex(front?[0,1,2]:[0,2,1]);geo.computeVertexNormals();
+    return mesh(g,geo,gableMat);
+  };
+  gable(z0,true);gable(z1,false);
+  return g;
 }
 function wallSegmentZ(handle,parent,list,cx,cz,w,h,yBase,doorCx=null,doorW=0,doorH=0,ry=0){
   const t=.22;
@@ -165,11 +194,13 @@ function wallSegmentX(handle,parent,list,cx,cz,d,h,yBase,doorCz=null,doorW=0,doo
 }
 
 function buildArchitecture(handle,cx,cz,rotation,porte,M){
+  // Zoneamento funcional. Casa e galpão ficam sempre a >15 m entre centros.
+  // O pasto ocupa uma terceira zona aberta, sem cruzar nenhuma construção.
   const cfg=porte==='grande'
-    ?{cw:16.5,cd:10.8,gw:14,gd:10,house:[-4.5,5.4],barn:[8,-7]}
+    ?{cw:16.5,cd:10.8,gw:14,gd:10,house:[-11,8],barn:[10,-9],pasture:[8,9],pw:16,pd:14}
     :porte==='compacta'
-      ?{cw:13.6,cd:9.0,gw:11.2,gd:8.0,house:[-4.2,5.0],barn:[6.8,-6.0]}
-      :{cw:14.8,cd:9.8,gw:12.4,gd:8.8,house:[-4.4,5.2],barn:[7.2,-6.5]};
+      ?{cw:13.6,cd:9.0,gw:11.2,gd:8.0,house:[-9,6],barn:[8,-7],pasture:[7,8],pw:13,pd:11}
+      :{cw:14.8,cd:9.8,gw:12.4,gd:8.8,house:[-10,6],barn:[9,-8],pasture:[7,8],pw:14,pd:12};
 
   const H=FARM_METRICS.sede.peDireito,houseCenter=point(cx,cz,cfg.house[0],cfg.house[1],rotation);
   const hh=footprintHeights(houseCenter.x,houseCenter.z,cfg.cw+2.4,cfg.cd+2.4,rotation),floorY=hh.max+.14;
@@ -178,6 +209,9 @@ function buildArchitecture(handle,cx,cz,rotation,porte,M){
   // Fundação maciça de pedra: topo nivelado, base desce além do canto mais baixo.
   const foundationH=Math.max(.45,floorY-hh.min+.28);
   mergedBox(stones,cfg.cw+1.0,foundationH,cfg.cd+1.0,houseCenter.x,floorY-foundationH/2,houseCenter.z,rotation);
+
+  // ZONA A — sede: faixa ajardinada acompanha o relevo e separa visualmente a residência do trabalho.
+  terrainPatch(handle.group,houseCenter.x,houseCenter.z,cfg.cw+8,cfg.cd+7,M.grama,handle,10);
 
   // Paredes externas com vãos vazios.
   const front=point(houseCenter.x,houseCenter.z,0,-cfg.cd/2,rotation);
@@ -193,9 +227,16 @@ function buildArchitecture(handle,cx,cz,rotation,porte,M){
   const room=point(houseCenter.x,houseCenter.z,-3.2,1.6,rotation);
   wallSegmentX(handle,handle.group,walls,room.x,room.z,3.6,H,floorY,.9,1.0,2.15,rotation);
 
-  // Rodapé/pilastras de pedra.
-  const rod=point(houseCenter.x,houseCenter.z,0,-cfg.cd/2-.03,rotation);
-  mergedBox(stones,cfg.cw,.70,.28,rod.x,floorY+.35,rod.z,rotation);
+  // Rodapé de pedra natural de 1,00 m em TODO o perímetro, sem tampar os vãos das portas.
+  const skirtH=1.00,skirtT=.12,frontDoorX=-1.4,serviceDoorZ=1.8;
+  const fLeft=(frontDoorX-.60)-(-cfg.cw/2),fRight=(cfg.cw/2)-(frontDoorX+.60);
+  if(fLeft>0){const p=point(houseCenter.x,houseCenter.z,-cfg.cw/2+fLeft/2,-cfg.cd/2-.08,rotation);mergedBox(stones,fLeft,skirtH,skirtT,p.x,floorY+skirtH/2,p.z,rotation)}
+  if(fRight>0){const p=point(houseCenter.x,houseCenter.z,frontDoorX+.60+fRight/2,-cfg.cd/2-.08,rotation);mergedBox(stones,fRight,skirtH,skirtT,p.x,floorY+skirtH/2,p.z,rotation)}
+  {const p=point(houseCenter.x,houseCenter.z,0,cfg.cd/2+.08,rotation);mergedBox(stones,cfg.cw,skirtH,skirtT,p.x,floorY+skirtH/2,p.z,rotation)}
+  {const p=point(houseCenter.x,houseCenter.z,-cfg.cw/2-.08,0,rotation);mergedBox(stones,skirtT,skirtH,cfg.cd,p.x,floorY+skirtH/2,p.z,rotation)}
+  const sA=(serviceDoorZ-.50)-(-cfg.cd/2),sB=(cfg.cd/2)-(serviceDoorZ+.50);
+  if(sA>0){const p=point(houseCenter.x,houseCenter.z,cfg.cw/2+.08,-cfg.cd/2+sA/2,rotation);mergedBox(stones,skirtT,skirtH,sA,p.x,floorY+skirtH/2,p.z,rotation)}
+  if(sB>0){const p=point(houseCenter.x,houseCenter.z,cfg.cw/2+.08,serviceDoorZ+.50+sB/2,rotation);mergedBox(stones,skirtT,skirtH,sB,p.x,floorY+skirtH/2,p.z,rotation)}
   for(const lx of[-cfg.cw/2+.18,cfg.cw/2-.18])for(const lz of[-cfg.cd/2+.18,cfg.cd/2-.18]){
     const p=point(houseCenter.x,houseCenter.z,lx,lz,rotation);mergedBox(stones,.44,H+.16,.44,p.x,floorY+(H+.16)/2,p.z,rotation);
   }
@@ -230,7 +271,7 @@ function buildArchitecture(handle,cx,cz,rotation,porte,M){
     trackedBox(handle,new THREE.Box3(new THREE.Vector3(p.x-.16,base,p.z-.16),new THREE.Vector3(p.x+.16,top,p.z+.16)),'pilar-sede-rural');
   }
 
-  roof2(handle.group,houseCenter.x,houseCenter.z,cfg.cw+1.0,cfg.cd+1.0,floorY+3.05,floorY+4.85,rotation,M.telha);
+  roof2(handle.group,houseCenter.x,houseCenter.z,cfg.cw+1.20,cfg.cd+1.20,floorY+3.05,floorY+4.85,rotation,M.telha,M.reboco);
   const marqP=point(houseCenter.x,houseCenter.z,0,-cfg.cd/2-vp/2,rotation);
   const marq=placeBox(handle.group,cfg.cw+1.4,.12,vp+.7,marqP.x,floorY+2.55,marqP.z,rotation,M.telha);marq.rotation.x=-.11;
 
@@ -276,7 +317,8 @@ function buildArchitecture(handle,cx,cz,rotation,porte,M){
   // ===== GALPÃO / CURRAL =====
   const barnCenter=point(cx,cz,cfg.barn[0],cfg.barn[1],rotation);
   const gh=footprintHeights(barnCenter.x,barnCenter.z,cfg.gw+1.4,cfg.gd+1.4,rotation),eave=gh.max+FARM_METRICS.galpao.lateral+.12,ridge=gh.max+FARM_METRICS.galpao.cumeeira+.12;
-  terrainPatch(handle.group,barnCenter.x,barnCenter.z,cfg.gw,cfg.gd,M.terra,handle,8);
+  // ZONA B — galpão/depósito: pátio próprio de terra/cascalho, separado da sede.
+  terrainPatch(handle.group,barnCenter.x,barnCenter.z,cfg.gw+5,cfg.gd+5,M.terra,handle,8);
 
   // Pilares: cada base toca o chão real naquele X/Z; topo alinhado para receber a tesoura.
   for(const lz of[-cfg.gd/2,0,cfg.gd/2])for(const lx of[-cfg.gw/2,cfg.gw/2]){
@@ -293,7 +335,7 @@ function buildArchitecture(handle,cx,cz,rotation,porte,M){
       const tr=mesh(g,new THREE.BoxGeometry(len,.18,.18),M.madeiraEsc);tr.position.set(side*Math.cos(ang)*len/2,ridge-Math.sin(ang)*len/2,0);tr.rotation.z=-side*ang;
     }
   }
-  roof2(handle.group,barnCenter.x,barnCenter.z,cfg.gw+.8,cfg.gd+.8,eave,ridge,rotation,M.telha);
+  roof2(handle.group,barnCenter.x,barnCenter.z,cfg.gw+1.0,cfg.gd+1.0,eave,ridge,rotation,M.telha,M.madeiraEsc);
 
   // Baias laterais: cada ripa usa a altura do chão nas duas pontas.
   for(const lx of[-cfg.gw/2+1.5,cfg.gw/2-1.5])for(const lz of[-cfg.gd/2+.9,-1.0,2.3])for(const ah of[.48,.88,1.28]){
@@ -312,8 +354,14 @@ function buildArchitecture(handle,cx,cz,rotation,porte,M){
     placeBox(handle.group,.70,.55,1.0,p.x,base+.275,p.z,rotation,M.palha,false);
   }
 
+  const pastureCenter=point(cx,cz,cfg.pasture[0],cfg.pasture[1],rotation);
   handle.sede={x:houseCenter.x,z:houseCenter.z,y:floorY,larg:cfg.cw,prof:cfg.cd};
   handle.galpao={x:barnCenter.x,z:barnCenter.z,y:gh.max+.12,larg:cfg.gw,prof:cfg.gd,meiaLarg:cfg.gw/2,meiaProf:cfg.gd/2};
+  handle.pasto={
+    x:pastureCenter.x,z:pastureCenter.z,rotation,
+    meiaLarg:cfg.pw/2,meiaProf:cfg.pd/2,
+    areaAnimal:{meiaLarg:Math.max(2,cfg.pw/2-1.5),meiaProf:Math.max(2,cfg.pd/2-3.2)}
+  };
 }
 
 function defaultBoundary(cx,cz,halfW,halfD,rotation){
