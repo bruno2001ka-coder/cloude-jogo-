@@ -621,6 +621,15 @@ function alvoDoJogador(){
 // A ocorrência leva CONSIGO o que a viatura precisa pra decidir, e não só a coordenada: se é
 // perseguição ou batida, se o endereço é quente, e o nível da ficha. É o que mantém a fronteira —
 // `Viatura.js` continua sem conhecer `Police.js`, só recebe uma ficha de ocorrência mais completa.
+// Viatura pode relocalizar um jogador JA procurado a uma distancia maior que o policial a pe.
+// Isso apenas atualiza o radio/rastro; nao cria estrela nem abordagem em quem esta limpo.
+export function registrarAvistamentoViatura(avistamento){
+  if(!avistamento||policia.procurado<=0)return false;
+  compartilharAvistamento(avistamento.x,avistamento.z,avistamento.t??performance.now()/1000);
+  ultimoVisto={x:avistamento.x,z:avistamento.z};
+  return true;
+}
+
 export function ocorrenciaAtual(){
   if(policia.alvoPlantacao)
     return{x:policia.alvoPlantacao.x,z:policia.alvoPlantacao.z,
