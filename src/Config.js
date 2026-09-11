@@ -74,7 +74,7 @@ export const DIST_PAPEL = {
 
 // ===== ECONOMIA E PLANTIO =====
 export const ECONOMIA = {
-  DINHEIRO_INICIAL: 10000,  // Saldo inicial para testes
+  DINHEIRO_INICIAL: 180,    // Caixa inicial curto: suficiente para começar, não para pular a progressão
   TEMPO_ESTAGIO_PLANTA: 22, // Segundos por estágio de crescimento da planta
   MAX_ESTAGIO_PLANTA: 5,    // Seis imagens: índices 0 a 5; os três últimos são a evolução da genética roxa
   CHANCE_GENETICA_ROXA: .25,// Parte das sementes nasce com a genética roxa
