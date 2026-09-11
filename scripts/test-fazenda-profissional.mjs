@@ -23,7 +23,7 @@ const folha=F.casa.portaVao/2-.05;
 const subidaTelhado=4.55-F.casa.altura;
 const compAgua=Math.hypot(F.casa.largura/2,subidaTelhado)+.45;
 const animais=[
-  [-84,-48],[-82,-47],[-88,-45],[-83,-44],[-79,-45],[-81,-46],[-78,-57]
+  [-84.6,-58.2],[-81.5,-56.8],[-79.1,-58.1],[-76.8,-56.4],[-84.2,-55.5],[-80.5,-58.7],[-76.4,-58.8]
 ];
 
 // 01–09 · geometria fixa da casa
@@ -55,15 +55,20 @@ check('19 novo polo fica fora do corredor',distSeg(F.polo.x,F.polo.z)>F.acesso.r
 }
 
 // 21–30 · regressões de código/física/interação
-check('21 roça filtra corredor e área de serviço',wg.includes('distanciaAoCorredorFazenda(mx,z)>RAIO_CORREDOR_ACESSO+comp/2')&&wg.includes('!invadeServico(mx,z,comp/2,.51)'));
-check('22 balcão que tampava a porta não voltou',!wg.includes('function criarBalcaoFazenda'));
-check('23 animais nascem fora do corredor',animais.every(([x,z])=>distSeg(x,z)>=F.acesso.raio+.55));
-check('24 novos alvos de animais evitam o corredor',wg.includes('distanciaAoCorredorFazenda(x,z)<FAZENDA_CONFIG.acesso.raio+.55'));
+check('21 roça nasce só no setor de cultivo',wg.includes('const cultivo=FAZENDA_CONFIG.cultivo')&&wg.includes('const zIni=cultivo.minZ,zFim=cultivo.maxZ,xIni=cultivo.minX,xFim=cultivo.maxX'));
+check('22 vão do celeiro não pode ser fundido pelo otimizador',wg.includes("marcarSemFusao(registrarObstaculo(paredeFrenteE,'celeiro'))")&&wg.includes("marcarSemFusao(registrarObstaculo(paredeFrenteD,'celeiro'))")&&wg.includes("marcarSemFusao(registrarObstaculo(vergaParede,'celeiro'))"));
+{
+  const a=F.animais,m=a.margem;
+  check('23 animais nascem dentro do campo próprio',animais.every(([x,z])=>x>=a.minX+m&&x<=a.maxX-m&&z>=a.minZ+m&&z<=a.maxZ-m));
+}
+check('24 novos alvos ficam restritos ao campo dos animais',wg.includes('const c=FAZENDA_CONFIG.animais,m=c.margem')&&wg.includes('x:c.minX+m+Math.random()*(c.maxX-c.minX-2*m)'));
 check('25 fundação é superfície andável',wg.includes('superficiesAndaveis.push(baseCeleiro)'));
 check('26 tecla E aciona portas da fazenda',economy.includes("ctx.tipo==='portasCeleiro'")&&economy.includes("alternarPortasCeleiro()"));
 check('27 portas usam colisores segmentados por folha',wg.includes("criarSegmentosFolha(folha,'x',LARGURA_FOLHA,2.45,.12,'porta-celeiro')")&&wg.includes('atualizarColisoresFolhas(portasCeleiro.pivos)'));
 check('28 porteira usa colisores segmentados por folha',wg.includes("criarSegmentosFolha(folha,'z',folhaLarg,ALTURA_PORTEIRA,.12,'porteira')")&&wg.includes('atualizarColisoresFolhas(porteiraFazenda.pivos)'));
 check('29 materiais da fazenda são próprios',wg.includes('matParedeRural()')&&wg.includes('matTelhaBarroRural()')&&materials.includes('bumpMap:bumpTelhaRural()'));
-check('30 terreno nivela casa e porteira',terrain.includes('FAZENDA_CONFIG.nivelamentoCasa')&&terrain.includes('FAZENDA_CONFIG.nivelamentoPorteira'));
+check('30 terreno nivela casa e porteira e zonas rurais não se sobrepõem',
+  terrain.includes('FAZENDA_CONFIG.nivelamentoCasa')&&terrain.includes('FAZENDA_CONFIG.nivelamentoPorteira')&&
+  F.animais.maxZ<F.cultivo.minZ&&F.cultivo.minZ-F.animais.maxZ>=7);
 
 console.log(JSON.stringify({ok:true,total:resultados.length,checks:resultados},null,2));
