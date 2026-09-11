@@ -48,6 +48,17 @@ predios.instanceMatrix.needsUpdate=true;
 if(predios.instanceColor)predios.instanceColor.needsUpdate=true;
 
 // Chamado a cada frame pelo main: recentra o anel na câmera, igual ao céu e ao horizonte pintado.
+const ZONAS_RURAIS_VISUAIS=[
+  {x:-145,z:76,r:105},{x:126,z:112,r:110},{x:154,z:-86,r:105},{x:82,z:98,r:90}
+];
 export function atualizarSkyline(){
   cidadeFundo.position.set(camera.position.x,0,camera.position.z);
+  // No campo, um anel de torres brancas em 360° mata a leitura rural. A cidade continua existindo
+  // perto da região urbana, mas some quando a câmera entra de fato nas propriedades.
+  let rural=false;
+  for(const z of ZONAS_RURAIS_VISUAIS){
+    const dx=camera.position.x-z.x,dz=camera.position.z-z.z;
+    if(dx*dx+dz*dz<z.r*z.r){rural=true;break}
+  }
+  cidadeFundo.visible=!rural;
 }
