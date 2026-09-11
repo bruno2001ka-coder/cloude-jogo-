@@ -1,6 +1,6 @@
-import { readdir } from 'node:fs/promises';
+import { access, readdir, readFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 
 async function arquivosJavaScript(dir) {
   const entries = await readdir(dir, { withFileTypes: true });
@@ -28,4 +28,14 @@ const arquivos = [
   ...(await arquivosJavaScript('scripts')),
 ];
 for (const arquivo of arquivos) await checar(arquivo);
+// `node --check` aceita import para arquivo inexistente. Valida o grafo local separadamente para
+// uma remocao de gerador nunca deixar referencia quebrada que so apareceria no navegador.
+for(const arquivo of arquivos){
+  const source=await readFile(arquivo,'utf8');
+  const imports=[...source.matchAll(/(?:from\s*|import\s*\()(['"])(\.\.?\/[^'"]+)\1/g)].map(m=>m[2]);
+  for(const specifier of imports){
+    const target=resolve(dirname(arquivo),specifier);
+    try{await access(target)}catch{throw new Error(`Import local inexistente: ${arquivo} -> ${specifier}`)}
+  }
+}
 console.log(`Sintaxe OK: ${arquivos.length} arquivos JavaScript verificados.`);

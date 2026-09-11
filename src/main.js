@@ -22,9 +22,11 @@ import{definirPosicaoAudio}from'./Audio.js';
 import{atualizarMoto,maxVelMoto}from'./Moto.js';
 import{valorAcelerador,reSegurada,configurar as configurarAcelerador,modoDirigindo}from'./Acelerador.js';
 import{atualizarCarro,maxVelCarro}from'./Carro.js';
-import{atualizarChaoVisivel}from'./Terrain.js';
+import{atualizarChaoVisivel,alturaDoChaoDesenhado}from'./Terrain.js';
 import{atualizarMundoRural}from'./RuralWorld.js';
 import{atualizarFavelaVisivel}from'./Favela.js';
+import{FARM_PROTOTYPE_MODE}from'./GameMode.js';
+import{FARM_PROTOTYPE}from'./FarmPrototypeConfig.js';
 
 camera.position.set(0,EYE_HEIGHT,16);
 initDragLook(renderer.domElement);
@@ -58,7 +60,7 @@ document.getElementById('destravarBtn').addEventListener('click',()=>destravarJo
 // Marca de versão na tela inicial. Existe por um motivo prático: quando uma novidade "não aparece",
 // a primeira pergunta é se o navegador está servindo o build novo ou um cache velho — e sem isso não
 // há como responder olhando a tela. O segundo campo diz se o boneco 3D entrou.
-const VERSAO_JOGO='0.4.9-farm-reverted';
+const VERSAO_JOGO='0.5.0-rural-prototype';
 {const el=document.getElementById('versaoJogo');
  if(el){el.textContent=`versão ${VERSAO_JOGO} · boneco 3D: carregando…`;
    const marcar=()=>{el.textContent=`versão ${VERSAO_JOGO} · boneco 3D: ${personagemCarregado()?'ok':'não carregou'}`};
@@ -106,10 +108,22 @@ if(new URLSearchParams(location.search).has('debug'))document.body.classList.add
   });
 }
 
-// Sem save, `carregar()` devolve false e o jogo começa do zero — sem caso especial nenhum.
-if(carregar())console.info('Quintal 3D: progresso carregado.');
-else if(!saveDisponivel())console.info('Quintal 3D: sem armazenamento — o progresso não será salvo.');
-instalarSalvamentoAoSair();
+// O ensaio nao le nem grava o progresso real. Ele nasce limpo, na entrada da unica fazenda.
+let farmPrototype=null;
+if(FARM_PROTOTYPE_MODE){
+  farmPrototype=await import('./FarmPrototype.js');
+  const report=farmPrototype.mountFarmPrototype();
+  player.position.set(FARM_PROTOTYPE.spawn.x,
+    alturaDoChaoDesenhado(FARM_PROTOTYPE.spawn.x,FARM_PROTOTYPE.spawn.z)+.03,FARM_PROTOTYPE.spawn.z);
+  inputState.yaw=inputState.targetYaw=-Math.PI/2;
+  window.__farmPrototypeReport=()=>farmPrototype.getFarmPrototypeMetrics();
+  console.info('FARM TEST ativo. Relatorio: window.__farmPrototypeReport()',report);
+}else{
+  // Sem save, `carregar()` devolve false e o jogo começa do zero — sem caso especial nenhum.
+  if(carregar())console.info('Quintal 3D: progresso carregado.');
+  else if(!saveDisponivel())console.info('Quintal 3D: sem armazenamento — o progresso não será salvo.');
+  instalarSalvamentoAoSair();
+}
 
 const clock=new THREE.Clock(),pos=document.getElementById('pos');
 const faseIcone=document.getElementById('faseIcone');let bandaAnteriorHud=null;const ICONES_FASE={noite:'🌙',nascer:'🌅',dia:'🌞',por:'🌇'};
@@ -152,6 +166,7 @@ function quadro(){
   atualizarChaoVisivel(camera.position.x,camera.position.z);
   atualizarMundoRural(camera.position.x,camera.position.z);
   atualizarFavelaVisivel(camera.position.x,camera.position.z);
+  farmPrototype?.updateFarmPrototype(dt,player.position);
   atualizarAmbiente(dt,player.position);atualizarSkyline();
     composer.render();
     return;
@@ -238,6 +253,7 @@ function quadro(){
   atualizarMundoRural(camera.position.x,camera.position.z);
   atualizarFavelaVisivel(camera.position.x,camera.position.z);
   atualizarAmbiente(dt,player.position);atualizarSkyline();definirPosicaoAudio(camera.position.x,camera.position.z);
+  farmPrototype?.updateFarmPrototype(dt,player.position);
   {const banda=obterBandaFase();if(banda!==bandaAnteriorHud){faseIcone.textContent=ICONES_FASE[banda];bandaAnteriorHud=banda}}
   // O tiro contínuo vem ANTES do atualizarPolicia: a bala criada neste frame já entra no
   // atualizarBalas que roda lá dentro, com os alvos deste frame. Depois, ela ficaria um frame parada
@@ -257,7 +273,7 @@ function quadro(){
   // pronta e escondida no Player.
   definirColeteVisivel(jogadorComColete());
   definirMochilaVisivel(jogadorComMochila());
-  atualizarSave(dt);
+  if(!FARM_PROTOTYPE_MODE)atualizarSave(dt);
   composer.render();
 }
 tick();
