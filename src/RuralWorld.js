@@ -50,7 +50,7 @@ function faixa(curva,largura,offset,material,yExtra=.02,passo=1.7){
       pos.push(x,chao(x,z,yExtra),z);
       uv.push(i*passo/4,lado<0?0:1);
     }
-    if(i<n){const a=i*2,b=a+1,c=a+2,d=a+3;idx.push(a,c,b,b,c,d)}
+    // Winding +Y: a superfície é chão. Na versão anterior os triângulos apontavam para BAIXO;\n    // se a câmera raspasse sob a manta, ela enxergava uma placa escura gigante.\n    if(i<n){const a=i*2,b=a+1,c=a+2,d=a+3;idx.push(a,b,c,b,d,c)}
   }
   const g=new THREE.BufferGeometry();
   g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
@@ -88,7 +88,7 @@ function preencherPoligono(parent,pts,material,yExtra=.025){
   let minX=Infinity,maxX=-Infinity,minZ=Infinity,maxZ=-Infinity;
   for(const p of pts){minX=Math.min(minX,p.x);maxX=Math.max(maxX,p.x);minZ=Math.min(minZ,p.z);maxZ=Math.max(maxZ,p.z)}
   for(const p of pts){pos.push(p.x,chao(p.x,p.z,yExtra),p.z);uv.push((p.x-minX)/(maxX-minX),(p.z-minZ)/(maxZ-minZ))}
-  for(let i=0;i<pts.length;i++)idx.push(0,i+1,1+(i+1)%pts.length);
+  // O polígono é visto de cima: ordem invertida para normal +Y e nunca como teto preto por baixo.\n  for(let i=0;i<pts.length;i++)idx.push(0,1+(i+1)%pts.length,i+1);
   const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
   g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));g.setAttribute('uv1',new THREE.Float32BufferAttribute(uv.slice(),2));
   g.setIndex(idx);g.computeVertexNormals();
