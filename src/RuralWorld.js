@@ -7,13 +7,9 @@ import{alturaDoChaoDesenhado}from'./Terrain.js';
 import{player}from'./Player.js';
 import{matTerraArada,matTerraBatida,matMadeira,matReboco,matTelha,matConcreto,bmat,uvPorMetro}from'./Materials.js';
 import{registrarObstaculo,registrarCaixa,marcarObstaculoMovel}from'./Physics.js';
-import{criarArquiteturaRuralPadrao}from'./FarmGenerator.js';
+import{buildFarm,updateFarms,RURAL_FARM_DEFS}from'./FarmGenerator.js';
 
-export const RURAL_ZONES=[
-  {id:'boa-vista',nome:'Sítio Boa Vista',sigla:'BV',x:-145,z:76,raio:30},
-  {id:'vale-cedro',nome:'Fazenda Vale do Cedro',sigla:'VC',x:126,z:112,raio:35},
-  {id:'ribeirao',nome:'Roça do Ribeirão',sigla:'RR',x:154,z:-86,raio:32},
-];
+export const RURAL_ZONES=RURAL_FARM_DEFS.map(f=>({...f}));
 const VILA={x:82,z:98,raio:46};
 
 const mundo=new THREE.Group();mundo.name='cidade-rural-brasileira';scene.add(mundo);
@@ -291,16 +287,13 @@ function montarFazenda(zona,i){
   ];
   preencherPoligono(grupo,rocas[0],matTerraArada(),.04);
   preencherPoligono(grupo,rocas[1],matPastoSeco,.042);
-  // Perímetro 100% fechado: a cerca só deixa o vão exato ocupado pela porteira.
+  // Uma única chamada cria sede + galpão/curral + cerca + porteira.
+  // Se o mesmo id for reconstruído, FarmGenerator destrói a versão anterior, remove todos os
+  // Box3/superfícies e descarta as geometrias antes de criar a nova: zero ghost meshes.
   const gap=(i*3+2)%pts.length;
-  const vao=cercaArame(grupo,pts,gap,3.9);
-  if(vao)porteiraAutomatica(grupo,vao.x,vao.z,vao.ang,vao.largura);
-  // TODAS as fazendas usam agora a mesma linguagem arquitetônica das referências:
-  // sede colonial contemporânea transitável + galpão/curral de madeira em escala métrica.
-  // A fazenda antiga (-86,-50) não é tocada por este gerador.
-  criarArquiteturaRuralPadrao({
-    parent:grupo,cx:zona.x,cz:zona.z,seed:i+1,nome:zona.nome,
-    porte:i===1?'grande':i===2?'compacta':'media'
+  buildFarm(zona.x,zona.z,0,{
+    id:zona.id,name:zona.nome,parent:grupo,seed:i+1,porte:zona.porte,
+    boundaryPoints:pts,gateIndex:gap,gateMode:'auto',gateStartsOpen:false
   });
   reservatorioAzul(grupo,zona.x-zona.raio*.43,zona.z+zona.raio*.12);
   bananeiras(grupo,zona.x+zona.raio*.37,zona.z+zona.raio*.2,30+i);
@@ -355,7 +348,7 @@ RURAL_ZONES.forEach(montarFazenda);
 let ultimo=performance.now()/1000;
 export function atualizarMundoRural(x,z){
   const agora=performance.now()/1000,dt=Math.min(.05,Math.max(0,agora-ultimo));ultimo=agora;
-  atualizarPorteiras(dt);
+  updateFarms(dt,player.position);
   for(const r of grupos){
     const dx=x-r.x,dz=z-r.z;r.grupo.visible=dx*dx+dz*dz<r.raio*r.raio;
   }
