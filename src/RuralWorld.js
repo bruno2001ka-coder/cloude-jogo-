@@ -6,7 +6,7 @@ import{scene}from'./core.js';
 import{alturaDoChaoDesenhado}from'./Terrain.js';
 import{player}from'./Player.js';
 import{matTerraArada,matTerraBatida,matMadeira,matReboco,matTelha,matConcreto,bmat,uvPorMetro}from'./Materials.js';
-import{registrarObstaculo,registrarCaixa}from'./Physics.js';
+import{registrarObstaculo,registrarCaixa,marcarObstaculoMovel}from'./Physics.js';
 
 export const RURAL_ZONES=[
   {id:'boa-vista',nome:'Sítio Boa Vista',sigla:'BV',x:-145,z:76,raio:30},
@@ -94,11 +94,22 @@ function preencherPoligono(parent,pts,material,yExtra=.025){
   g.setIndex(idx);g.computeVertexNormals();
   const m=new THREE.Mesh(g,material);m.receiveShadow=true;parent.add(m);return m;
 }
-function caixaColisorSegmento(ax,az,bx,bz,altura=1.25,esp=.13){
-  const yA=chao(ax,az,0),yB=chao(bx,bz,0),yMin=Math.min(yA,yB)-.35,yMax=Math.max(yA,yB)+altura;
-  const min=new THREE.Vector3(Math.min(ax,bx)-esp,yMin,Math.min(az,bz)-esp);
-  const max=new THREE.Vector3(Math.max(ax,bx)+esp,yMax,Math.max(az,bz)+esp);
-  registrarCaixa(new THREE.Box3(min,max),'cerca-rural');
+function caixaColisorSegmento(ax,az,bx,bz,altura=1.25,esp=.11){
+  // Physics trabalha com AABB. Uma AABB única em uma cerca DIAGONAL vira um retângulo enorme
+  // preenchendo todo o espaço entre as pontas — exatamente a "parede invisível" vista no sítio.
+  // Quebrar em trechos curtos aproxima a linha real da cerca sem inventar área sólida no meio.
+  const dx=bx-ax,dz=bz-az,len=Math.hypot(dx,dz),PASSO=.55;
+  const n=Math.max(1,Math.ceil(len/PASSO));
+  for(let i=0;i<n;i++){
+    const t0=i/n,t1=(i+1)/n;
+    const x0=ax+dx*t0,z0=az+dz*t0,x1=ax+dx*t1,z1=az+dz*t1;
+    const y0=chao(x0,z0,0),y1=chao(x1,z1,0);
+    const yMin=Math.min(y0,y1)-.28,yMax=Math.max(y0,y1)+altura;
+    registrarCaixa(new THREE.Box3(
+      new THREE.Vector3(Math.min(x0,x1)-esp,yMin,Math.min(z0,z1)-esp),
+      new THREE.Vector3(Math.max(x0,x1)+esp,yMax,Math.max(z0,z1)+esp)
+    ),'cerca-rural');
+  }
 }
 function barraEntre(parent,a,b,material,esp=.035){
   const de=new THREE.Vector3(a.x,a.y,a.z),para=new THREE.Vector3(b.x,b.y,b.z),dir=new THREE.Vector3().subVectors(para,de);
@@ -201,7 +212,7 @@ function porteiraAutomatica(parent,x,z,ang=0,larg=3.8){
   for(const lx of[-larg/2-.12,larg/2+.12]){const m=new THREE.Mesh(new THREE.CylinderGeometry(.11,.14,1.55,8),matTronco);m.position.set(lx,.72,0);m.castShadow=true;g.add(m)}
   const esp=.16,hx=Math.abs(Math.cos(ang))*larg/2+Math.abs(Math.sin(ang))*esp,hz=Math.abs(Math.sin(ang))*larg/2+Math.abs(Math.cos(ang))*esp;
   const fechada=new THREE.Box3(new THREE.Vector3(x-hx,y-.25,z-hz),new THREE.Vector3(x+hx,y+1.5,z+hz));
-  const caixa=registrarCaixa(fechada.clone(),'porteira-rural');
+  const caixa=marcarObstaculoMovel(registrarCaixa(fechada.clone(),'porteira-rural'));
   const p={x,z,pL,pR,angulo:0,alvo:0,caixa,fechada,colisorAtivo:true,aberta:false};
   porteiras.push(p);return p;
 }
