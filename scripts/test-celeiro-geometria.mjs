@@ -25,16 +25,22 @@ function distSegmento(px,pz){
 }
 const xIni=F.cx-F.meiaLarg+7.5,xFim=F.cx+F.meiaLarg-2.2;
 const zIni=F.cz-F.meiaProf+2.2,zFim=F.cz+F.meiaProf-8,seg=1.25;
-let total=0,removidos=0;
+let total=0,removidosCorredor=0,removidosServico=0;
 for(let z=zIni;z<=zFim;z+=1.7){
   for(let x0=xIni;x0<xFim-.001;x0+=seg){
     const comp=Math.min(seg,xFim-x0),mx=x0+comp/2;total++;
-    if(distSegmento(mx,z)<=F.acesso.raio+comp/2)removidos++;
+    if(distSegmento(mx,z)<=F.acesso.raio+comp/2)removidosCorredor++;
+    else{
+      const l=F.servico.limpeza;
+      if(Math.abs(mx-l.x)<=l.meiaX+comp/2&&Math.abs(z-l.z)<=l.meiaZ+.51)removidosServico++;
+    }
   }
 }
-assert(removidos===42,`esperados 42 segmentos fora do corredor, calculados ${removidos}`);
+assert(removidosCorredor===42,`esperados 42 segmentos fora do corredor, calculados ${removidosCorredor}`);
+assert(removidosServico===8,`esperados 8 segmentos fora do pátio de serviço, calculados ${removidosServico}`);
 assert(total===98,`grade original de canteiros mudou: ${total}`);
 assert(distSegmento(-94,-53)<F.acesso.raio,'o antigo balcão deve continuar proibido no corredor');
 console.log(JSON.stringify({largura,profundidade,altura,vao,lateral,subida,agua,
   acessoA:F.acesso.a,acessoB:F.acesso.b,larguraCorredor:F.acesso.raio*2,
-  canteirosTotal:total,canteirosRemovidos:removidos},null,2));
+  canteirosTotal:total,canteirosRemovidosCorredor:removidosCorredor,
+  canteirosRemovidosServico:removidosServico,canteirosRestantes:total-removidosCorredor-removidosServico},null,2));
