@@ -29,6 +29,9 @@ const matRodado=materialCor(0x684632,.96);
 const matGramaBorda=materialCor(0x65764d,.98);
 const matFolha=materialCor(0x446b3d,.92);
 const matFolha2=materialCor(0x587d47,.9);
+const matPasto=materialCor(0x6f7f50,.98);
+const matPastoSeco=materialCor(0x8a7d54,.99);
+const matCapimEscuro=materialCor(0x4f673d,.98);
 const matTronco=matMadeira(0x5d432d);
 const matArame=materialCor(0x3c3b37,.65);
 const matPorteira=matMadeira(0x765437);
@@ -170,13 +173,39 @@ function galpao(parent,x,z,giro=0,seed=1){
 }
 function arvore(parent,x,z,s=1,seed=1){
   const g=new THREE.Group();g.position.set(x,chao(x,z,0),z);g.rotation.y=pseudo(seed)*Math.PI*2;parent.add(g);
-  const tronco=new THREE.Mesh(new THREE.CylinderGeometry(.12*s,.2*s,2.2*s,9),matTronco);tronco.position.y=1.1*s;tronco.castShadow=true;g.add(tronco);
+  const tronco=new THREE.Mesh(new THREE.CylinderGeometry(.11*s,.19*s,2.35*s,8),matTronco);
+  tronco.position.y=1.16*s;tronco.rotation.z=(pseudo(seed+44)-.5)*.08;tronco.castShadow=true;g.add(tronco);
+  // Copa formada por volumes irregulares, não por uma esfera única. Isso tira o visual de 'pirulito'.
   const lobos=[
-    [-.42,2.25,.10,.95],[.38,2.36,.02,.88],[0,2.75,-.12,.94],[-.12,2.48,.45,.82]
+    [-.48,2.30,.10,.92,.72,1.05],[.40,2.42,-.05,.84,.68,.92],[.02,2.78,-.12,.90,.74,.96],
+    [-.10,2.52,.48,.78,.64,.88],[.25,2.64,.34,.66,.58,.80],[-.34,2.67,-.34,.62,.56,.76]
   ];
   for(let i=0;i<lobos.length;i++){
-    const [lx,ly,lz,sc]=lobos[i],m=new THREE.Mesh(new THREE.SphereGeometry(sc*s,10,7),i%2?matFolha:matFolha2);
-    m.position.set(lx*s,ly*s,lz*s);m.scale.set(1.08,.72,1);m.rotation.set(.08*i,.4*i,.05);m.castShadow=i<2;m.receiveShadow=true;g.add(m);
+    const [lx,ly,lz,sc,sy,sz]=lobos[i];
+    const m=new THREE.Mesh(new THREE.IcosahedronGeometry(sc*s,1),i%2?matFolha:matFolha2);
+    m.position.set(lx*s,ly*s,lz*s);
+    m.scale.set(.95+pseudo(seed+i)*.18,sy,sz);
+    m.rotation.set(pseudo(seed+i*3)*.35,pseudo(seed+i*5)*Math.PI,pseudo(seed+i*7)*.22);
+    m.castShadow=i<3;m.receiveShadow=true;g.add(m);
+  }
+}
+function arbusto(parent,x,z,s=.7,seed=1){
+  const g=new THREE.Group();g.position.set(x,chao(x,z,0),z);parent.add(g);
+  for(let i=0;i<3;i++){
+    const m=new THREE.Mesh(new THREE.IcosahedronGeometry((.34+.10*pseudo(seed+i))*s,1),i%2?matFolha2:matCapimEscuro);
+    m.position.set((pseudo(seed+i*4)-.5)*.55*s,.28*s+(i%2)*.08,(pseudo(seed+i*6)-.5)*.5*s);
+    m.scale.set(1.15,.65,1);m.rotation.y=pseudo(seed+i*9)*Math.PI;m.receiveShadow=true;g.add(m);
+  }
+}
+function eucalipto(parent,x,z,s=1,seed=1){
+  const g=new THREE.Group();g.position.set(x,chao(x,z,0),z);parent.add(g);
+  const h=(4.3+pseudo(seed)*1.8)*s;
+  const tronco=new THREE.Mesh(new THREE.CylinderGeometry(.07*s,.12*s,h,7),matTronco);
+  tronco.position.y=h/2;tronco.castShadow=true;g.add(tronco);
+  for(let i=0;i<4;i++){
+    const m=new THREE.Mesh(new THREE.IcosahedronGeometry((.62+.1*pseudo(seed+i))*s,1),i%2?matFolha:matFolha2);
+    m.position.set((pseudo(seed+i*3)-.5)*.65*s,h*.78+i*.18*s,(pseudo(seed+i*5)-.5)*.5*s);
+    m.scale.set(.72,.55,1.08);m.rotation.y=pseudo(seed+i*8)*Math.PI;g.add(m);
   }
 }
 function bananeiras(parent,x,z,seed=1){
@@ -232,7 +261,15 @@ function atualizarPorteiras(dt){
 function montarFazenda(zona,i){
   const grupo=new THREE.Group();grupo.name='fazenda-'+zona.id;mundo.add(grupo);
   const pts=poligonoTerreno(zona.x,zona.z,zona.raio,zona.raio*.72,11+i*7);
-  preencherPoligono(grupo,pts,matTerraArada(),.026);
+  // Propriedade rural brasileira: predominância de pasto, com roça menor e irregular dentro.
+  // Antes a fazenda inteira era terra marrom e parecia um terreno vazio.
+  preencherPoligono(grupo,pts,i%2?matPasto:matPastoSeco,.026);
+  const rocas=[
+    poligonoTerreno(zona.x-zona.raio*.08,zona.z-zona.raio*.10,zona.raio*.36,zona.raio*.22,101+i*9),
+    poligonoTerreno(zona.x+zona.raio*.28,zona.z+zona.raio*.16,zona.raio*.18,zona.raio*.12,171+i*13)
+  ];
+  preencherPoligono(grupo,rocas[0],matTerraArada(),.04);
+  preencherPoligono(grupo,rocas[1],matPastoSeco,.042);
   // Vão no lado leste/sudeste, apontado para a estrada de acesso.
   const gap=(i*3+2)%pts.length;cercaArame(grupo,pts,gap);
   const a=pts[gap],b=pts[(gap+1)%pts.length],gx=(a.x+b.x)/2,gz=(a.z+b.z)/2,ang=Math.atan2(b.z-a.z,b.x-a.x);
@@ -241,10 +278,18 @@ function montarFazenda(zona,i){
   casaRural(grupo,zona.x-zona.raio*.16,zona.z+zona.raio*.28,-.28+i*.25,i+1);
   reservatorioAzul(grupo,zona.x-zona.raio*.43,zona.z+zona.raio*.12);
   bananeiras(grupo,zona.x+zona.raio*.37,zona.z+zona.raio*.2,30+i);
-  // Vegetação de borda irregular, nunca em anel perfeito.
-  for(let k=0;k<13;k++){
-    const ang2=k/13*Math.PI*2+.21*i,rr=zona.raio*(1.02+pseudo(i*40+k)*.22);
-    arvore(grupo,zona.x+Math.cos(ang2)*rr,zona.z+Math.sin(ang2)*rr*.77,.72+pseudo(k+i)*.38,80+i*20+k);
+  // Vegetação de borda irregular: árvore grande + arbusto + alguns eucaliptos.
+  for(let k=0;k<18;k++){
+    const ang2=k/18*Math.PI*2+.21*i,rr=zona.raio*(.96+pseudo(i*40+k)*.28);
+    const x=zona.x+Math.cos(ang2)*rr,z=zona.z+Math.sin(ang2)*rr*.77;
+    if(k%4===0)eucalipto(grupo,x,z,.72+pseudo(k+i)*.22,80+i*20+k);
+    else arvore(grupo,x,z,.68+pseudo(k+i)*.34,80+i*20+k);
+    if(k%3===0)arbusto(grupo,x+1.2,z-.7,.8,500+i*30+k);
+  }
+  // Pequenos capões no interior quebram o vazio sem bloquear a circulação.
+  for(let k=0;k<10;k++){
+    const a2=pseudo(300+i*50+k)*Math.PI*2,rr=zona.raio*(.32+.46*pseudo(340+i*20+k));
+    arbusto(grupo,zona.x+Math.cos(a2)*rr,zona.z+Math.sin(a2)*rr*.7,.65+pseudo(k)*.35,700+i*20+k);
   }
   grupos.push({grupo,x:zona.x,z:zona.z,raio:185});
 }
@@ -259,9 +304,11 @@ function montarVila(){
   for(const c of casas)casaRural(g,...c);
   galpao(g,108,111,.18,2);reservatorioAzul(g,105,103);
   bananeiras(g,61,83,61);bananeiras(g,99,113,73);
-  for(let i=0;i<18;i++){
-    const a=i/18*Math.PI*2,rr=31+pseudo(i*5)*16;
-    arvore(g,VILA.x+Math.cos(a)*rr,VILA.z+Math.sin(a)*rr*.72,.72+pseudo(i)*.42,200+i);
+  for(let i=0;i<24;i++){
+    const a=i/24*Math.PI*2,rr=27+pseudo(i*5)*20;
+    const x=VILA.x+Math.cos(a)*rr,z=VILA.z+Math.sin(a)*rr*.72;
+    if(i%5===0)eucalipto(g,x,z,.78+pseudo(i)*.22,200+i);else arvore(g,x,z,.68+pseudo(i)*.42,200+i);
+    if(i%3===0)arbusto(g,x+1,z+.6,.8,900+i);
   }
   grupos.push({grupo:g,x:VILA.x,z:VILA.z,raio:180});
 }
