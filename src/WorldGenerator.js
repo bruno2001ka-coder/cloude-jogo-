@@ -5,7 +5,7 @@ import*as THREE from'three';
 import{scene}from'./core.js';
 import{obterElevacao}from'./Terrain.js';
 import{registrarObstaculo,registrarCaixa,superficiesAndaveis,marcarObstaculoMovel}from'./Physics.js';
-import{bmat,matTelha,matConcreto,matMadeira,matTerraArada,matTerraBatida,uvPorMetro,janela,porta,agua,posteMat,folhaMat,folhaClara,criarSombraContato}from'./Materials.js';
+import{bmat,matTelha,matConcreto,matReboco,matMadeira,matTerraArada,matTerraBatida,uvPorMetro,janela,porta,agua,posteMat,folhaMat,folhaClara,criarSombraContato}from'./Materials.js';
 import{POLOS}from'./Poles.js';
 
 export const bairro=new THREE.Group();scene.add(bairro);
@@ -123,13 +123,30 @@ function arvore(x,z,s=1){const g=new THREE.Group();g.position.set(x,obterElevaca
 // que têm porta (ver `casasCliente` e DeliveryPoints.js).
 
 export const porteiraFazenda={x:0,y:0,z:0,aberta:true,raio:3.6,pivos:[],caixa:null,caixaFechada:null,anguloAtual:0,colisorAtivo:false};
-export const portasCeleiro={x:0,y:0,z:0,aberta:true,raio:3.2,pivos:[],caixa:null,caixaFechada:null};
+export const portasCeleiro={x:0,y:0,z:0,aberta:true,raio:3.2,pivos:[],caixa:null,caixaFechada:null,anguloAtual:0,colisorAtivo:false};
 const PORTA_CELEIRO_ABERTA_RAD=Math.PI*.72;
-function aplicarPortasCeleiro(){
-  for(const{pivo,lado}of portasCeleiro.pivos)pivo.rotation.y=portasCeleiro.aberta?lado*PORTA_CELEIRO_ABERTA_RAD:0;
-  if(portasCeleiro.aberta)sumirCaixa(portasCeleiro.caixa);else portasCeleiro.caixa.copy(portasCeleiro.caixaFechada);
+const PORTA_CELEIRO_VEL=.95;// rad/s: abre suave, sem teletransportar a folha
+function aplicarPortasCeleiroImediata(){
+  portasCeleiro.anguloAtual=portasCeleiro.aberta?PORTA_CELEIRO_ABERTA_RAD:0;
+  for(const{pivo,lado}of portasCeleiro.pivos)pivo.rotation.y=lado*portasCeleiro.anguloAtual;
+  if(portasCeleiro.aberta){sumirCaixa(portasCeleiro.caixa);portasCeleiro.colisorAtivo=false}
+  else{portasCeleiro.caixa.copy(portasCeleiro.caixaFechada);portasCeleiro.colisorAtivo=true}
 }
-export function alternarPortasCeleiro(){portasCeleiro.aberta=!portasCeleiro.aberta;aplicarPortasCeleiro();return portasCeleiro.aberta}
+function atualizarPortasCeleiro(dt){
+  if(!portasCeleiro.pivos.length||!portasCeleiro.caixa)return;
+  const alvo=portasCeleiro.aberta?PORTA_CELEIRO_ABERTA_RAD:0;
+  const delta=alvo-portasCeleiro.anguloAtual;
+  if(Math.abs(delta)>.0005){
+    portasCeleiro.anguloAtual+=Math.sign(delta)*Math.min(Math.abs(delta),PORTA_CELEIRO_VEL*dt);
+    for(const{pivo,lado}of portasCeleiro.pivos)pivo.rotation.y=lado*portasCeleiro.anguloAtual;
+  }
+  // O vão só fica sem colisor quando as folhas já saíram da passagem. Assim não existe parede
+  // invisível com a porta visualmente aberta, nem passagem liberada atravessando madeira fechada.
+  const deveLiberar=portasCeleiro.anguloAtual>PORTA_CELEIRO_ABERTA_RAD*.58;
+  if(deveLiberar&&portasCeleiro.colisorAtivo){sumirCaixa(portasCeleiro.caixa);portasCeleiro.colisorAtivo=false}
+  else if(!deveLiberar&&!portasCeleiro.colisorAtivo){portasCeleiro.caixa.copy(portasCeleiro.caixaFechada);portasCeleiro.colisorAtivo=true}
+}
+export function alternarPortasCeleiro(){portasCeleiro.aberta=!portasCeleiro.aberta;return portasCeleiro.aberta}
 export function pertoDasPortasCeleiro(pos){return Math.hypot(pos.x-portasCeleiro.x,pos.z-portasCeleiro.z)<portasCeleiro.raio}
 const PORTEIRA_ABERTA_RAD=Math.PI*.55;// abre pra dentro do sítio, encostando na cerca
 const PORTEIRA_VEL=.72;// rad/s: leva ~2,4 s do fechado ao totalmente aberto
@@ -176,7 +193,10 @@ export function pertoDaPorteira(pos){
 function criarFazenda(cx,cz){
   const meiaLarg=13,meiaProf=11;
   const bx=cx-meiaLarg+5,bz=cz-meiaProf+5,by=obterElevacao(bx,bz);
-  const madeiraCeleiro=matMadeira(0xa2603a),madeiraCerca=matMadeira(0x8a6440),ripaEscura=matMadeira(0x59422e);
+  // Mesmas geometrias e medidas; só o acabamento muda. Parede recebe reboco/tinta PBR, enquanto
+  // folhas, vigas e cerca continuam madeira texturizada. Ferragem é um único material compartilhado.
+  const paredeCasa=matReboco(0xcbbf9f),madeiraCeleiro=matMadeira(0x8f5737),madeiraCerca=matMadeira(0x765238),ripaEscura=matMadeira(0x4d3728);
+  const ferragemPorta=new THREE.MeshStandardMaterial({color:0x3a342d,roughness:.58,metalness:.48});
 
   // --- PÁTIO ---
   // Manta de terra batida por cima do chão do mapa, um pouco maior que a cerca. Os vértices seguem
@@ -207,18 +227,20 @@ function criarFazenda(cx,cz){
   const ALTURA_CELEIRO=3.2,LARGURA_PORTA_CELEIRO=2.35;
   // Todas as paredes usam largura, altura e espessura na ordem correta da BoxGeometry.
   // A versão anterior trocou altura por profundidade e virou vigas horizontais na fachada.
-  const paredeFundo=bloco(new THREE.BoxGeometry(6,ALTURA_CELEIRO,.18),madeiraCeleiro,bx,by+1.6,bz-2.41);
-  const paredeLateralE=bloco(new THREE.BoxGeometry(.18,ALTURA_CELEIRO,5),madeiraCeleiro,bx-2.91,by+1.6,bz);
-  const paredeLateralD=bloco(new THREE.BoxGeometry(.18,ALTURA_CELEIRO,5),madeiraCeleiro,bx+2.91,by+1.6,bz);
+  const paredeFundo=bloco(new THREE.BoxGeometry(6,ALTURA_CELEIRO,.18),paredeCasa,bx,by+1.6,bz-2.41);
+  const paredeLateralE=bloco(new THREE.BoxGeometry(.18,ALTURA_CELEIRO,5),paredeCasa,bx-2.91,by+1.6,bz);
+  const paredeLateralD=bloco(new THREE.BoxGeometry(.18,ALTURA_CELEIRO,5),paredeCasa,bx+2.91,by+1.6,bz);
   const larguraLateral=(6-LARGURA_PORTA_CELEIRO)/2;
-  const paredeFrenteE=bloco(new THREE.BoxGeometry(larguraLateral,ALTURA_CELEIRO,.18),madeiraCeleiro,bx-((LARGURA_PORTA_CELEIRO+larguraLateral)/2),by+1.6,bz+2.41);
-  const paredeFrenteD=bloco(new THREE.BoxGeometry(larguraLateral,ALTURA_CELEIRO,.18),madeiraCeleiro,bx+((LARGURA_PORTA_CELEIRO+larguraLateral)/2),by+1.6,bz+2.41);
+  const paredeFrenteE=bloco(new THREE.BoxGeometry(larguraLateral,ALTURA_CELEIRO,.18),paredeCasa,bx-((LARGURA_PORTA_CELEIRO+larguraLateral)/2),by+1.6,bz+2.41);
+  const paredeFrenteD=bloco(new THREE.BoxGeometry(larguraLateral,ALTURA_CELEIRO,.18),paredeCasa,bx+((LARGURA_PORTA_CELEIRO+larguraLateral)/2),by+1.6,bz+2.41);
   for(const parede of[paredeFundo,paredeLateralE,paredeLateralD,paredeFrenteE,paredeFrenteD])registrarObstaculo(parede,'celeiro');
   // Telhado de duas águas. A inclinação sai da geometria (meia largura x altura do cume), não de um
   // ângulo escolhido no olho: a empena logo abaixo é montada com a MESMA conta, e foi assim que ela
   // parou de furar o telhado. Antes o ângulo era .55 rad chutado e a empena vinha de larguras fixas —
   // os degraus dela apareciam por fora da água, como uma escadinha marrom saindo do telhado.
-  const telhadoFazenda=matTelha(0x6e6a62);
+  // Mesmo telhado, mesma espessura/inclinação/beiral. A tinta terracota usa o normal map já existente
+  // de `telha`, então ganha relevo e leitura de telha de barro sem acrescentar geometria pesada.
+  const telhadoFazenda=matTelha(0x9a5135);
   const meiaLargC=3,alturaParede=3.2,alturaCume=4.55,beiral=.45;
   const subidaTelhado=alturaCume-alturaParede;
   const inclinacao=Math.atan2(subidaTelhado,meiaLargC);
@@ -240,7 +262,7 @@ function criarFazenda(cx,cz){
     const yTopo=alturaParede+(i+1)*hDegrau;
     const larg=2*meiaLargC*(alturaCume-yTopo)/subidaTelhado;
     if(larg<.25)break;
-    bloco(new THREE.BoxGeometry(larg,hDegrau,.14),madeiraCeleiro,bx,by+yTopo-hDegrau/2,bz+lz*2.5);
+    bloco(new THREE.BoxGeometry(larg,hDegrau,.14),paredeCasa,bx,by+yTopo-hDegrau/2,bz+lz*2.5);
   }
   // Portas duplas funcionais do celeiro, com travessas e dobradiças. Nascem abertas para o interior
   // continuar acessível à navegação; fechar a porta atualiza um único AABB móvel.
@@ -253,12 +275,20 @@ function criarFazenda(cx,cz){
     for(const alt of[.45,1.18,1.9])bloco(new THREE.BoxGeometry(LARGURA_FOLHA-.16,.10,.16),ripaEscura,0,alt,.08,folha);
     const diagonal=bloco(new THREE.BoxGeometry(LARGURA_FOLHA-.18,.09,.12),ripaEscura,0,1.2,.1,folha);
     diagonal.rotation.z=lado*Math.atan2(1.2,LARGURA_FOLHA);
+    // Maçaneta metálica na borda interna da folha; fica dentro do volume visual da porta e não altera
+    // o vão nem participa da colisão.
+    const macaneta=bloco(new THREE.CylinderGeometry(.035,.035,.09,8),ferragemPorta,-lado*(LARGURA_FOLHA/2-.15),1.22,.10,folha);
+    macaneta.rotation.x=Math.PI/2;
+    // Duas dobradiças visíveis junto ao pivô: detalhe de acabamento, sem colisor novo.
+    for(const alt of[.58,1.86])bloco(new THREE.CylinderGeometry(.035,.035,.16,8),ferragemPorta,lado*(LARGURA_FOLHA/2-.04),alt,.08,folha);
     pivosCeleiro.push({pivo,lado});
   }
+  // Batente da porta: três peças sobre a fachada, sem mudar o vão estrutural nem registrar colisão.
   bloco(new THREE.BoxGeometry(LARGURA_PORTA_CELEIRO+.28,.14,.16),ripaEscura,bx,by+2.62,bz+2.58);
+  for(const lado of[-1,1])bloco(new THREE.BoxGeometry(.14,2.55,.16),ripaEscura,bx+lado*(LARGURA_PORTA_CELEIRO/2+.07),by+1.31,bz+2.58);
   const caixaPortasFechadas=new THREE.Box3(new THREE.Vector3(bx-LARGURA_PORTA_CELEIRO/2,by+.2,bz+2.38),new THREE.Vector3(bx+LARGURA_PORTA_CELEIRO/2,by+2.8,bz+2.7));
   const caixaPortas=new THREE.Box3();sumirCaixa(caixaPortas);registrarCaixa(caixaPortas,'portas-celeiro');marcarObstaculoMovel(caixaPortas);
-  portasCeleiro.x=bx;portasCeleiro.y=by;portasCeleiro.z=bz+2.7;portasCeleiro.pivos=pivosCeleiro;portasCeleiro.caixa=caixaPortas;portasCeleiro.caixaFechada=caixaPortasFechadas;portasCeleiro.aberta=true;aplicarPortasCeleiro();
+  portasCeleiro.x=bx;portasCeleiro.y=by;portasCeleiro.z=bz+2.7;portasCeleiro.pivos=pivosCeleiro;portasCeleiro.caixa=caixaPortas;portasCeleiro.caixaFechada=caixaPortasFechadas;portasCeleiro.aberta=true;aplicarPortasCeleiroImediata();
   bloco(new THREE.BoxGeometry(.9,.7,.1),ripaEscura,bx,by+3.05,bz+2.53);// portinhola do feno, lá em cima
   // Cocho e barril ao lado do celeiro.
   bloco(new THREE.BoxGeometry(2.1,.4,.7),ripaEscura,bx-3.4,by+.3,bz-1.6);
@@ -402,6 +432,8 @@ function criarFazenda(cx,cz){
     const pivo=new THREE.Group();
     pivo.position.set(porteiraX,yPorteira,batenteZ);
     bairro.add(pivo);
+    // Ferragens do batente: dobradiças verticais, só acabamento visual.
+    for(const alt of[.42,1.02])bloco(new THREE.CylinderGeometry(.04,.04,.16,8),ferragemPorta,.04,alt,0,pivo);
     // A folha nasce deslocada meia largura DA DOBRADIÇA pro centro do vão: assim girar o pivô gira a
     // folha em volta do batente, como porteira de verdade, em vez de girar em torno do próprio meio.
     // A folha é comprida no eixo Z, que é o eixo DO VÃO. Montei ela comprida em X na primeira versão
@@ -416,6 +448,8 @@ function criarFazenda(cx,cz){
     const diag=bloco(new THREE.BoxGeometry(.05,.12,Math.hypot(folhaLarg,ALTURA_PORTEIRA-.4)),
       ripaEscura,0,ALTURA_PORTEIRA/2,0,folha);
     diag.rotation.x=lado*Math.atan2(ALTURA_PORTEIRA-.4,folhaLarg);
+    // Trinco/pegador perto do encontro das duas folhas. Fica dentro da silhueta da porteira.
+    bloco(new THREE.BoxGeometry(.08,.10,.24),ferragemPorta,.035,.82,-lado*(folhaLarg/2-.16),folha);
     pivos.push({pivo,lado});
   }
   // O COLISOR é UM só, a caixa do vão inteiro — não um por folha. O que importa pro jogo é se dá pra
@@ -565,6 +599,7 @@ function dentroDoCurral(x,z){
 function novoAlvoAnimal(){let x,z,t=0;do{x=FAZENDA.cx+(Math.random()*2-1)*(FAZENDA.meiaLarg-2);z=FAZENDA.cz+(Math.random()*2-1)*(FAZENDA.meiaProf-2);t++}while(!dentroDoCurral(x,z)&&t<10);return{x,z}}
 export function atualizarAnimais(dt){
   atualizarPorteiraFazenda(dt);
+  atualizarPortasCeleiro(dt);
   const agora=performance.now()/1000;
   for(const a of animais){
     if(agora>a.proximaDecisao){a.alvo=novoAlvoAnimal();a.proximaDecisao=agora+4+Math.random()*5}
