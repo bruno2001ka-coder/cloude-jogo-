@@ -186,6 +186,31 @@ function montarFazenda(zona,i){
   grupos.push({grupo,x:zona.x,z:zona.z,raio:185});
 }
 
+function telhadoVila(parent,w,d,hBase,hRoof,material){
+  const ang=Math.atan2(hRoof,w/2),comp=Math.hypot(w/2,hRoof)+.28;
+  for(const lado of[-1,1]){
+    const m=new THREE.Mesh(new THREE.BoxGeometry(comp,.12,d+.45),material);
+    m.position.set(lado*Math.cos(ang)*comp/2,hBase+hRoof-Math.sin(ang)*comp/2,0);
+    m.rotation.z=-lado*ang;m.castShadow=true;m.receiveShadow=true;parent.add(m);
+  }
+}
+function casaVilaRural(parent,x,z,giro=0,seed=1){
+  const g=new THREE.Group();g.position.set(x,chao(x,z,0),z);g.rotation.y=giro;parent.add(g);
+  const w=5.4+(seed%3)*.35,d=4.2+((seed+1)%3)*.28,h=2.65;
+  const parede=matReboco([0xd7c9ac,0xc8cfbd,0xddccb7][seed%3]);
+  const corpo=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),parede);corpo.position.y=h/2;corpo.castShadow=true;corpo.receiveShadow=true;g.add(corpo);
+  telhadoVila(g,w,d,h,1.0,matTelha([0x8b4d38,0x9a563e,0x7f4937][seed%3]));
+  const varP=new THREE.Mesh(new THREE.BoxGeometry(w*.72,.10,1.35),matConcreto());varP.position.set(0,.05,d/2+.58);varP.receiveShadow=true;g.add(varP);
+  for(const px of[-w*.27,w*.27]){const p=new THREE.Mesh(new THREE.CylinderGeometry(.06,.075,2.05,7),matMadeira(0x6a4c34));p.position.set(px,1.02,d/2+1.12);g.add(p)}
+  const porta=new THREE.Mesh(new THREE.BoxGeometry(.88,1.95,.07),matMadeira(0x67462f));porta.position.set(-.55,1.0,d/2+.04);g.add(porta);
+  for(const px of[1.15,-1.55]){const j=new THREE.Mesh(new THREE.PlaneGeometry(.82,.72),materialCor(0x779097,.28));j.position.set(px,1.38,d/2+.045);g.add(j)}
+}
+function galpaoVilaRural(parent,x,z,giro=0,seed=1){
+  const g=new THREE.Group();g.position.set(x,chao(x,z,0),z);g.rotation.y=giro;parent.add(g);
+  const w=6.6,d=4.8,h=2.8;
+  for(const lx of[-w/2,w/2])for(const lz of[-d/2,0,d/2]){const p=new THREE.Mesh(new THREE.CylinderGeometry(.08,.11,h,7),matMadeira(0x6c4c32));p.position.set(lx,h/2,lz);g.add(p)}
+  telhadoVila(g,w+.8,d+.7,h,1.25,matTelha(seed%2?0x765044:0x6c6258));
+}
 function montarVila(){
   const g=new THREE.Group();g.name='vila-rural';mundo.add(g);
   // Casas seguem a estrada e têm recuos diferentes; nenhuma grade ortogonal.
@@ -193,8 +218,8 @@ function montarVila(){
     [56,92,.18,1],[67,104,-.12,2],[79,111,.22,3],[91,106,-.28,4],
     [102,96,.10,5],[93,84,.34,6],[73,82,-.20,7]
   ];
-  for(const c of casas)casaRural(g,...c);
-  galpao(g,108,111,.18,2);reservatorioAzul(g,105,103);
+  for(const c of casas)casaVilaRural(g,...c);
+  galpaoVilaRural(g,108,111,.18,2);reservatorioAzul(g,105,103);
   bananeiras(g,61,83,61);bananeiras(g,99,113,73);
   for(let i=0;i<24;i++){
     const a=i/24*Math.PI*2,rr=27+pseudo(i*5)*20;
