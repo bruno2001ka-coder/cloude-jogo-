@@ -7,7 +7,6 @@ import{obterElevacao}from'./Terrain.js';
 import{registrarObstaculo,registrarCaixa,superficiesAndaveis,marcarObstaculoMovel}from'./Physics.js';
 import{bmat,matTelha,matConcreto,matMadeira,matTerraArada,matTerraBatida,uvPorMetro,janela,porta,agua,posteMat,folhaMat,folhaClara,criarSombraContato}from'./Materials.js';
 import{POLOS}from'./Poles.js';
-import{buildFarm,getFarm,toggleFarmGate,nearFarmGate,FARM_DEFS}from'./FarmGenerator.js';
 
 export const bairro=new THREE.Group();scene.add(bairro);
 // ===== QUEM PROJETA SOMBRA =====
@@ -123,27 +122,294 @@ function arvore(x,z,s=1){const g=new THREE.Group();g.position.set(x,obterElevaca
 // acesso nenhum. A entrega agora acontece onde dá pra chegar andando: dentro das casas de cliente,
 // que têm porta (ver `casasCliente` e DeliveryPoints.js).
 
-// ===== FAZENDA BASE =====
-// Não existe mais um gerador paralelo aqui. A fazenda antiga também passa pelo MESMO buildFarm()
-// usado por Boa Vista, Vale do Cedro e Ribeirão. Portanto não há arquitetura velha embaixo da nova.
-const DEF_FAZENDA_BASE=FARM_DEFS.find(f=>f.id==='fazenda-base');
-const HANDLE_FAZENDA_BASE=buildFarm(DEF_FAZENDA_BASE.x,DEF_FAZENDA_BASE.z,0,{
-  ...DEF_FAZENDA_BASE,parent:bairro,seed:7,gateIndex:1
-});
-export const FAZENDA={
-  cx:DEF_FAZENDA_BASE.x,cz:DEF_FAZENDA_BASE.z,
-  meiaLarg:DEF_FAZENDA_BASE.meiaLarg,meiaProf:DEF_FAZENDA_BASE.meiaProf,
-  sede:{...HANDLE_FAZENDA_BASE.sede},
-  celeiro:{
-    x:HANDLE_FAZENDA_BASE.galpao.x,z:HANDLE_FAZENDA_BASE.galpao.z,
-    meiaLarg:HANDLE_FAZENDA_BASE.galpao.meiaLarg,meiaProf:HANDLE_FAZENDA_BASE.galpao.meiaProf
-  },
-  pasto:{...HANDLE_FAZENDA_BASE.pasto,areaAnimal:{...HANDLE_FAZENDA_BASE.pasto.areaAnimal}}
-};
-export const porteiraFazenda=HANDLE_FAZENDA_BASE.gate;
-export function alternarPorteira(){return toggleFarmGate('fazenda-base')}
-export function pertoDaPorteira(pos){return nearFarmGate('fazenda-base',pos)}
+export const porteiraFazenda={x:0,y:0,z:0,aberta:true,raio:3.6,pivos:[],caixa:null,caixaFechada:null,anguloAtual:0,colisorAtivo:false};
+const PORTEIRA_ABERTA_RAD=Math.PI*.55;// abre pra dentro do sítio, encostando na cerca
+const PORTEIRA_VEL=.72;// rad/s: leva ~2,4 s do fechado ao totalmente aberto
+function aplicarPorteiraImediata(){
+  porteiraFazenda.anguloAtual=porteiraFazenda.aberta?PORTEIRA_ABERTA_RAD:0;
+  for(const{pivo,lado}of porteiraFazenda.pivos)pivo.rotation.y=lado*porteiraFazenda.anguloAtual;
+  if(porteiraFazenda.aberta){sumirCaixa(porteiraFazenda.caixa);porteiraFazenda.colisorAtivo=false}
+  else{porteiraFazenda.caixa.copy(porteiraFazenda.caixaFechada);porteiraFazenda.colisorAtivo=true}
+}
+function atualizarPorteiraFazenda(dt){
+  if(!porteiraFazenda.pivos.length||!porteiraFazenda.caixa)return;
+  const alvo=porteiraFazenda.aberta?PORTEIRA_ABERTA_RAD:0;
+  const delta=alvo-porteiraFazenda.anguloAtual;
+  if(Math.abs(delta)>.0005){
+    porteiraFazenda.anguloAtual+=Math.sign(delta)*Math.min(Math.abs(delta),PORTEIRA_VEL*dt);
+    for(const{pivo,lado}of porteiraFazenda.pivos)pivo.rotation.y=lado*porteiraFazenda.anguloAtual;
+  }
+  // Enquanto a folha ainda ocupa a passagem, o colisor continua fechado. Só libera quando
+  // a abertura já é suficiente para uma pessoa/moto passar sem atravessar madeira.
+  const deveLiberar=porteiraFazenda.anguloAtual>PORTEIRA_ABERTA_RAD*.62;
+  if(deveLiberar&&porteiraFazenda.colisorAtivo){
+    sumirCaixa(porteiraFazenda.caixa);porteiraFazenda.colisorAtivo=false;
+  }else if(!deveLiberar&&!porteiraFazenda.colisorAtivo){
+    porteiraFazenda.caixa.copy(porteiraFazenda.caixaFechada);porteiraFazenda.colisorAtivo=true;
+  }
+}
+export function alternarPorteira(){
+  // O clique só muda o destino. A animação é física/visual e acontece quadro a quadro.
+  porteiraFazenda.aberta=!porteiraFazenda.aberta;
+  return porteiraFazenda.aberta;
+}
+export function pertoDaPorteira(pos){
+  return Math.hypot(pos.x-porteiraFazenda.x,pos.z-porteiraFazenda.z)<porteiraFazenda.raio;
+}
 
+// ===== FAZENDA: área rural afastada da cidade, além do limite oeste do bairro.
+// A cerca é de RIPA (mourão + duas travessas), não de estaca solta: um anel de palitos espetados no
+// chão não lê como cerca de nenhuma distância. Travessa acompanha o desnível entre um mourão e o
+// seguinte — o terreno aqui é ondulado, e travessa reta deixaria a cerca boiando no alto do morro.
+//
+// Tudo que se repete (mourão, travessa, canteiro, pé de planta) vai em InstancedMesh: são ~330 peças
+// em 4 draw calls. Nada disso é obstáculo — quem trava o jogador na fazenda é só a parede do celeiro,
+// como antes. Pôr a cerca em `obstaculos` mudaria a NavMesh e o caminho da polícia de tabela.
+function criarFazenda(cx,cz){
+  const meiaLarg=13,meiaProf=11;
+  const bx=cx-meiaLarg+5,bz=cz-meiaProf+5,by=obterElevacao(bx,bz);
+  const madeiraCeleiro=matMadeira(0xa2603a),madeiraCerca=matMadeira(0x8a6440),ripaEscura=matMadeira(0x59422e);
+
+  // --- PÁTIO ---
+  // Manta de terra batida por cima do chão do mapa, um pouco maior que a cerca. Os vértices seguem
+  // obterElevacao (o mesmo relevo do terreno) e sobem 4 cm: acompanhando o morro ela não afunda, e a
+  // folga tira o z-fighting com o chão. É 1 draw call e dá ao sítio um tom próprio — sem isso a
+  // fazenda fica montada em cima da mesma areia clara do bairro e parece deserto.
+  const patioL=meiaLarg*2+6,patioP=meiaProf*2+6,divs=Math.round(patioL),divsP=Math.round(patioP);
+  const geoPatio=new THREE.PlaneGeometry(patioL,patioP,divs,divsP);
+  const vp=geoPatio.attributes.position;
+  for(let i=0;i<vp.count;i++){
+    const lx=vp.getX(i),ly=vp.getY(i);// plano ainda deitado no XY: Y local vira -Z do mundo
+    vp.setZ(i,obterElevacao(cx+lx,cz-ly)-obterElevacao(cx,cz));
+  }
+  geoPatio.computeVertexNormals();
+  const uvPatio=geoPatio.attributes.uv.clone();
+  for(let i=0;i<uvPatio.count;i++)uvPatio.setXY(i,uvPatio.getX(i)*patioL/4,uvPatio.getY(i)*patioP/4);
+  geoPatio.setAttribute('uv',uvPatio);geoPatio.setAttribute('uv1',uvPatio);
+  const patio=new THREE.Mesh(geoPatio,matTerraBatida());
+  patio.rotation.x=-Math.PI/2;patio.position.set(cx,obterElevacao(cx,cz)+.04,cz);
+  patio.receiveShadow=true;bairro.add(patio);
+
+  // --- CELEIRO ---
+  // A parede mantém exatamente a caixa de antes (6 x 3,2 x 5 em bx,bz): é o obstáculo registrado e o
+  // que `dentroDoCurral` usa pra manter os bichos do lado de fora. Mudar a medida mexeria nos dois.
+  bloco(new THREE.BoxGeometry(6.3,.3,5.3),matConcreto(),bx,by+.15,bz);// base: tira o celeiro do barro
+  const paredeCeleiro=bloco(new THREE.BoxGeometry(6,3.2,5),madeiraCeleiro,bx,by+1.6,bz);
+  registrarObstaculo(paredeCeleiro,'celeiro');
+  // Telhado de duas águas. A inclinação sai da geometria (meia largura x altura do cume), não de um
+  // ângulo escolhido no olho: a empena logo abaixo é montada com a MESMA conta, e foi assim que ela
+  // parou de furar o telhado. Antes o ângulo era .55 rad chutado e a empena vinha de larguras fixas —
+  // os degraus dela apareciam por fora da água, como uma escadinha marrom saindo do telhado.
+  const telhadoFazenda=matTelha(0x6e6a62);
+  const meiaLargC=3,alturaParede=3.2,alturaCume=4.55,beiral=.45;
+  const subidaTelhado=alturaCume-alturaParede;
+  const inclinacao=Math.atan2(subidaTelhado,meiaLargC);
+  const compAgua=Math.hypot(meiaLargC,subidaTelhado)+beiral;
+  for(const lado of[-1,1]){
+    const agua=new THREE.Mesh(uvPorMetro(new THREE.BoxGeometry(compAgua,.16,5.9)),telhadoFazenda);
+    // Centro da água = meio do trecho que vai do cume até a ponta do beiral.
+    agua.position.set(bx+lado*Math.cos(inclinacao)*compAgua/2,
+                      by+alturaCume-Math.sin(inclinacao)*compAgua/2,bz);
+    // A caixa é simétrica, então girar -incl (lado +1) ou +incl (lado -1) cobre o mesmo trecho.
+    agua.rotation.z=-lado*inclinacao;
+    agua.castShadow=true;agua.receiveShadow=true;bairro.add(agua);
+  }
+  bloco(new THREE.BoxGeometry(.3,.26,6),ripaEscura,bx,by+alturaCume-.05,bz);// cumeeira: fecha a junta
+  // Empena em degraus de ripa. Cada degrau usa a largura do telhado no TOPO dele (a parte estreita):
+  // usando a de baixo, o canto do degrau ficaria por fora da água.
+  const DEGRAUS_EMPENA=5,hDegrau=subidaTelhado/DEGRAUS_EMPENA;
+  for(const lz of[-1,1])for(let i=0;i<DEGRAUS_EMPENA;i++){
+    const yTopo=alturaParede+(i+1)*hDegrau;
+    const larg=2*meiaLargC*(alturaCume-yTopo)/subidaTelhado;
+    if(larg<.25)break;
+    bloco(new THREE.BoxGeometry(larg,hDegrau,.14),madeiraCeleiro,bx,by+yTopo-hDegrau/2,bz+lz*2.5);
+  }
+  // Portão duplo do celeiro, mais escuro que a parede.
+  for(const lx of[-.42,.42])bloco(new THREE.BoxGeometry(.8,2.1,.1),ripaEscura,bx+lx,by+1.35,bz+2.53);
+  bloco(new THREE.BoxGeometry(1.75,.12,.14),ripaEscura,bx,by+2.45,bz+2.56);
+  bloco(new THREE.BoxGeometry(.9,.7,.1),ripaEscura,bx,by+3.05,bz+2.53);// portinhola do feno, lá em cima
+  // Cocho e barril ao lado do celeiro.
+  bloco(new THREE.BoxGeometry(2.1,.4,.7),ripaEscura,bx-3.4,by+.3,bz-1.6);
+  bloco(new THREE.CylinderGeometry(.35,.4,.7,10),ripaEscura,bx-2.6,by+.35,bz-2.3);
+
+  const m4=new THREE.Matrix4(),posV=new THREE.Vector3(),quatV=new THREE.Quaternion(),escalaV=new THREE.Vector3();
+  const eixoY=new THREE.Vector3(0,1,0),eixoX=new THREE.Vector3(1,0,0);
+
+  // --- CERCA DE RIPA, COM COLISOR E PORTEIRA ---
+  // A cerca AGORA BARRA. Antes era só desenho e dava pra atravessar a fazenda andando reto. O colisor
+  // não é um por mourão: são 5 caixas (uma por trecho reto), porque `caixaColideComObstaculos` varre a
+  // lista inteira a cada teste de movimento — 40 caixinhas de mourão custariam 10x mais que 5 barras,
+  // e barrariam pior (entre dois mourões passa gente).
+  const cantos=[[cx-meiaLarg,cz-meiaProf],[cx+meiaLarg,cz-meiaProf],[cx+meiaLarg,cz+meiaProf],[cx-meiaLarg,cz+meiaProf]];
+  const ALTURA_MOURAO=1.25,ALTURAS_TRAVESSA=[.42,.82];
+  // A porteira fica no lado LESTE (x = cx+meiaLarg), que é o lado virado pro bairro: é por ali que o
+  // jogador chega, e uma entrada no lado errado obrigaria a contornar o sítio inteiro.
+  const PORTEIRA_VAO=3.4,porteiraZ=cz,porteiraX=cx+meiaLarg;
+  const vaoZ0=porteiraZ-PORTEIRA_VAO/2,vaoZ1=porteiraZ+PORTEIRA_VAO/2;
+  // Trechos retos de cerca. O lado leste vira DOIS trechos, com o vão da porteira entre eles.
+  const trechos=[];
+  for(let lado=0;lado<4;lado++){
+    const a=cantos[lado],b=cantos[(lado+1)%4];
+    if(lado===1)trechos.push([a,[porteiraX,vaoZ0]],[[porteiraX,vaoZ1],b]);
+    else trechos.push([a,b]);
+  }
+  const mouroes=[],travessas=[];
+  for(const[a,b]of trechos){
+    const passos=Math.max(1,Math.round(Math.hypot(b[0]-a[0],b[1]-a[1])/2.4));
+    let antX=null,antZ=null;
+    for(let i=0;i<=passos;i++){
+      const t=i/passos,px=a[0]+(b[0]-a[0])*t,pz=a[1]+(b[1]-a[1])*t;
+      // Mourão repetido no mesmo ponto brigaria por z-fighting: o fim de um trecho é o começo do
+      // seguinte. Compara com o último empilhado em vez de confiar no índice, porque agora os trechos
+      // não são mais 4 lados encadeados — o vão da porteira quebra a sequência.
+      const ult=mouroes[mouroes.length-1];
+      if(!ult||Math.hypot(ult[0]-px,ult[1]-pz)>.05)mouroes.push([px,pz]);
+      if(antX!==null)travessas.push([antX,antZ,px,pz]);
+      antX=px;antZ=pz;
+    }
+  }
+  // Colisor de cada trecho: uma AABB fina que vai do terreno mais baixo do trecho até o topo do mourão
+  // no mais alto. Enterrar 60 cm é o que impede passar por baixo onde o chão cai entre dois mourões.
+  const ESPESSURA_CERCA=.16;
+  for(const[a,b]of trechos){
+    const passos=Math.max(2,Math.ceil(Math.hypot(b[0]-a[0],b[1]-a[1])));
+    let yMin=Infinity,yMax=-Infinity;
+    for(let i=0;i<=passos;i++){
+      const t=i/passos,e=obterElevacao(a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t);
+      yMin=Math.min(yMin,e);yMax=Math.max(yMax,e);
+    }
+    registrarCaixa(new THREE.Box3(
+      new THREE.Vector3(Math.min(a[0],b[0])-ESPESSURA_CERCA/2,yMin-.6,Math.min(a[1],b[1])-ESPESSURA_CERCA/2),
+      new THREE.Vector3(Math.max(a[0],b[0])+ESPESSURA_CERCA/2,yMax+ALTURA_MOURAO,Math.max(a[1],b[1])+ESPESSURA_CERCA/2)),'cerca');
+  }
+  const mesaMourao=new THREE.InstancedMesh(uvPorMetro(new THREE.BoxGeometry(.13,ALTURA_MOURAO,.13)),madeiraCerca,mouroes.length);
+  mesaMourao.castShadow=true;mesaMourao.receiveShadow=true;
+  mouroes.forEach(([px,pz],i)=>{m4.makeTranslation(px,obterElevacao(px,pz)+ALTURA_MOURAO/2-.1,pz);mesaMourao.setMatrixAt(i,m4)});
+  mesaMourao.instanceMatrix.needsUpdate=true;bairro.add(mesaMourao);
+
+  // Travessa: uma caixa de 1 m no eixo X, esticada e girada pra ir de um mourão ao outro. Girar por
+  // setFromUnitVectors com a direção JÁ INCLUINDO o desnível é o que faz ela seguir o terreno.
+  const geoTravessa=uvPorMetro(new THREE.BoxGeometry(1,.13,.05));
+  const mesaTravessa=new THREE.InstancedMesh(geoTravessa,ripaEscura,travessas.length*ALTURAS_TRAVESSA.length);
+  mesaTravessa.castShadow=true;mesaTravessa.receiveShadow=true;
+  const de=new THREE.Vector3(),para=new THREE.Vector3(),dir=new THREE.Vector3();
+  let k=0;
+  for(const[ax,az,bx2,bz2]of travessas){
+    for(const alt of ALTURAS_TRAVESSA){
+      de.set(ax,obterElevacao(ax,az)+alt,az);
+      para.set(bx2,obterElevacao(bx2,bz2)+alt,bz2);
+      dir.subVectors(para,de);
+      const compr=dir.length();dir.divideScalar(compr);
+      quatV.setFromUnitVectors(eixoX,dir);
+      posV.addVectors(de,para).multiplyScalar(.5);
+      escalaV.set(compr,1,1);
+      m4.compose(posV,quatV,escalaV);mesaTravessa.setMatrixAt(k++,m4);
+    }
+  }
+  mesaTravessa.instanceMatrix.needsUpdate=true;bairro.add(mesaTravessa);
+
+  // --- ROÇA: canteiros de terra arada com os pés plantados em cima ---
+  // Antes eram cones verdes espetados no barro seco, em grade. Canteiro é o que faz virar plantação:
+  // a fileira de terra escura dá o desenho, e o pé de planta só mora nela.
+  const canteiros=[],pes=[];
+  const zIni=cz-meiaProf+2.2,zFim=cz+meiaProf-8,xIni=cx-meiaLarg+7.5,xFim=cx+meiaLarg-2.2;
+  const comprimento=xFim-xIni,meioX=(xIni+xFim)/2,SEGMENTO_CANTEIRO=1.25;
+  for(let z=zIni;z<=zFim;z+=1.7){
+    // Uma caixa única atravessava o relevo com a cota do centro e deixava as pontas suspensas. Segmentos
+    // curtos permitem apoiar cada parte na altura local sem perder o baixo custo do InstancedMesh.
+    for(let x0=xIni;x0<xFim-.001;x0+=SEGMENTO_CANTEIRO){
+      const comp=Math.min(SEGMENTO_CANTEIRO,xFim-x0);
+      canteiros.push([x0+comp/2,z,comp]);
+    }
+    for(let x=xIni+.35;x<=xFim-.35;x+=.62)pes.push([x+(Math.random()-.5)*.16,z+(Math.random()-.5)*.22]);
+  }
+  const mesaCanteiro=new THREE.InstancedMesh(uvPorMetro(new THREE.BoxGeometry(1,.13,1.02)),matTerraArada(),canteiros.length);
+  mesaCanteiro.castShadow=false;mesaCanteiro.receiveShadow=true;
+  canteiros.forEach(([mx,mz,comp],i)=>{
+    // Meio enterrado: cada segmento segue o terreno local, então nenhuma ponta fica no ar numa encosta.
+    posV.set(mx,obterElevacao(mx,mz)+.02,mz);escalaV.set(comp,1,1);
+    m4.compose(posV,new THREE.Quaternion(),escalaV);mesaCanteiro.setMatrixAt(i,m4);
+  });
+  mesaCanteiro.instanceMatrix.needsUpdate=true;bairro.add(mesaCanteiro);
+
+  // Pé de planta: icosaedro achatado lê como moita de folha, o cone lia como pinheirinho de enfeite.
+  // A cor varia POR INSTÂNCIA (instanceColor) — continua 1 draw call, e sem isso a roça inteira fica
+  // do mesmo verde chapado, que é o que mais denuncia repetição.
+  // roughness 1: a 0,92 a face plana do icosaedro ainda pegava brilho especular do sol e a roça
+  // inteira ficava com cara de vidro leitoso em vez de folha.
+  const matPe=new THREE.MeshStandardMaterial({color:0xffffff,roughness:1,flatShading:true});
+  const mesaPe=new THREE.InstancedMesh(new THREE.IcosahedronGeometry(.26,0),matPe,pes.length);
+  mesaPe.castShadow=true;mesaPe.receiveShadow=true;
+  const corPe=new THREE.Color();
+  pes.forEach(([px,pz],i)=>{
+    const e=.8+Math.random()*.5;
+    posV.set(px,obterElevacao(px,pz)+.14+e*.13,pz);
+    quatV.setFromAxisAngle(eixoY,Math.random()*Math.PI*2);
+    escalaV.set(e,e*.78,e);// achatado: moita, não bola
+    m4.compose(posV,quatV,escalaV);mesaPe.setMatrixAt(i,m4);
+    // Verde de folha. O SRGBColorSpace aqui não é enfeite: `setHSL` do three assume o espaço de
+    // TRABALHO (linear) quando não se diz nada — ao contrário de `setHex` —, então um L de 0,20
+    // "escuro" entrava como 0,20 LINEAR, que é sRGB 0,49. Com o sol a 2,5 e tone mapping ACES por
+    // cima, a roça saía verde-menta lavado. Dizendo sRGB, o número volta a significar o que parece.
+    corPe.setHSL(.25+Math.random()*.06,.5+Math.random()*.2,.22+Math.random()*.1,THREE.SRGBColorSpace);
+    mesaPe.setColorAt(i,corPe);
+  });
+  mesaPe.instanceMatrix.needsUpdate=true;if(mesaPe.instanceColor)mesaPe.instanceColor.needsUpdate=true;
+  bairro.add(mesaPe);
+
+  // --- PORTEIRA ---
+  // Duas folhas de ripa penduradas nos dois batentes do vão, abrindo pra DENTRO do sítio. O batente é
+  // mais grosso que o mourão comum: é o que faz a entrada se ler como entrada de longe.
+  const yPorteira=obterElevacao(porteiraX,porteiraZ);
+  const ALTURA_PORTEIRA=1.35,folhaLarg=PORTEIRA_VAO/2;
+  const pivos=[];
+  for(const lado of[-1,1]){
+    const batenteZ=porteiraZ+lado*PORTEIRA_VAO/2;
+    bloco(new THREE.BoxGeometry(.2,ALTURA_PORTEIRA+.35,.2),madeiraCerca,
+      porteiraX,obterElevacao(porteiraX,batenteZ)+(ALTURA_PORTEIRA+.35)/2-.1,batenteZ);
+    const pivo=new THREE.Group();
+    pivo.position.set(porteiraX,yPorteira,batenteZ);
+    bairro.add(pivo);
+    // A folha nasce deslocada meia largura DA DOBRADIÇA pro centro do vão: assim girar o pivô gira a
+    // folha em volta do batente, como porteira de verdade, em vez de girar em torno do próprio meio.
+    // A folha é comprida no eixo Z, que é o eixo DO VÃO. Montei ela comprida em X na primeira versão
+    // e ficou tudo invertido: fechada, as folhas apontavam pra fora perpendiculares ao vão (que
+    // continuava aberto), e abrindo é que elas se alinhavam com a cerca.
+    const folha=new THREE.Group();folha.position.set(0,0,-lado*folhaLarg/2);pivo.add(folha);
+    for(const alt of[.38,.78,1.18])
+      bloco(new THREE.BoxGeometry(.06,.14,folhaLarg),ripaEscura,0,alt,0,folha);
+    for(const lz of[-folhaLarg/2+.06,folhaLarg/2-.06])
+      bloco(new THREE.BoxGeometry(.08,ALTURA_PORTEIRA,.12),ripaEscura,0,ALTURA_PORTEIRA/2,lz,folha);
+    // Travessa diagonal (a "cruz" da porteira): é ela que dá a leitura de portão de fazenda.
+    const diag=bloco(new THREE.BoxGeometry(.05,.12,Math.hypot(folhaLarg,ALTURA_PORTEIRA-.4)),
+      ripaEscura,0,ALTURA_PORTEIRA/2,0,folha);
+    diag.rotation.x=lado*Math.atan2(ALTURA_PORTEIRA-.4,folhaLarg);
+    pivos.push({pivo,lado});
+  }
+  // O COLISOR é UM só, a caixa do vão inteiro — não um por folha. O que importa pro jogo é se dá pra
+  // passar pelo vão, e uma caixa custa metade da varredura de duas. Mesmo truque do refúgio: a Box3
+  // fica na lista pra sempre e o que muda é o CONTEÚDO dela. Trocar de lista a cada abre/fecha
+  // invalidaria os índices que a NavMesh já rasterizou.
+  const caixaPorteiraFechada=new THREE.Box3(
+    new THREE.Vector3(porteiraX-.2,yPorteira-.6,vaoZ0),
+    new THREE.Vector3(porteiraX+.2,yPorteira+ALTURA_PORTEIRA,vaoZ1));
+  const caixaPorteira=new THREE.Box3();sumirCaixa(caixaPorteira);
+  registrarCaixa(caixaPorteira,'porteira');marcarObstaculoMovel(caixaPorteira);
+  // Nasce ABERTA pelo mesmo motivo que as casas-refúgio: a NavMesh é rasterizada uma vez, depois que
+  // todos os obstáculos entraram, e se o vão estivesse fechado nessa hora a polícia nunca acharia
+  // caminho pra dentro do sítio — nem depois de o jogador abrir a porteira.
+  porteiraFazenda.x=porteiraX;porteiraFazenda.z=porteiraZ;porteiraFazenda.y=yPorteira;
+  porteiraFazenda.caixa=caixaPorteira;porteiraFazenda.caixaFechada=caixaPorteiraFechada;
+  porteiraFazenda.pivos=pivos;porteiraFazenda.aberta=true;
+  aplicarPorteiraImediata();
+
+  // Árvores no fundo do sítio, fora da roça e longe do celeiro.
+  for(const[ax,az]of[[cx-meiaLarg-3,cz+6],[cx-meiaLarg-2,cz-8],[cx+meiaLarg+3,cz-4],[cx+meiaLarg+2,cz+8],[cx-4,cz+meiaProf+3]])
+    arvore(ax,az,1+Math.random()*.25);
+
+  return{cx,cz,meiaLarg,meiaProf,celeiro:{x:bx,z:bz,meiaLarg:3.3,meiaProf:2.8}};
+}
+export const FAZENDA=criarFazenda(-86,-50);
 
 // ===== BALCÃO DO DEPÓSITO RURAL (polo Fazenda) =====
 // Marca visual de que o celeiro atende: sem isso o jogador chega no ponto de interação e não entende por
@@ -258,29 +524,15 @@ function criarAnimal(tipo,x,z){
   animais.push(animal);
   return animal;
 }
-// Os animais pertencem à ZONA C (pasto), não à sede nem ao galpão.
-// As posições são locais ao pasto; mover/redimensionar a fazenda não volta a colocar bicho sob coluna.
-function pontoDoPasto(lx,lz){
-  const p=FAZENDA.pasto,c=Math.cos(p.rotation||0),sn=Math.sin(p.rotation||0);
-  return{x:p.x+lx*c+lz*sn,z:p.z-lx*sn+lz*c};
-}
-[
-  ['vaca', -2.8,-.2],['vaca', 2.6,.8],
-  ['porco',-1.8,-2.0],['porco',2.0,-1.8],
-  ['galinha',-3.4,1.7],['galinha',0,1.9],['galinha',3.3,1.5]
-].forEach(([tipo,lx,lz])=>{const p=pontoDoPasto(lx,lz);criarAnimal(tipo,p.x,p.z)});
-
+[['vaca',-84,-48],['vaca',-80,-53],['porco',-88,-45],['porco',-83,-44],['galinha',-79,-49],['galinha',-81,-46],['galinha',-77,-52]].forEach(a=>criarAnimal(a[0],a[1],a[2]));
 function dentroDoCurral(x,z){
-  const p=FAZENDA.pasto,a=p.areaAnimal,dx=x-p.x,dz=z-p.z,c=Math.cos(p.rotation||0),sn=Math.sin(p.rotation||0);
-  const lx=dx*c-dz*sn,lz=dx*sn+dz*c;
-  return Math.abs(lx)<=a.meiaLarg&&Math.abs(lz)<=a.meiaProf;
+  if(x<FAZENDA.cx-FAZENDA.meiaLarg+1||x>FAZENDA.cx+FAZENDA.meiaLarg-1||z<FAZENDA.cz-FAZENDA.meiaProf+1||z>FAZENDA.cz+FAZENDA.meiaProf-1)return false;
+  const c=FAZENDA.celeiro;
+  return!(Math.abs(x-c.x)<c.meiaLarg+.8&&Math.abs(z-c.z)<c.meiaProf+.8);
 }
-function novoAlvoAnimal(){
-  const p=FAZENDA.pasto,a=p.areaAnimal;
-  const lx=(Math.random()*2-1)*a.meiaLarg*.92,lz=(Math.random()*2-1)*a.meiaProf*.92;
-  return pontoDoPasto(lx,lz);
-}
+function novoAlvoAnimal(){let x,z,t=0;do{x=FAZENDA.cx+(Math.random()*2-1)*(FAZENDA.meiaLarg-2);z=FAZENDA.cz+(Math.random()*2-1)*(FAZENDA.meiaProf-2);t++}while(!dentroDoCurral(x,z)&&t<10);return{x,z}}
 export function atualizarAnimais(dt){
+  atualizarPorteiraFazenda(dt);
   const agora=performance.now()/1000;
   for(const a of animais){
     if(agora>a.proximaDecisao){a.alvo=novoAlvoAnimal();a.proximaDecisao=agora+4+Math.random()*5}
