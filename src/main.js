@@ -22,10 +22,12 @@ import{definirPosicaoAudio}from'./Audio.js';
 import{atualizarMoto,maxVelMoto}from'./Moto.js';
 import{valorAcelerador,reSegurada,configurar as configurarAcelerador,modoDirigindo}from'./Acelerador.js';
 import{atualizarCarro,maxVelCarro}from'./Carro.js';
-import{atualizarChaoVisivel}from'./Terrain.js';
+import{atualizarChaoVisivel,alturaDoChaoDesenhado}from'./Terrain.js';
+import{FARM_TEST,montarFarmPrototype,atualizarFarmPrototype}from'./FarmPrototype.js';
 import{atualizarMundoRural}from'./RuralWorld.js';
 import{atualizarFavelaVisivel}from'./Favela.js';
 
+const MODO_FARM_TEST=new URLSearchParams(location.search).has('farmtest');
 camera.position.set(0,EYE_HEIGHT,16);
 initDragLook(renderer.domElement);
 
@@ -58,7 +60,7 @@ document.getElementById('destravarBtn').addEventListener('click',()=>destravarJo
 // Marca de versão na tela inicial. Existe por um motivo prático: quando uma novidade "não aparece",
 // a primeira pergunta é se o navegador está servindo o build novo ou um cache velho — e sem isso não
 // há como responder olhando a tela. O segundo campo diz se o boneco 3D entrou.
-const VERSAO_JOGO='0.4.9-farm-reverted';
+const VERSAO_JOGO='0.4.9-farm-prototype-v1';
 {const el=document.getElementById('versaoJogo');
  if(el){el.textContent=`versão ${VERSAO_JOGO} · boneco 3D: carregando…`;
    const marcar=()=>{el.textContent=`versão ${VERSAO_JOGO} · boneco 3D: ${personagemCarregado()?'ok':'não carregou'}`};
@@ -109,7 +111,12 @@ if(new URLSearchParams(location.search).has('debug'))document.body.classList.add
 // Sem save, `carregar()` devolve false e o jogo começa do zero — sem caso especial nenhum.
 if(carregar())console.info('Quintal 3D: progresso carregado.');
 else if(!saveDisponivel())console.info('Quintal 3D: sem armazenamento — o progresso não será salvo.');
-instalarSalvamentoAoSair();
+if(MODO_FARM_TEST){
+  montarFarmPrototype();
+  player.position.set(FARM_TEST.spawnX,alturaDoChaoDesenhado(FARM_TEST.spawnX,FARM_TEST.spawnZ)+.03,FARM_TEST.spawnZ);
+  inputState.yaw=inputState.targetYaw=Math.PI;
+  console.info('FARM TEST: protótipo isolado ativo em',FARM_TEST.x,FARM_TEST.z);
+}else instalarSalvamentoAoSair();
 
 const clock=new THREE.Clock(),pos=document.getElementById('pos');
 const faseIcone=document.getElementById('faseIcone');let bandaAnteriorHud=null;const ICONES_FASE={noite:'🌙',nascer:'🌅',dia:'🌞',por:'🌇'};
@@ -152,6 +159,7 @@ function quadro(){
   atualizarChaoVisivel(camera.position.x,camera.position.z);
   atualizarMundoRural(camera.position.x,camera.position.z);
   atualizarFavelaVisivel(camera.position.x,camera.position.z);
+  if(MODO_FARM_TEST)atualizarFarmPrototype(dt,player.position);
   atualizarAmbiente(dt,player.position);atualizarSkyline();
     composer.render();
     return;
@@ -257,7 +265,7 @@ function quadro(){
   // pronta e escondida no Player.
   definirColeteVisivel(jogadorComColete());
   definirMochilaVisivel(jogadorComMochila());
-  atualizarSave(dt);
+  if(!MODO_FARM_TEST)atualizarSave(dt);
   composer.render();
 }
 tick();
