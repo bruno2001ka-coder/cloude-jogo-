@@ -45,7 +45,7 @@ const MAT={
   madeiraInst:new THREE.MeshStandardMaterial({color:0x725033,roughness:.84,metalness:.04}),
   telha:new THREE.MeshStandardMaterial({color:0xa84c26,roughness:.90,metalness:.02,normalMap:nTelha,normalScale:new THREE.Vector2(.28,.28)}),
   pedra:new THREE.MeshStandardMaterial({color:0x9b8a72,roughness:1,metalness:0,normalMap:nPedra,normalScale:new THREE.Vector2(.45,.45)}),
-  vidro:new THREE.MeshPhysicalMaterial({color:0x6f8992,roughness:.08,metalness:.05,transparent:true,opacity:.48,depthWrite:false,clearcoat:.8}),
+  vidro:new THREE.MeshPhysicalMaterial({color:0x6f8992,roughness:.08,metalness:.05,transparent:true,opacity:.48,depthWrite:false,clearcoat:.8,side:THREE.DoubleSide}),
   metal:new THREE.MeshStandardMaterial({color:0x2d2e2d,roughness:.42,metalness:.75}),
   piso:new THREE.MeshStandardMaterial({color:0xb9aa91,roughness:.92,metalness:0}),
   terra:new THREE.MeshStandardMaterial({color:0x76583d,roughness:1,metalness:0}),
@@ -266,7 +266,7 @@ function criarSede(){
 
 // ===== GALPÃO / CURRAL =====
 const instancias=[];
-function instancedBox(w,h,d,mat,transforms,parent=farmGroup,cast=true){
+function instancedBox(w,h,d,mat,transforms,cast=true,parent=farmGroup){
   const geo=new THREE.BoxGeometry(w,h,d),im=new THREE.InstancedMesh(geo,mat,transforms.length),o=new THREE.Object3D();
   transforms.forEach((t,i)=>{o.position.set(t.x,t.y,t.z);o.rotation.set(t.rx||0,t.ry||0,t.rz||0);o.scale.set(t.sx||1,t.sy||1,t.sz||1);o.updateMatrix();im.setMatrixAt(i,o.matrix)});
   im.instanceMatrix.needsUpdate=true;im.castShadow=cast;im.receiveShadow=true;parent.add(im);instancias.push(im);return im;
