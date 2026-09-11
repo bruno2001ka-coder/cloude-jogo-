@@ -25,6 +25,7 @@ import{atualizarCarro,maxVelCarro}from'./Carro.js';
 import{atualizarViaturas,consumirAvistamentoViatura}from'./Viatura.js';
 import{atualizarChaoVisivel}from'./Terrain.js';
 import{atualizarMundoRural}from'./RuralWorld.js';
+import{atualizarFavelaVisivel}from'./Favela.js';
 
 camera.position.set(0,EYE_HEIGHT,16);
 initDragLook(renderer.domElement);
@@ -58,7 +59,7 @@ document.getElementById('destravarBtn').addEventListener('click',()=>destravarJo
 // Marca de versão na tela inicial. Existe por um motivo prático: quando uma novidade "não aparece",
 // a primeira pergunta é se o navegador está servindo o build novo ou um cache velho — e sem isso não
 // há como responder olhando a tela. O segundo campo diz se o boneco 3D entrou.
-const VERSAO_JOGO='0.4.0-cultivo-rural';
+const VERSAO_JOGO='0.4.1-cultivo-rural';
 {const el=document.getElementById('versaoJogo');
  if(el){el.textContent=`versão ${VERSAO_JOGO} · boneco 3D: carregando…`;
    const marcar=()=>{el.textContent=`versão ${VERSAO_JOGO} · boneco 3D: ${personagemCarregado()?'ok':'não carregou'}`};
@@ -151,6 +152,7 @@ function quadro(){
   // não pelo jogador: no drone ela sobe e se afasta, e quem decide o que aparece é de onde se olha.
   atualizarChaoVisivel(camera.position.x,camera.position.z);
   atualizarMundoRural(camera.position.x,camera.position.z);
+  atualizarFavelaVisivel(camera.position.x,camera.position.z);
   atualizarAmbiente(dt,player.position);atualizarSkyline();
     composer.render();
     return;
