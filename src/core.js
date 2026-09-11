@@ -13,7 +13,15 @@ export const noCelular=matchMedia('(pointer:coarse)').matches&&innerWidth<1100;
 
 // No celular o gargalo principal é preencher pixels. 1.35x significava ~82% mais pixels que 1x.
 // Mantemos 1x em telas touch e a resolução mais alta apenas no desktop.
-export const renderer=new THREE.WebGLRenderer({antialias:!noCelular,powerPreference:'high-performance'});
+// Alguns navegadores expõem WebGL2, mas deixam WebGL1 indisponível. Criar o contexto explicitamente
+// evita que a detecção automática aborte o módulo principal antes de anexar o canvas do jogo.
+const canvasWebGL=document.createElement('canvas');
+const contextoWebGL2=canvasWebGL.getContext('webgl2',{antialias:!noCelular,powerPreference:'high-performance'});
+export const renderer=new THREE.WebGLRenderer({
+  antialias:!noCelular,
+  powerPreference:'high-performance',
+  ...(contextoWebGL2?{canvas:canvasWebGL,context:contextoWebGL2}: {})
+});
 renderer.setPixelRatio(noCelular?1:Math.min(devicePixelRatio||1,1.35));
 renderer.setSize(innerWidth,innerHeight);
 renderer.outputColorSpace=THREE.SRGBColorSpace;
