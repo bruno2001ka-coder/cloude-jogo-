@@ -1,6 +1,5 @@
 // ===== EDITOR VISUAL DA HUD =====
 import'./GameplayPolish.js';
-import'./Performance.js';
 import'./PerformanceManager.js';
 import'./CasaJogador.js';
 import'./AnimalVisualUpgrade.js';
