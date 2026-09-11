@@ -21,9 +21,9 @@ export const FARM_METRICS={
 
 export const FARM_DEFS=[
   {id:'fazenda-base',nome:'Fazenda Base',x:-86,z:-50,porte:'media',meiaLarg:13,meiaProf:11,gateMode:'manual',gateStartsOpen:true},
-  {id:'boa-vista',nome:'Sítio Boa Vista',x:-145,z:76,porte:'media',meiaLarg:30,meiaProf:22,gateMode:'auto',gateStartsOpen:false},
-  {id:'vale-cedro',nome:'Fazenda Vale do Cedro',x:126,z:112,porte:'grande',meiaLarg:35,meiaProf:25,gateMode:'auto',gateStartsOpen:false},
-  {id:'ribeirao',nome:'Roça do Ribeirão',x:154,z:-86,porte:'compacta',meiaLarg:32,meiaProf:23,gateMode:'auto',gateStartsOpen:false},
+  {id:'boa-vista',nome:'Sítio Boa Vista',sigla:'BV',x:-145,z:76,raio:30,porte:'media',meiaLarg:30,meiaProf:22,gateMode:'auto',gateStartsOpen:false},
+  {id:'vale-cedro',nome:'Fazenda Vale do Cedro',sigla:'VC',x:126,z:112,raio:35,porte:'grande',meiaLarg:35,meiaProf:25,gateMode:'auto',gateStartsOpen:false},
+  {id:'ribeirao',nome:'Roça do Ribeirão',sigla:'RR',x:154,z:-86,raio:32,porte:'compacta',meiaLarg:32,meiaProf:23,gateMode:'auto',gateStartsOpen:false},
 ];
 export const RURAL_FARM_DEFS=FARM_DEFS.filter(f=>f.id!=='fazenda-base');
 
