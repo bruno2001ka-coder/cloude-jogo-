@@ -60,7 +60,7 @@ document.getElementById('destravarBtn').addEventListener('click',()=>destravarJo
 // Marca de versão na tela inicial. Existe por um motivo prático: quando uma novidade "não aparece",
 // a primeira pergunta é se o navegador está servindo o build novo ou um cache velho — e sem isso não
 // há como responder olhando a tela. O segundo campo diz se o boneco 3D entrou.
-const VERSAO_JOGO='0.5.0-rural-prototype';
+const VERSAO_JOGO='0.5.1-rural-prototype-structure-fix';
 {const el=document.getElementById('versaoJogo');
  if(el){el.textContent=`versão ${VERSAO_JOGO} · boneco 3D: carregando…`;
    const marcar=()=>{el.textContent=`versão ${VERSAO_JOGO} · boneco 3D: ${personagemCarregado()?'ok':'não carregou'}`};
