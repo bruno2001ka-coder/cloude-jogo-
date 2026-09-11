@@ -137,7 +137,8 @@ export const FAZENDA={
   celeiro:{
     x:HANDLE_FAZENDA_BASE.galpao.x,z:HANDLE_FAZENDA_BASE.galpao.z,
     meiaLarg:HANDLE_FAZENDA_BASE.galpao.meiaLarg,meiaProf:HANDLE_FAZENDA_BASE.galpao.meiaProf
-  }
+  },
+  pasto:{...HANDLE_FAZENDA_BASE.pasto,areaAnimal:{...HANDLE_FAZENDA_BASE.pasto.areaAnimal}}
 };
 export const porteiraFazenda=HANDLE_FAZENDA_BASE.gate;
 export function alternarPorteira(){return toggleFarmGate('fazenda-base')}
@@ -257,13 +258,28 @@ function criarAnimal(tipo,x,z){
   animais.push(animal);
   return animal;
 }
-[['vaca',-84,-48],['vaca',-80,-53],['porco',-88,-45],['porco',-83,-44],['galinha',-79,-49],['galinha',-81,-46],['galinha',-77,-52]].forEach(a=>criarAnimal(a[0],a[1],a[2]));
-function dentroDoCurral(x,z){
-  if(x<FAZENDA.cx-FAZENDA.meiaLarg+1||x>FAZENDA.cx+FAZENDA.meiaLarg-1||z<FAZENDA.cz-FAZENDA.meiaProf+1||z>FAZENDA.cz+FAZENDA.meiaProf-1)return false;
-  const c=FAZENDA.celeiro;
-  return!(Math.abs(x-c.x)<c.meiaLarg+.8&&Math.abs(z-c.z)<c.meiaProf+.8);
+// Os animais pertencem à ZONA C (pasto), não à sede nem ao galpão.
+// As posições são locais ao pasto; mover/redimensionar a fazenda não volta a colocar bicho sob coluna.
+function pontoDoPasto(lx,lz){
+  const p=FAZENDA.pasto,c=Math.cos(p.rotation||0),sn=Math.sin(p.rotation||0);
+  return{x:p.x+lx*c+lz*sn,z:p.z-lx*sn+lz*c};
 }
-function novoAlvoAnimal(){let x,z,t=0;do{x=FAZENDA.cx+(Math.random()*2-1)*(FAZENDA.meiaLarg-2);z=FAZENDA.cz+(Math.random()*2-1)*(FAZENDA.meiaProf-2);t++}while(!dentroDoCurral(x,z)&&t<10);return{x,z}}
+[
+  ['vaca', -2.8,-.2],['vaca', 2.6,.8],
+  ['porco',-1.8,-2.0],['porco',2.0,-1.8],
+  ['galinha',-3.4,1.7],['galinha',0,1.9],['galinha',3.3,1.5]
+].forEach(([tipo,lx,lz])=>{const p=pontoDoPasto(lx,lz);criarAnimal(tipo,p.x,p.z)});
+
+function dentroDoCurral(x,z){
+  const p=FAZENDA.pasto,a=p.areaAnimal,dx=x-p.x,dz=z-p.z,c=Math.cos(p.rotation||0),sn=Math.sin(p.rotation||0);
+  const lx=dx*c-dz*sn,lz=dx*sn+dz*c;
+  return Math.abs(lx)<=a.meiaLarg&&Math.abs(lz)<=a.meiaProf;
+}
+function novoAlvoAnimal(){
+  const p=FAZENDA.pasto,a=p.areaAnimal;
+  const lx=(Math.random()*2-1)*a.meiaLarg*.92,lz=(Math.random()*2-1)*a.meiaProf*.92;
+  return pontoDoPasto(lx,lz);
+}
 export function atualizarAnimais(dt){
   const agora=performance.now()/1000;
   for(const a of animais){
