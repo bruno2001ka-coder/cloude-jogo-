@@ -162,7 +162,7 @@ function roof2(parent,cx,cz,w,d,yEave,yRidge,ry,mat,gableMat=mat){
     geo.setAttribute('position',new THREE.Float32BufferAttribute([
       -half,yEave,z, half,yEave,z, 0,yRidge,z
     ],3));
-    geo.setIndex(front?[0,1,2]:[0,2,1]);geo.computeVertexNormals();
+    geo.setIndex(front?[0,2,1]:[0,1,2]);geo.computeVertexNormals();
     return mesh(g,geo,gableMat);
   };
   gable(z0,true);gable(z1,false);
@@ -197,10 +197,10 @@ function buildArchitecture(handle,cx,cz,rotation,porte,M){
   // Zoneamento funcional. Casa e galpão ficam sempre a >15 m entre centros.
   // O pasto ocupa uma terceira zona aberta, sem cruzar nenhuma construção.
   const cfg=porte==='grande'
-    ?{cw:16.5,cd:10.8,gw:14,gd:10,house:[-11,8],barn:[10,-9],pasture:[8,9],pw:16,pd:14}
+    ?{cw:16.5,cd:10.8,gw:14,gd:10,house:[-11,8],barn:[10,-9],pasture:[10,9],pw:16,pd:14}
     :porte==='compacta'
-      ?{cw:13.6,cd:9.0,gw:11.2,gd:8.0,house:[-9,6],barn:[8,-7],pasture:[7,8],pw:13,pd:11}
-      :{cw:14.8,cd:9.8,gw:12.4,gd:8.8,house:[-10,6],barn:[9,-8],pasture:[7,8],pw:14,pd:12};
+      ?{cw:13.6,cd:9.0,gw:11.2,gd:8.0,house:[-9,6],barn:[8,-7],pasture:[9,8],pw:13,pd:11}
+      :{cw:14.8,cd:9.8,gw:12.4,gd:8.8,house:[-10,6],barn:[9,-8],pasture:[9,8],pw:14,pd:12};
 
   const H=FARM_METRICS.sede.peDireito,houseCenter=point(cx,cz,cfg.house[0],cfg.house[1],rotation);
   const hh=footprintHeights(houseCenter.x,houseCenter.z,cfg.cw+2.4,cfg.cd+2.4,rotation),floorY=hh.max+.14;
