@@ -110,8 +110,9 @@ const SEM_VER_PARA_SUMIR=8,SEM_VER_POR_NIVEL=10,CACA_ATRASO=4;
 // avisa pelo rádio. Quem vem é a polícia de pé, saindo da delegacia e ANDANDO até lá — e essa
 // caminhada é jogo: dá tempo de correr e colher antes de eles chegarem.
 // `obterElevacao(x,z)` fornece o chão mesmo nos morros; a margem mantém os esquis acima do relevo.
-const HELI_ALTURA_RONDA=52,HELI_ALTURA_APONTANDO=30,HELI_ALTURA_POUSO=2.4;
-const DESEMBARQUE_QTD=2,DESEMBARQUE_INTERVALO=.65;
+const HELI_ALTURA_RONDA=52,HELI_ALTURA_APONTANDO=30,HELI_ALTURA_RAPEL=14;
+const DESEMBARQUE_QTD=2,DESEMBARQUE_INTERVALO=.65,RAPEL_VELOCIDADE=5.2,SUBIDA_RAPEL=6.4;
+const MULTA_BASE=50,MULTA_POR_PE=20,MULTA_MAX=250;
 // Quanto ele demora pra revidar depois de LEVAR um tiro. Curto, porque não precisa procurar o
 // atirador — a bala já disse de onde veio. Mas não zero: revide no mesmo quadro do tiro tira do
 // jogador a chance de acertar e correr, que é a jogada.
@@ -172,10 +173,13 @@ const BUSCA_DESVIOS=[0,.4,-.4,.8,-.8];
 // dobro do efetivo normal e foi o número que ele escolheu; subir disso pede medição, não opinião.
 // Dupla de ronda e teto de quatro em crise. Seis esqueletos, IA e rotas ao mesmo tempo causavam
 // a queda brusca relatada justamente quando a perseguição começava.
-const EFETIVO_BASE=2,POLICIAIS_MAX=4;
+// Direcao 0.4.2: nao existe mais patrulha permanente a pe. A unica policia do gameplay de cultivo
+// vem no helicoptero quando uma plantacao madura e localizada.
+const SOMENTE_HELICOPTERO=true;
+const EFETIVO_BASE=0,POLICIAIS_MAX=2;
 // Teto TOTAL em campo por intensidade. Nível zero é ronda normal; batida/abordagem têm teto próprio
 // em `tetoDoNivel`. Assim a favela continua viva sem virar uma enxurrada de fardados.
-const LIMITE_POR_NIVEL=[2,3,3,4,4,4];
+const LIMITE_POR_NIVEL=[0,0,0,0,0,0];
 // Espera entre um reforço e o seguinte saindo da porta, e quanto tempo de paz zera a conta de baixas.
 const REPOSICAO_ESPERA=18,CALMARIA=25;
 const RUA_VELOCIDADE=1.7,RUA_CHEGADA=1.6,RUA_VASCULHAR_RAIO=3.2;
@@ -417,7 +421,7 @@ const policia={estado:'rondando',alvoPlanta:null,alvoPlantacao:null,equipeViatur
   // Quando o próximo reforço pode sair pela porta, e até quando ainda conta como confronto quente.
   reposicaoEm:0,calmariaAte:0,
   // Quando o confisco em curso termina (a polícia PRECISA estar em cima da planta pra ele correr).
-  confiscoAte:0,desembarqueFeitos:0,proximoDesembarque:0,heliPousado:false};
+  confiscoAte:0,desembarqueFeitos:0,proximoDesembarque:0,heliPousado:false,multaAplicada:false,multaValor:0};
 // ===== O QUE CHAMA ATENÇÃO DA POLÍCIA =====
 // Antes bastava EXISTIR: a abordagem à plantação já elevava a ficha por si só, e a partir daí o
 // jogador era caçado pra sempre sem ter feito nada além de plantar. Agora a polícia só se interessa
@@ -1421,7 +1425,7 @@ const ESTADOS={
   rondando:{
     aoEntrar(){
       policia.cooldownAte=performance.now()/1000+COOLDOWN_ENTRE_BUSCAS;
-      policia.desembarqueFeitos=0;policia.proximoDesembarque=0;policia.heliPousado=false;
+      policia.desembarqueFeitos=0;policia.proximoDesembarque=0;policia.heliPousado=false;policia.multaAplicada=false;policia.multaValor=0;
       // Zera o crachá da guarnição da viatura junto: a próxima ocorrência é outra, e merece outra
       // dupla. A lista em si só é esvaziada quando os que sobraram já saíram de campo.
       policia.equipeViatura=0;
@@ -1449,8 +1453,8 @@ const ESTADOS={
         transitar('apontando');
         const n=policia.alvoPlantacao.pes;
         mostrarAviso(n>1
-          ?`🚁 O helicóptero achou sua plantação de ${n} pés e chamou a polícia. Eles vêm a pé — corre!`
-          :'🚁 O helicóptero achou sua plantação e chamou a polícia. Eles vêm a pé — corre!',3800);
+          ?`🚁 O helicóptero localizou sua plantação de ${n} pés. Equipe de rapel a caminho.`
+          :'🚁 O helicóptero localizou sua plantação. Equipe de rapel a caminho.',3800);
         return;
       }
     }
@@ -1462,6 +1466,7 @@ const ESTADOS={
       // achar o pé do lado meio minuto depois. Agora ele só larga quando não sobra pé florido ali.
       const vivos=pesVivosDaPlantacao();
       if(!policia.alvoPlantacao||!vivos.length){
+        if(SOMENTE_HELICOPTERO&&policiais.some(p=>p.vivo&&p.tipo==='helicoptero'))return;
         marcarPlantacaoBatida(agora);
         // SERVIÇO CONCLUÍDO: é aqui, e só aqui, que a guarnição da viatura é chamada de volta pro
         // carro. Antes deste ponto ela está trabalhando o canteiro, e a viatura espera.
@@ -1482,13 +1487,12 @@ const ESTADOS={
         heli.rotation.y=Math.atan2(dx,dz);
         heli.position.y=THREE.MathUtils.lerp(heli.position.y,HELI_ALTURA_APONTANDO,dt*2);
       }else{
-        // O helicóptero é OLHO, não transporte de tropa. Antes ele descia até o chão e ainda soltava
-        // mais dois policiais por cima da guarnição da viatura, furando qualquer teto de efetivo.
-        // Agora ele paira alto marcando a ocorrência; quem chega no chão vem pela rua.
+        // Chegou no canteiro: estabiliza a aeronave e desce ate uma altura segura de rapel.
         heli.position.x=THREE.MathUtils.lerp(heli.position.x,alvo.x,1-Math.exp(-4*dt));
         heli.position.z=THREE.MathUtils.lerp(heli.position.z,alvo.z,1-Math.exp(-4*dt));
         heli.rotation.z=THREE.MathUtils.lerp(heli.rotation.z,0,1-Math.exp(-5*dt));
-        heli.position.y=THREE.MathUtils.lerp(heli.position.y,HELI_ALTURA_APONTANDO,1-Math.exp(-2.5*dt));
+        heli.position.y=THREE.MathUtils.lerp(heli.position.y,HELI_ALTURA_RAPEL,1-Math.exp(-2.8*dt));
+        if(Math.abs(heli.position.y-HELI_ALTURA_RAPEL)<.45)desembarcarPoliciais(agora);
         policia.heliPousado=false;
       }
     }
@@ -1559,15 +1563,29 @@ function sairDaBase(agora,onde){
   policiais.push(pol);
   return pol;
 }
+function criarCordaRapel(pol){
+  const mat=new THREE.MeshBasicMaterial({color:0x171717});
+  const corda=new THREE.Mesh(new THREE.CylinderGeometry(.018,.018,1,6),mat);
+  corda.castShadow=false;scene.add(corda);pol.cordaRapel=corda;return corda;
+}
+function atualizarCordaRapel(pol){
+  const corda=pol.cordaRapel;if(!corda)return;
+  const topoY=heli.position.y-.8,baixoY=pol.grupo.position.y+.82,comp=Math.max(.05,topoY-baixoY);
+  corda.position.set(pol.pos.x,(topoY+baixoY)/2,pol.pos.z);corda.scale.set(1,comp,1);
+}
 function desembarcarPoliciais(agora){
   if(policia.desembarqueFeitos>=DESEMBARQUE_QTD||agora<policia.proximoDesembarque)return;
-  const i=policia.desembarqueFeitos++,ang=i?Math.PI:0;
-  const p={x:heli.position.x+Math.cos(ang)*1.8,z:heli.position.z+Math.sin(ang)*1.8};
-  const pol=sairDaBase(agora,p);
-  // Vão pro MEIO do canteiro, não pro pé sorteado: é o canteiro que eles vieram bater.
-  const centro=policia.alvoPlantacao??policia.alvoPlanta;
-  pol.tipo='desembarque';pol.modo='desembarque';pol.destinoRonda={x:centro?.x??p.x,z:centro?.z??p.z};
+  const i=policia.desembarqueFeitos++,lado=i?1:-1;
+  const x=heli.position.x+lado*.75,z=heli.position.z;
+  const pol=criarPolicial(policiais.length,'helicoptero');
+  pol.pos.set(x,0,z);pol.alturaAtual=obterElevacao(x,z);
+  pol.grupo.position.set(x,heli.position.y-1.5,z);
+  pol.modo='rapel';pol.rapelChao=pol.alturaAtual;pol.multaAte=0;pol.multaConcluida=false;
+  pol.destinoRonda={x:policia.alvoPlantacao?.x??x,z:policia.alvoPlantacao?.z??z};
+  criarCordaRapel(pol);atualizarCordaRapel(pol);
+  policiais.push(pol);
   policia.proximoDesembarque=agora+DESEMBARQUE_INTERVALO;
+  if(policia.desembarqueFeitos===1)mostrarAviso('🚁 Equipe descendo de rapel na plantação.',2600);
 }
 // ===== A GUARNIÇÃO QUE SALTA DA VIATURA =====
 // A queixa era "elas não tá indo nas plantação". Medido, o rádio funcionava: com o canteiro colado na
@@ -1699,7 +1717,7 @@ export function __policialDeTeste(x,z){
 }
 export function __removerPolicialDeTeste(pol){
   const i=policiais.indexOf(pol);
-  if(i>=0){scene.remove(pol.grupo);pol.barra.descartar();despirPolicial(pol.corpo);policiais.splice(i,1)}
+  if(i>=0){scene.remove(pol.grupo);if(pol.cordaRapel){scene.remove(pol.cordaRapel);pol.cordaRapel.geometry?.dispose?.();pol.cordaRapel.material?.dispose?.()}pol.barra.descartar();despirPolicial(pol.corpo);policiais.splice(i,1)}
 }
 export function __passoDeCombateParaTeste(pol,dt){
   const agora=performance.now()/1000;
@@ -1883,6 +1901,7 @@ function removerPolicial(i){
 
 // ===== O EFETIVO =====
 function atualizarEfetivo(dt,agora){
+  if(SOMENTE_HELICOPTERO)return;
   const vivos=policiais.reduce((n,pl)=>n+(pl.vivo?1:0),0);
   const alvo=efetivoDesejado();
   if(vivos<alvo&&agora>=policia.reposicaoEm){
@@ -1912,12 +1931,46 @@ function atualizarEfetivo(dt,agora){
 // mesmo policial ronda, aborda, vasculha ou troca tiro conforme a situação, sem nascer nem morrer
 // por causa disso.
 function atualizarPatrulha(dt,agora){
-  if(!turnoAberto)abrirTurno(agora);
+  if(!turnoAberto){turnoAberto=true;if(!SOMENTE_HELICOPTERO)abrirTurno(agora);}
   atualizarEfetivo(dt,agora);
   atualizarAbordagem(agora);
   const briga=policia.procurado>0;
   for(let i=policiais.length-1;i>=0;i--){
     const pol=policiais[i];
+    if(SOMENTE_HELICOPTERO&&pol.tipo==='helicoptero'&&pol.vivo){
+      if(pol.modo==='rapel'){
+        const alvoY=pol.rapelChao;
+        pol.grupo.position.y=Math.max(alvoY,pol.grupo.position.y-RAPEL_VELOCIDADE*dt);
+        atualizarCordaRapel(pol);pol.barra.mostrar(false);
+        if(pol.grupo.position.y<=alvoY+.03){
+          pol.grupo.position.y=alvoY;pol.modo='fiscalizando';pol.multaAte=agora+2.2;
+          mostrarAviso('👮 Equipe no solo — fiscalização da plantação.',2200);
+        }
+        continue;
+      }
+      if(pol.modo==='fiscalizando'){
+        pol.velocity.set(0,0,0);pol.barra.mostrar(false);atualizarCordaRapel(pol);
+        const centro=policia.alvoPlantacao;
+        if(centro)encararPonto(pol,centro.x,centro.z);
+        if(agora>=pol.multaAte&&!policia.multaAplicada){
+          policia.multaAplicada=true;
+          const pes=Math.max(1,pesVivosDaPlantacao().length);
+          policia.multaValor=Math.min(MULTA_MAX,MULTA_BASE+pes*MULTA_POR_PE);
+          aplicarMulta(policia.multaValor);
+          for(const pe of pesVivosDaPlantacao())confiscarPlanta(pe);
+          mostrarAviso(`🚨 Plantação apreendida · multa de R${policia.multaValor}.`,3400);
+          for(const outro of policiais)if(outro.vivo&&outro.tipo==='helicoptero'){outro.modo='rapel-subindo';outro.multaConcluida=true}
+        }
+        continue;
+      }
+      if(pol.modo==='rapel-subindo'){
+        const alvoY=heli.position.y-1.5;
+        pol.grupo.position.y=Math.min(alvoY,pol.grupo.position.y+SUBIDA_RAPEL*dt);
+        atualizarCordaRapel(pol);pol.barra.mostrar(false);
+        if(pol.grupo.position.y>=alvoY-.05){removerPolicial(i)}
+        continue;
+      }
+    }
     if(!pol.vivo){
       pol.quedaT+=dt;pol.grupo.rotation.x=Math.min(Math.PI/2,pol.quedaT*4);
       pol.barra.mostrar(false);
@@ -2035,7 +2088,7 @@ export function curarJogador(pontos){
 export function jogadorPrecisaCurar(){return !jogadorRendido&&saudeJogador<JOGADOR_HP_MAX}
 registrarCuraHospital(curarJogador);
 // Vender na biqueira é venda NA RUA, à vista de todo mundo: sobe uma estrela.
-export function denunciarBoca(){somarProcurado(1);mostrarAviso('Venderam na tua cara. A polícia soube.',2600)}
+export function denunciarBoca(){return false}
 // Entrega os ganchos pra Economy no momento em que este módulo é avaliado. É o sentido de
 // dependência que já existia (Police -> Economy); o contrário fecharia ciclo e explodiria no TDZ
 // da const `inventario`.
@@ -2049,11 +2102,11 @@ registrarGanchosPolicia({curar:curarJogador,precisaCurar:jogadorPrecisaCurar,den
 // Nada disso é salvo hoje, mas a guarda fica: estado desconhecido cai em 'rondando' em vez de
 // estourar em `ESTADOS[policia.estado].aoAtualizar`.
 if(!ESTADOS[policia.estado])policia.estado='rondando';
-export function estadoPoliciaParaSave(){return{procurado:policia.procurado,fichaQuente:segundosDeFichaQuente(),armadura:armaduraJogador}}
+export function estadoPoliciaParaSave(){return{procurado:0,fichaQuente:0,armadura:armaduraJogador}}
 export function aplicarEstadoPoliciaDoSave(s){
   try{
     const n=Math.floor(Number(s&&s.procurado));
-    policia.procurado=Number.isFinite(n)?Math.min(PROCURADO_MAX,Math.max(0,n)):0;
+    policia.procurado=SOMENTE_HELICOPTERO?0:(Number.isFinite(n)?Math.min(PROCURADO_MAX,Math.max(0,n)):0);
     // SAVE ANTIGO ENTRA LIMPO. O booleano `jaFoiPreso` era PERMANENTE e não guardava quando a prisão
     // aconteceu — pode ter sido há três sessões. Convertê-lo numa ficha quente CHEIA (foi a primeira
     // versão desta migração) faz o jogador abrir o jogo e levar cinco minutos de perseguição por algo
@@ -2067,7 +2120,7 @@ export function aplicarEstadoPoliciaDoSave(s){
     // Migra saves antigos que acumulavam coletes: se já há armadura equipada, não existe uma segunda
     // unidade escondida no inventário. O jogo trabalha com no máximo um colete total.
     if(armaduraJogador>0){inventario.colete=0;definirColeteVisivel(true)}else{definirColeteVisivel(false)}
-    vigiadoAte=performance.now()/1000+restante;
+    vigiadoAte=SOMENTE_HELICOPTERO?0:performance.now()/1000+restante;
   }catch(e){policia.procurado=0;vigiadoAte=0}
 }
 
