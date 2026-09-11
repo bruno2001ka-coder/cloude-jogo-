@@ -1,46 +1,54 @@
-// ===== MUNDO RURAL =====
-// Expansao focada no loop principal do jogo: cultivar -> colher -> vender -> expandir.
-// As areas rurais sao irregulares, ligadas por estradas curvas e carregadas por distancia.
-// Nada aqui usa grade de quarteirao: cada roca nasce de um poligono organico proprio.
+// ===== CIDADE RURAL / FAZENDAS =====
+// Protótipo isolado em branch: cidade rural brasileira esparsa, estradas de terra orgânicas,
+// propriedades grandes e vegetação de borda. Sem malha de quarteirão e sem árvores em cubos.
 import*as THREE from'three';
 import{scene}from'./core.js';
 import{alturaDoChaoDesenhado}from'./Terrain.js';
-import{matTerraArada,matTerraBatida,matMadeira,matReboco,matTelha,bmat}from'./Materials.js';
-import{registrarObstaculo}from'./Physics.js';
+import{player}from'./Player.js';
+import{matTerraArada,matTerraBatida,matMadeira,matReboco,matTelha,matConcreto,bmat,uvPorMetro}from'./Materials.js';
+import{registrarObstaculo,registrarCaixa}from'./Physics.js';
 
 export const RURAL_ZONES=[
-  {id:'boa-vista',nome:'Sítio Boa Vista',sigla:'BV',x:-145,z:76,raio:28},
-  {id:'vale-cedro',nome:'Vale do Cedro',sigla:'VC',x:118,z:104,raio:32},
-  {id:'ribeirao',nome:'Roça do Ribeirão',sigla:'RR',x:154,z:-86,raio:30},
+  {id:'boa-vista',nome:'Sítio Boa Vista',sigla:'BV',x:-145,z:76,raio:30},
+  {id:'vale-cedro',nome:'Fazenda Vale do Cedro',sigla:'VC',x:126,z:112,raio:35},
+  {id:'ribeirao',nome:'Roça do Ribeirão',sigla:'RR',x:154,z:-86,raio:32},
 ];
+const VILA={x:82,z:98,raio:46};
 
-const mundo=new THREE.Group();mundo.name='mundo-rural';scene.add(mundo);
+const mundo=new THREE.Group();mundo.name='cidade-rural-brasileira';scene.add(mundo);
 const grupos=[];
+const porteiras=[];
+const Y_EXTRA=.025;
 
-// Estradas principais do campo: curvas longas seguindo o relevo, sem malha quadriculada.
-// Elas partem da regiao da casa e abrem o mapa em tres direcoes de cultivo.
-const redeEstradas=new THREE.Group();redeEstradas.name='rede-rural-principal';mundo.add(redeEstradas);
-const ESTRADAS_RURAIS=[
-  [[34,73],[5,92],[-45,108],[-98,99],[-145,105]],
-  [[36,73],[63,86],[91,99],[118,133]],
-  [[31,68],[66,42],[101,2],[128,-43],[154,-55]],
-];
-for(const pts of ESTRADAS_RURAIS){
-  const e=faixaCurva(pts,4.1,matTerraBatida());e.malha.position.y=.006;redeEstradas.add(e.malha);
+function chao(x,z,extra=Y_EXTRA){return alturaDoChaoDesenhado(x,z)+extra}
+function pseudo(seed){const x=Math.sin(seed*12.9898+78.233)*43758.5453;return x-Math.floor(x)}
+function materialCor(c,rough=.86){return new THREE.MeshStandardMaterial({color:c,roughness:rough,metalness:0})}
+
+const matBarro=matTerraBatida();
+const matRodado=materialCor(0x684632,.96);
+const matGramaBorda=materialCor(0x65764d,.98);
+const matFolha=materialCor(0x446b3d,.92);
+const matFolha2=materialCor(0x587d47,.9);
+const matTronco=matMadeira(0x5d432d);
+const matArame=materialCor(0x3c3b37,.65);
+const matPorteira=matMadeira(0x765437);
+const matTelhaCeramica=matTelha(0x8f4e37);
+
+function curvaXZ(pontos){
+  return new THREE.CatmullRomCurve3(
+    pontos.map(([x,z])=>new THREE.Vector3(x,0,z)),false,'centripetal',.35
+  );
 }
-
-function terrenoY(x,z,extra=.025){return alturaDoChaoDesenhado(x,z)+extra}
-
-function faixaCurva(pontos,largura,material){
-  const curva=new THREE.CatmullRomCurve3(pontos.map(p=>new THREE.Vector3(p[0],0,p[1])),false,'centripetal',.35);
-  const comp=curva.getLength(),n=Math.max(12,Math.ceil(comp/2));
+function faixa(curva,largura,offset,material,yExtra=.02,passo=1.7){
+  const comp=curva.getLength(),n=Math.max(12,Math.ceil(comp/passo));
   const pos=[],uv=[],idx=[];
   for(let i=0;i<=n;i++){
     const u=i/n,p=curva.getPointAt(u),t=curva.getTangentAt(Math.min(.999,u)).normalize();
-    const nx=-t.z,nz=t.x;
+    const nx=-t.z,nz=t.x,cx=p.x+nx*offset,cz=p.z+nz*offset;
     for(const lado of[-1,1]){
-      const x=p.x+nx*largura*.5*lado,z=p.z+nz*largura*.5*lado;
-      pos.push(x,terrenoY(x,z,.018),z);uv.push((i/n)*comp/4,lado<0?0:1);
+      const x=cx+nx*largura*.5*lado,z=cz+nz*largura*.5*lado;
+      pos.push(x,chao(x,z,yExtra),z);
+      uv.push(i*passo/4,lado<0?0:1);
     }
     if(i<n){const a=i*2,b=a+1,c=a+2,d=a+3;idx.push(a,c,b,b,c,d)}
   }
@@ -49,103 +57,222 @@ function faixaCurva(pontos,largura,material){
   g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));
   g.setAttribute('uv1',new THREE.Float32BufferAttribute(uv.slice(),2));
   g.setIndex(idx);g.computeVertexNormals();
-  const m=new THREE.Mesh(g,material);m.receiveShadow=true;m.castShadow=false;return{malha:m,curva};
+  const m=new THREE.Mesh(g,material);m.receiveShadow=true;m.castShadow=false;m.frustumCulled=true;
+  return m;
+}
+function estradaDeTerra(parent,nome,pontos,largura=4.8,centroVerde=true){
+  const c=curvaXZ(pontos);
+  const base=faixa(c,largura,0,matBarro,.018);base.name=nome;parent.add(base);
+  // Rodados de pneu: duas faixas mais escuras quebram a aparência de "tapete marrom".
+  parent.add(faixa(c,.34,-1.12,matRodado,.034,1.5));
+  parent.add(faixa(c,.34, 1.12,matRodado,.034,1.5));
+  // Acostamento irregular e estreito de capim acompanhando a estrada.
+  parent.add(faixa(c,.52,-largura*.58,matGramaBorda,.027,1.9));
+  parent.add(faixa(c,.52, largura*.58,matGramaBorda,.027,1.9));
+  if(centroVerde)parent.add(faixa(c,.24,0,matGramaBorda,.035,1.7));
+  return c;
 }
 
-function poligonoRoca(cx,cz,r,seed,material){
-  const pts=[];const n=11;
+function poligonoTerreno(cx,cz,rx,rz,seed){
+  const pts=[],n=10;
   for(let i=0;i<n;i++){
     const a=i/n*Math.PI*2;
-    const wobble=.78+(((seed*17+i*31)%23)/23)*.34;
-    pts.push({x:cx+Math.cos(a)*r*wobble,z:cz+Math.sin(a)*r*(.70+.12*Math.sin(seed+i*1.7))});
+    const r=.83+pseudo(seed*31+i*7)*.22;
+    pts.push({x:cx+Math.cos(a)*rx*r,z:cz+Math.sin(a)*rz*(.9+pseudo(seed+i)*.16)});
   }
-  const centroY=pts.reduce((s,p)=>s+terrenoY(p.x,p.z,.03),0)/pts.length;
-  const pos=[cx,centroY,cz],uv=[.5,.5],idx=[];
+  return pts;
+}
+function preencherPoligono(parent,pts,material,yExtra=.025){
+  let cx=0,cz=0;for(const p of pts){cx+=p.x;cz+=p.z}cx/=pts.length;cz/=pts.length;
+  const pos=[cx,chao(cx,cz,yExtra),cz],uv=[.5,.5],idx=[];
   let minX=Infinity,maxX=-Infinity,minZ=Infinity,maxZ=-Infinity;
   for(const p of pts){minX=Math.min(minX,p.x);maxX=Math.max(maxX,p.x);minZ=Math.min(minZ,p.z);maxZ=Math.max(maxZ,p.z)}
-  for(const p of pts){pos.push(p.x,terrenoY(p.x,p.z,.03),p.z);uv.push((p.x-minX)/(maxX-minX),(p.z-minZ)/(maxZ-minZ))}
-  for(let i=0;i<n;i++)idx.push(0,1+i,1+((i+1)%n));
-  const g=new THREE.BufferGeometry();
-  g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
-  g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));
-  g.setAttribute('uv1',new THREE.Float32BufferAttribute(uv.slice(),2));
+  for(const p of pts){pos.push(p.x,chao(p.x,p.z,yExtra),p.z);uv.push((p.x-minX)/(maxX-minX),(p.z-minZ)/(maxZ-minZ))}
+  for(let i=0;i<pts.length;i++)idx.push(0,i+1,1+(i+1)%pts.length);
+  const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
+  g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));g.setAttribute('uv1',new THREE.Float32BufferAttribute(uv.slice(),2));
   g.setIndex(idx);g.computeVertexNormals();
-  const m=new THREE.Mesh(g,material);m.receiveShadow=true;m.castShadow=false;
-  return{malha:m,pts};
+  const m=new THREE.Mesh(g,material);m.receiveShadow=true;parent.add(m);return m;
 }
-
-function prismaTelhado(larg,comp,altura,mat){
-  const w=larg/2,d=comp/2,h=altura;
-  const v=[-w,0,-d,w,0,-d,0,h,-d,-w,0,d,w,0,d,0,h,d];
-  const idx=[0,1,2,3,5,4,0,3,4,0,4,1,2,1,4,2,4,5,0,2,5,0,5,3];
-  const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(v,3));g.setIndex(idx);g.computeVertexNormals();
-  const m=new THREE.Mesh(g,mat);m.castShadow=true;m.receiveShadow=true;return m;
+function caixaColisorSegmento(ax,az,bx,bz,altura=1.25,esp=.13){
+  const yA=chao(ax,az,0),yB=chao(bx,bz,0),yMin=Math.min(yA,yB)-.35,yMax=Math.max(yA,yB)+altura;
+  const min=new THREE.Vector3(Math.min(ax,bx)-esp,yMin,Math.min(az,bz)-esp);
+  const max=new THREE.Vector3(Math.max(ax,bx)+esp,yMax,Math.max(az,bz)+esp);
+  registrarCaixa(new THREE.Box3(min,max),'cerca-rural');
 }
-
-function criarGalpao(parent,x,z,giro,corParede,corTelha){
-  const g=new THREE.Group();g.position.set(x,terrenoY(x,z),z);g.rotation.y=giro;parent.add(g);
-  const parede=matReboco(corParede),madeira=matMadeira(0x65442f),telhado=matTelha(corTelha);
-  const corpo=new THREE.Mesh(new THREE.BoxGeometry(5.4,2.5,4.2),parede);corpo.position.y=1.25;corpo.castShadow=true;corpo.receiveShadow=true;g.add(corpo);g.updateWorldMatrix(true,true);registrarObstaculo(corpo,'galpao-rural');
-  const porta=new THREE.Mesh(new THREE.BoxGeometry(2.2,2.15,.10),madeira);porta.position.set(0,1.08,-2.15);porta.castShadow=true;g.add(porta);
-  const roof=prismaTelhado(6.2,4.9,1.15,telhado);roof.position.y=2.5;g.add(roof);
-  const janela=new THREE.Mesh(new THREE.BoxGeometry(1.1,.8,.08),bmat(0x24343a));janela.position.set(1.8,1.45,-2.17);g.add(janela);
+function barraEntre(parent,a,b,material,esp=.035){
+  const de=new THREE.Vector3(a.x,a.y,a.z),para=new THREE.Vector3(b.x,b.y,b.z),dir=new THREE.Vector3().subVectors(para,de);
+  const comp=dir.length();if(comp<.02)return;
+  const m=new THREE.Mesh(new THREE.BoxGeometry(comp,esp,esp),material);
+  m.position.addVectors(de,para).multiplyScalar(.5);
+  m.quaternion.setFromUnitVectors(new THREE.Vector3(1,0,0),dir.normalize());
+  m.castShadow=false;m.receiveShadow=true;parent.add(m);
 }
-
-function cercar(parent,pts,aberturaIndex=0){
-  const mat=matMadeira(0x6d5237),postGeo=new THREE.CylinderGeometry(.07,.09,1.15,6),railGeo=new THREE.BoxGeometry(1,0.07,.07);
-  const postes=[],rails=[];
+function cercaArame(parent,pts,gapIndex=-1){
+  const geoPoste=new THREE.CylinderGeometry(.075,.095,1.32,7);
   for(let i=0;i<pts.length;i++){
-    if(i===aberturaIndex||i===(aberturaIndex+1)%pts.length)continue;
-    const a=pts[i],b=pts[(i+1)%pts.length],dx=b.x-a.x,dz=b.z-a.z,len=Math.hypot(dx,dz),steps=Math.max(1,Math.floor(len/3));
-    for(let s=0;s<=steps;s++){const t=s/steps,x=a.x+dx*t,z=a.z+dz*t;postes.push({x,z,y:terrenoY(x,z)+.57})}
-    for(let s=0;s<steps;s++){
-      const t0=s/steps,t1=(s+1)/steps,x0=a.x+dx*t0,z0=a.z+dz*t0,x1=a.x+dx*t1,z1=a.z+dz*t1;
-      rails.push({x:(x0+x1)/2,z:(z0+z1)/2,y:terrenoY((x0+x1)/2,(z0+z1)/2)+.72,len:Math.hypot(x1-x0,z1-z0),ang:Math.atan2(x1-x0,z1-z0)});
+    const j=(i+1)%pts.length;if(i===gapIndex)continue;
+    const a=pts[i],b=pts[j],len=Math.hypot(b.x-a.x,b.z-a.z),n=Math.max(1,Math.ceil(len/3.2));
+    let prev=null;
+    for(let s=0;s<=n;s++){
+      const t=s/n,x=a.x+(b.x-a.x)*t,z=a.z+(b.z-a.z)*t,y=chao(x,z,0);
+      const poste=new THREE.Mesh(geoPoste,matTronco);poste.position.set(x,y+.62,z);poste.castShadow=true;poste.receiveShadow=true;parent.add(poste);
+      if(prev){
+        for(const h of[.38,.72,1.02])barraEntre(parent,{x:prev.x,y:prev.y+h,z:prev.z},{x,y:y+h,z},matArame,.022);
+      }
+      prev={x,y,z};
+    }
+    caixaColisorSegmento(a.x,a.z,b.x,b.z);
+  }
+}
+
+function telhadoDuasAguas(parent,x,y,z,w,d,h,cor=0x9a5437){
+  const mat=matTelha(cor),incl=Math.atan2(h,w/2),comp=Math.hypot(w/2,h)+.32;
+  for(const lado of[-1,1]){
+    const m=new THREE.Mesh(uvPorMetro(new THREE.BoxGeometry(comp,.14,d+.55)),mat);
+    m.position.set(x+lado*Math.cos(incl)*comp/2,y+h-Math.sin(incl)*comp/2,z);
+    m.rotation.z=-lado*incl;m.castShadow=true;m.receiveShadow=true;parent.add(m);
+  }
+}
+function casaRural(parent,x,z,giro=0,seed=1){
+  const g=new THREE.Group();g.position.set(x,chao(x,z,0),z);g.rotation.y=giro;parent.add(g);
+  const cores=[0xd8c8a7,0xc8d1bd,0xe3d6be,0xd0c3b4],parede=matReboco(cores[seed%cores.length]);
+  const w=5.4+(seed%3)*.45,d=4.1+((seed+1)%3)*.38,h=2.55;
+  const corpo=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),parede);corpo.position.y=h/2;corpo.castShadow=true;corpo.receiveShadow=true;g.add(corpo);
+  telhadoDuasAguas(g,0,h,0,w,d,1.05,[0x8c4f39,0x975c42,0x7f4938][seed%3]);
+  // Varanda com pilares e beiral baixo, muito mais "casa de sítio" que bloco puro.
+  const varanda=new THREE.Mesh(new THREE.BoxGeometry(w*.78,.12,1.45),matConcreto());varanda.position.set(0,.08,d/2+.62);varanda.receiveShadow=true;g.add(varanda);
+  for(const px of[-w*.31,w*.31]){const p=new THREE.Mesh(new THREE.CylinderGeometry(.07,.08,2.15,8),matMadeira(0x6f533a));p.position.set(px,1.08,d/2+1.18);p.castShadow=true;g.add(p)}
+  const beiral=new THREE.Mesh(new THREE.BoxGeometry(w*.78,.13,1.7),matTelha(0x8f533d));beiral.position.set(0,2.2,d/2+.75);beiral.rotation.x=-.08;beiral.castShadow=true;g.add(beiral);
+  const porta=new THREE.Mesh(new THREE.BoxGeometry(.9,1.95,.08),matMadeira(0x70482e));porta.position.set(-.65,1.0,d/2+.045);g.add(porta);
+  for(const px of[1.15,-1.75]){const j=new THREE.Mesh(new THREE.BoxGeometry(.9,.82,.07),materialCor(0x78949a,.28));j.position.set(px,1.35,d/2+.05);g.add(j)}
+  g.updateWorldMatrix(true,true);registrarObstaculo(corpo,'casa-rural');
+  return g;
+}
+function galpao(parent,x,z,giro=0,seed=1){
+  const g=new THREE.Group();g.position.set(x,chao(x,z,0),z);g.rotation.y=giro;parent.add(g);
+  const w=6.6,d=4.8,h=2.8,parede=matReboco(seed%2?0xbcae8f:0xc3b497);
+  const corpo=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),parede);corpo.position.y=h/2;corpo.castShadow=true;corpo.receiveShadow=true;g.add(corpo);
+  telhadoDuasAguas(g,0,h,0,w,d,1.25,seed%2?0x725044:0x71655a);
+  const vao=new THREE.Mesh(new THREE.BoxGeometry(2.45,2.35,.10),matMadeira(0x5f4934));vao.position.set(0,1.18,d/2+.055);g.add(vao);
+  g.updateWorldMatrix(true,true);registrarObstaculo(corpo,'galpao-rural');
+}
+function arvore(parent,x,z,s=1,seed=1){
+  const g=new THREE.Group();g.position.set(x,chao(x,z,0),z);g.rotation.y=pseudo(seed)*Math.PI*2;parent.add(g);
+  const tronco=new THREE.Mesh(new THREE.CylinderGeometry(.12*s,.2*s,2.2*s,9),matTronco);tronco.position.y=1.1*s;tronco.castShadow=true;g.add(tronco);
+  const lobos=[
+    [-.42,2.25,.10,.95],[.38,2.36,.02,.88],[0,2.75,-.12,.94],[-.12,2.48,.45,.82]
+  ];
+  for(let i=0;i<lobos.length;i++){
+    const [lx,ly,lz,sc]=lobos[i],m=new THREE.Mesh(new THREE.SphereGeometry(sc*s,10,7),i%2?matFolha:matFolha2);
+    m.position.set(lx*s,ly*s,lz*s);m.scale.set(1.08,.72,1);m.rotation.set(.08*i,.4*i,.05);m.castShadow=i<2;m.receiveShadow=true;g.add(m);
+  }
+}
+function bananeiras(parent,x,z,seed=1){
+  const g=new THREE.Group();g.position.set(x,chao(x,z,0),z);parent.add(g);
+  const folha=new THREE.MeshStandardMaterial({color:0x527e43,roughness:.9,side:THREE.DoubleSide});
+  for(let c=0;c<3;c++){
+    const ox=(pseudo(seed+c)-.5)*1.1,oz=(pseudo(seed*3+c)-.5)*1.1,h=1.5+.35*pseudo(seed+c*7);
+    const t=new THREE.Mesh(new THREE.CylinderGeometry(.055,.09,h,7),materialCor(0x7b8d57,.9));t.position.set(ox,h/2,oz);g.add(t);
+    for(let i=0;i<6;i++){
+      const a=i/6*Math.PI*2+pseudo(seed+i)*.25,leaf=new THREE.Mesh(new THREE.PlaneGeometry(1.45,.34,1,1),folha);
+      leaf.position.set(ox+Math.cos(a)*.48,h+.08,oz+Math.sin(a)*.48);
+      leaf.rotation.set(-.28, -a, .15*Math.sin(a));g.add(leaf);
     }
   }
-  const pmesh=new THREE.InstancedMesh(postGeo,mat,postes.length);const dummy=new THREE.Object3D();
-  postes.forEach((p,i)=>{dummy.position.set(p.x,p.y,p.z);dummy.rotation.set(0,0,0);dummy.scale.set(1,1,1);dummy.updateMatrix();pmesh.setMatrixAt(i,dummy.matrix)});
-  pmesh.castShadow=true;pmesh.receiveShadow=true;parent.add(pmesh);
-  const rmesh=new THREE.InstancedMesh(railGeo,mat,rails.length*2);let k=0;
-  for(const r of rails)for(const yoff of[0,.42]){
-    dummy.position.set(r.x,r.y+yoff,r.z);dummy.rotation.set(0,r.ang,0);dummy.scale.set(r.len,1,1);dummy.updateMatrix();rmesh.setMatrixAt(k++,dummy.matrix);
+}
+function reservatorioAzul(parent,x,z){
+  const y=chao(x,z,0),g=new THREE.Group();g.position.set(x,y,z);parent.add(g);
+  for(const dx of[-.45,.45])for(const dz of[-.45,.45]){const p=new THREE.Mesh(new THREE.CylinderGeometry(.035,.045,2.2,6),matMadeira(0x6b5842));p.position.set(dx,1.1,dz);g.add(p)}
+  const cx=new THREE.Mesh(new THREE.CylinderGeometry(.72,.72,.88,16),materialCor(0x376f8d,.48));cx.position.y=2.15;cx.castShadow=true;g.add(cx);
+}
+function porteiraAutomatica(parent,x,z,ang=0,larg=3.8){
+  const y=chao(x,z,0),g=new THREE.Group();g.position.set(x,y,z);g.rotation.y=ang;parent.add(g);
+  const folha=larg/2-.12;
+  const pL=new THREE.Group(),pR=new THREE.Group();pL.position.x=-larg/2;pR.position.x=larg/2;g.add(pL,pR);
+  const criarFolha=(pivo,lado)=>{
+    for(const h of[.38,.82,1.18]){
+      const m=new THREE.Mesh(new THREE.BoxGeometry(folha,.10,.08),matPorteira);
+      m.position.set(lado*folha/2,h,0);m.castShadow=true;pivo.add(m);
+    }
+    for(const px of[.12,folha-.12]){const m=new THREE.Mesh(new THREE.BoxGeometry(.10,1.15,.10),matPorteira);m.position.set(lado*px,.72,0);pivo.add(m)}
+  };
+  criarFolha(pL,1);criarFolha(pR,-1);
+  for(const lx of[-larg/2-.12,larg/2+.12]){const m=new THREE.Mesh(new THREE.CylinderGeometry(.11,.14,1.55,8),matTronco);m.position.set(lx,.72,0);m.castShadow=true;g.add(m)}
+  const esp=.16,hx=Math.abs(Math.cos(ang))*larg/2+Math.abs(Math.sin(ang))*esp,hz=Math.abs(Math.sin(ang))*larg/2+Math.abs(Math.cos(ang))*esp;
+  const fechada=new THREE.Box3(new THREE.Vector3(x-hx,y-.25,z-hz),new THREE.Vector3(x+hx,y+1.5,z+hz));
+  const caixa=registrarCaixa(fechada.clone(),'porteira-rural');
+  const p={x,z,pL,pR,angulo:0,alvo:0,caixa,fechada,colisorAtivo:true,aberta:false};
+  porteiras.push(p);return p;
+}
+function atualizarPorteiras(dt){
+  for(const p of porteiras){
+    const d=Math.hypot(player.position.x-p.x,player.position.z-p.z);
+    p.aberta=d<4.6?true:d>7.2?false:p.aberta;
+    const alvo=p.aberta?Math.PI*.46:0,delta=alvo-p.angulo,passo=Math.min(Math.abs(delta),.72*dt);
+    if(Math.abs(delta)>.0005)p.angulo+=Math.sign(delta)*passo;
+    p.pL.rotation.y=-p.angulo;p.pR.rotation.y=p.angulo;
+    const livre=p.angulo>Math.PI*.28;
+    if(livre&&p.colisorAtivo){p.caixa.makeEmpty();p.colisorAtivo=false}
+    else if(!livre&&!p.colisorAtivo){p.caixa.copy(p.fechada);p.colisorAtivo=true}
   }
-  rmesh.castShadow=true;rmesh.receiveShadow=true;parent.add(rmesh);
 }
 
-function arvore(parent,x,z,escala=1){
-  const g=new THREE.Group();g.position.set(x,terrenoY(x,z),z);parent.add(g);
-  const tronco=new THREE.Mesh(new THREE.CylinderGeometry(.12,.18,1.8*escala,7),matMadeira(0x5c432d));tronco.position.y=.9*escala;tronco.castShadow=true;g.add(tronco);
-  const copa=new THREE.Mesh(new THREE.IcosahedronGeometry(1.05*escala,1),bmat(0x4e7441));copa.position.y=2.1*escala;copa.scale.set(1,.82,1);copa.castShadow=true;copa.receiveShadow=true;g.add(copa);
-}
-
-function montarZona(zona,i){
-  const grupo=new THREE.Group();grupo.name='rural-'+zona.id;mundo.add(grupo);
-  const arada=poligonoRoca(zona.x,zona.z,zona.raio,i+3,matTerraArada());grupo.add(arada.malha);
-  cercar(grupo,arada.pts,(i*3+2)%arada.pts.length);
-  const entrada={x:arada.pts[(i*3+2)%arada.pts.length].x,z:arada.pts[(i*3+2)%arada.pts.length].z};
-  const caminho=faixaCurva([
-    [entrada.x,entrada.z],
-    [entrada.x+(i%2?12:-10),entrada.z+10],
-    [zona.x+(i-1)*8,zona.z+zona.raio+18],
-    [zona.x+(i-1)*18,zona.z+zona.raio+34]
-  ],3.2,matTerraBatida());
-  grupo.add(caminho.malha);
-  criarGalpao(grupo,zona.x-zona.raio*.45,zona.z-zona.raio*.28,.35+i*.55,[0xd7cfb8,0xc9d0bf,0xd5c2aa][i],[0x775d4e,0x6f6a5d,0x8a5c45][i]);
-  // Vegetacao fica nas bordas, nunca no meio do terreno de plantio.
-  for(let a=0;a<10;a++){
-    const ang=a/10*Math.PI*2+.3*i,rr=zona.raio*(1.08+(a%3)*.07);
-    arvore(grupo,zona.x+Math.cos(ang)*rr,zona.z+Math.sin(ang)*rr*(.76+.06*i),.78+(a%4)*.09);
+function montarFazenda(zona,i){
+  const grupo=new THREE.Group();grupo.name='fazenda-'+zona.id;mundo.add(grupo);
+  const pts=poligonoTerreno(zona.x,zona.z,zona.raio,zona.raio*.72,11+i*7);
+  preencherPoligono(grupo,pts,matTerraArada(),.026);
+  // Vão no lado leste/sudeste, apontado para a estrada de acesso.
+  const gap=(i*3+2)%pts.length;cercaArame(grupo,pts,gap);
+  const a=pts[gap],b=pts[(gap+1)%pts.length],gx=(a.x+b.x)/2,gz=(a.z+b.z)/2,ang=Math.atan2(b.z-a.z,b.x-a.x);
+  porteiraAutomatica(grupo,gx,gz,ang,3.9);
+  galpao(grupo,zona.x-zona.raio*.35,zona.z-zona.raio*.18,.2+i*.42,i);
+  casaRural(grupo,zona.x-zona.raio*.16,zona.z+zona.raio*.28,-.28+i*.25,i+1);
+  reservatorioAzul(grupo,zona.x-zona.raio*.43,zona.z+zona.raio*.12);
+  bananeiras(grupo,zona.x+zona.raio*.37,zona.z+zona.raio*.2,30+i);
+  // Vegetação de borda irregular, nunca em anel perfeito.
+  for(let k=0;k<13;k++){
+    const ang2=k/13*Math.PI*2+.21*i,rr=zona.raio*(1.02+pseudo(i*40+k)*.22);
+    arvore(grupo,zona.x+Math.cos(ang2)*rr,zona.z+Math.sin(ang2)*rr*.77,.72+pseudo(k+i)*.38,80+i*20+k);
   }
-  grupos.push({grupo,zona});
+  grupos.push({grupo,x:zona.x,z:zona.z,raio:185});
 }
-RURAL_ZONES.forEach(montarZona);
 
-// 175 m fica alem do que a neblina permite ver com clareza. Fora disso a area inteira deixa de
-// renderizar; logica de cultivo continua independente, porque plantas sao entidades do Economy.js.
+function montarVila(){
+  const g=new THREE.Group();g.name='vila-rural';mundo.add(g);
+  // Casas seguem a estrada e têm recuos diferentes; nenhuma grade ortogonal.
+  const casas=[
+    [56,92,.18,1],[67,104,-.12,2],[79,111,.22,3],[91,106,-.28,4],
+    [102,96,.10,5],[93,84,.34,6],[73,82,-.20,7]
+  ];
+  for(const c of casas)casaRural(g,...c);
+  galpao(g,108,111,.18,2);reservatorioAzul(g,105,103);
+  bananeiras(g,61,83,61);bananeiras(g,99,113,73);
+  for(let i=0;i<18;i++){
+    const a=i/18*Math.PI*2,rr=31+pseudo(i*5)*16;
+    arvore(g,VILA.x+Math.cos(a)*rr,VILA.z+Math.sin(a)*rr*.72,.72+pseudo(i)*.42,200+i);
+  }
+  grupos.push({grupo:g,x:VILA.x,z:VILA.z,raio:180});
+}
+
+const estradas=new THREE.Group();estradas.name='malha-estradas-rurais';mundo.add(estradas);
+// Eixos principais: curvas longas, bifurcações e acessos. Sem ruas paralelas em tabuleiro.
+estradaDeTerra(estradas,'Estrada Boa Vista',[[34,72],[13,85],[-18,98],[-58,104],[-101,94],[-145,79]],5.1,true);
+estradaDeTerra(estradas,'Estrada do Cedro',[[34,73],[49,84],[67,96],[84,104],[105,110],[126,113]],5.3,true);
+estradaDeTerra(estradas,'Estrada do Ribeirão',[[31,68],[50,52],[73,30],[99,2],[126,-37],[154,-72]],4.8,true);
+// Acessos de fazenda: mais estreitos, sem capim central.
+estradaDeTerra(estradas,'Acesso Boa Vista',[[-118,90],[-130,84],[-145,76]],3.4,false);
+estradaDeTerra(estradas,'Acesso Vale do Cedro',[[106,110],[116,115],[126,112]],3.6,false);
+estradaDeTerra(estradas,'Acesso Ribeirão',[[132,-47],[143,-65],[154,-86]],3.3,false);
+
+montarVila();
+RURAL_ZONES.forEach(montarFazenda);
+
+let ultimo=performance.now()/1000;
 export function atualizarMundoRural(x,z){
+  const agora=performance.now()/1000,dt=Math.min(.05,Math.max(0,agora-ultimo));ultimo=agora;
+  atualizarPorteiras(dt);
   for(const r of grupos){
-    const dx=x-r.zona.x,dz=z-r.zona.z;
-    r.grupo.visible=dx*dx+dz*dz<175*175;
+    const dx=x-r.x,dz=z-r.z;r.grupo.visible=dx*dx+dz*dz<r.raio*r.raio;
   }
 }
