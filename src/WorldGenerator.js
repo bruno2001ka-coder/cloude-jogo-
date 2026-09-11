@@ -133,13 +133,35 @@ function distanciaAoCorredorFazenda(px,pz){
 export const porteiraFazenda={x:0,y:0,z:0,aberta:true,raio:3.6,pivos:[],anguloAtual:0};
 export const portasCeleiro={x:0,y:0,z:0,aberta:true,raio:3.2,pivos:[],anguloAtual:0};
 
-// Cada folha móvel tem a própria Box3, calculada da geometria VISUAL depois da rotação.
-// Acaba a troca binária "vão inteiro bloqueado / vão inteiro livre", que criava parede invisível
-// enquanto a porta ainda estava visualmente aberta.
+// ===== COLISÃO DE PORTA GIRATÓRIA SEM "QUINA INVISÍVEL" =====
+// A física é AABB. Uma folha longa e fina girada 45° dentro de UMA AABB vira um quadrado grande,
+// com quatro cantos sólidos onde não existe madeira. Em vez de aceitar esse fantasma, cada folha é
+// aproximada por quatro segmentos curtos. Continuam sendo AABBs baratas, mas acompanham a diagonal
+// com erro muito menor. São só 16 caixas móveis entre casa + porteira.
+const _cantoFolha=new THREE.Vector3();
+function criarSegmentosFolha(folha,eixo,comprimento,altura,espessura,categoria,qtd=4){
+  const segmentos=[],passo=comprimento/qtd;
+  for(let i=0;i<qtd;i++){
+    const p=-comprimento/2+(i+.5)*passo;
+    segmentos.push({
+      caixa:marcarObstaculoMovel(registrarCaixa(new THREE.Box3(),categoria)),
+      cx:eixo==='x'?p:0,cy:altura/2,cz:eixo==='z'?p:0,
+      hx:eixo==='x'?passo/2:espessura/2,hy:altura/2,hz:eixo==='z'?passo/2:espessura/2,
+    });
+  }
+  return segmentos;
+}
 function atualizarColisoresFolhas(registros){
   for(const r of registros){
-    r.folha.updateWorldMatrix(true,true);
-    r.caixa.setFromObject(r.folha,true);
+    r.folha.updateWorldMatrix(true,false);
+    for(const seg of r.segmentos){
+      seg.caixa.makeEmpty();
+      for(const sx of[-1,1])for(const sy of[-1,1])for(const sz of[-1,1]){
+        _cantoFolha.set(seg.cx+sx*seg.hx,seg.cy+sy*seg.hy,seg.cz+sz*seg.hz)
+          .applyMatrix4(r.folha.matrixWorld);
+        seg.caixa.expandByPoint(_cantoFolha);
+      }
+    }
   }
 }
 const PORTA_CELEIRO_ABERTA_RAD=Math.PI*.72;
@@ -289,8 +311,8 @@ function criarFazenda(){
     macaneta.rotation.x=Math.PI/2;
     // Duas dobradiças visíveis junto ao pivô: detalhe de acabamento, sem colisor novo.
     for(const alt of[.58,1.86])bloco(new THREE.CylinderGeometry(.035,.035,.16,8),ferragemPorta,lado*(LARGURA_FOLHA/2-.04),alt,.08,folha);
-    const caixaFolha=marcarObstaculoMovel(registrarCaixa(new THREE.Box3(),'porta-celeiro'));
-    pivosCeleiro.push({pivo,lado,folha,caixa:caixaFolha});
+    const segmentos=criarSegmentosFolha(folha,'x',LARGURA_FOLHA,2.45,.12,'porta-celeiro');
+    pivosCeleiro.push({pivo,lado,folha,segmentos});
   }
   // Batente alinhado à folha: a verga fica ACIMA da porta, nunca atravessando a madeira.
   bloco(new THREE.BoxGeometry(LARGURA_PORTA_CELEIRO+.28,.14,.16),ripaEscura,bx,by+2.88,bz+2.58);
@@ -471,8 +493,8 @@ function criarFazenda(){
     diag.rotation.x=lado*Math.atan2(ALTURA_PORTEIRA-.4,folhaLarg);
     // Trinco/pegador perto do encontro das duas folhas. Fica dentro da silhueta da porteira.
     bloco(new THREE.BoxGeometry(.08,.10,.24),ferragemPorta,.035,.82,-lado*(folhaLarg/2-.16),folha);
-    const caixaFolha=marcarObstaculoMovel(registrarCaixa(new THREE.Box3(),'porteira'));
-    pivos.push({pivo,lado,folha,caixa:caixaFolha});
+    const segmentos=criarSegmentosFolha(folha,'z',folhaLarg,ALTURA_PORTEIRA,.12,'porteira');
+    pivos.push({pivo,lado,folha,segmentos});
   }
   // Duas caixas móveis acompanham as duas folhas. Quando abertas, ficam junto da madeira aberta;
   // quando fechadas, encontram-se no centro. Nada some nem aparece antes da animação.
