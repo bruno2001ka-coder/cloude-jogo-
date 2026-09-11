@@ -149,6 +149,7 @@ export function acaoPrimaria(){
   if(!ctx)return null;
   if(ctx.tipo==='casa'){const aberta=alternarPorta(ctx.casa);renderizarAcoes();return aberta?'porta-aberta':'porta-fechada'}
   if(ctx.tipo==='porteira'){const aberta=alternarPorteira();renderizarAcoes();return aberta?'porteira-aberta':'porteira-fechada'}
+  if(ctx.tipo==='portasCeleiro'){const aberta=alternarPortasCeleiro();renderizarAcoes();return aberta?'celeiro-aberto':'celeiro-fechado'}
   if(ctx.tipo==='planta'&&plantaPronta(ctx.planta)){colher(ctx.planta);return 'colheu'}
   return null;
 }
