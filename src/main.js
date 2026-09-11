@@ -9,7 +9,7 @@ import{atualizarAnimais,atualizarPortas}from'./WorldGenerator.js';
 import{atualizarNPCs}from'./NPCs.js';
 import{atualizarPlantas,atualizarMiraPlantio,isInventarioAberto,renderizarInventario,contextoAtual,chaveContexto,getUltimoContextoTipo,renderizarAcoes}from'./Economy.js';
 import{atualizarRadar,atualizarDebugNavMesh}from'./UI.js';
-import{atualizarPolicia,atualizarTiroContinuo,jogadorComColete,jogadorComMochila,ocorrenciaAtual,desembarcarDaViatura,viaturaEsperando}from'./Police.js';
+import{atualizarPolicia,atualizarTiroContinuo,jogadorComColete,jogadorComMochila,ocorrenciaAtual,registrarAvistamentoViatura,desembarcarDaViatura,viaturaEsperando}from'./Police.js';
 import{atualizarPortasHospital,atualizarLuzesEmergencia,atualizarHospital}from'./Hospital.js';
 import{inputState,keys,initDragLook,atualizarSuavizacaoInput,fatorVelocidadeDesejado}from'./Input.js';
 import{atualizarSkyline}from'./Skyline.js';
@@ -22,7 +22,7 @@ import{definirPosicaoAudio}from'./Audio.js';
 import{atualizarMoto,maxVelMoto}from'./Moto.js';
 import{valorAcelerador,reSegurada,configurar as configurarAcelerador,modoDirigindo}from'./Acelerador.js';
 import{atualizarCarro,maxVelCarro}from'./Carro.js';
-import{atualizarViaturas}from'./Viatura.js';
+import{atualizarViaturas,consumirAvistamentoViatura}from'./Viatura.js';
 import{atualizarChaoVisivel}from'./Terrain.js';
 
 camera.position.set(0,EYE_HEIGHT,16);
@@ -244,7 +244,7 @@ function quadro(){
   // jogador subiu a câmera — quem olha de cima tem que ver a rua viva.
   // Ela devolve o ponto onde estacionou numa ocorrência, no quadro da chegada. Quem sabe o que fazer
   // com isso é a polícia, e quem conhece as duas é aqui — o Viatura.js segue só dirigindo.
-  desembarcarDaViatura(atualizarViaturas(dt,ocorrenciaAtual(),viaturaEsperando()));
+  desembarcarDaViatura(atualizarViaturas(dt,ocorrenciaAtual(),viaturaEsperando()));\n  registrarAvistamentoViatura(consumirAvistamentoViatura());
   if(isInventarioAberto()){atualizarMiraPlantio();renderizarInventario()}
   {const chave=chaveContexto(contextoAtual());if(chave!==getUltimoContextoTipo())renderizarAcoes()}
   pos.textContent=droneState.ativo?`🚁 x ${droneState.x.toFixed(1)} · z ${droneState.z.toFixed(1)} · alt ${droneState.y.toFixed(0)}m`:`x ${player.position.x.toFixed(1)} · z ${player.position.z.toFixed(1)}`;
