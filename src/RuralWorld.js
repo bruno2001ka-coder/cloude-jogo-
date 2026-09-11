@@ -122,22 +122,42 @@ function barraEntre(parent,a,b,material,esp=.035){
   m.quaternion.setFromUnitVectors(new THREE.Vector3(1,0,0),dir.normalize());
   m.castShadow=false;m.receiveShadow=true;parent.add(m);
 }
-function cercaArame(parent,pts,gapIndex=-1){
-  const geoPoste=new THREE.CylinderGeometry(.075,.095,1.32,7);
-  for(let i=0;i<pts.length;i++){
-    const j=(i+1)%pts.length;if(i===gapIndex)continue;
-    const a=pts[i],b=pts[j],len=Math.hypot(b.x-a.x,b.z-a.z),n=Math.max(1,Math.ceil(len/3.2));
-    let prev=null;
-    for(let s=0;s<=n;s++){
-      const t=s/n,x=a.x+(b.x-a.x)*t,z=a.z+(b.z-a.z)*t,y=chao(x,z,0);
-      const poste=new THREE.Mesh(geoPoste,matTronco);poste.position.set(x,y+.62,z);poste.castShadow=true;poste.receiveShadow=true;parent.add(poste);
-      if(prev){
-        for(const h of[.38,.72,1.02])barraEntre(parent,{x:prev.x,y:prev.y+h,z:prev.z},{x,y:y+h,z},matArame,.022);
-      }
-      prev={x,y,z};
-    }
-    caixaColisorSegmento(a.x,a.z,b.x,b.z);
+const GEO_POSTE_CERCA=new THREE.CylinderGeometry(.075,.095,1.32,7);
+function trechoCercaArame(parent,a,b){
+  const len=Math.hypot(b.x-a.x,b.z-a.z);if(len<.18)return;
+  const n=Math.max(1,Math.ceil(len/3.2));
+  let prev=null;
+  for(let s=0;s<=n;s++){
+    const t=s/n,x=a.x+(b.x-a.x)*t,z=a.z+(b.z-a.z)*t,y=chao(x,z,0);
+    const poste=new THREE.Mesh(GEO_POSTE_CERCA,matTronco);
+    poste.position.set(x,y+.62,z);poste.castShadow=true;poste.receiveShadow=true;parent.add(poste);
+    if(prev)for(const h of[.38,.72,1.02])
+      barraEntre(parent,{x:prev.x,y:prev.y+h,z:prev.z},{x,y:y+h,z},matArame,.022);
+    prev={x,y,z};
   }
+  caixaColisorSegmento(a.x,a.z,b.x,b.z);
+}
+function cercaArame(parent,pts,gapIndex=-1,larguraPorteira=3.9){
+  let vao=null;
+  for(let i=0;i<pts.length;i++){
+    const j=(i+1)%pts.length,a=pts[i],b=pts[j];
+    if(i!==gapIndex){trechoCercaArame(parent,a,b);continue}
+    // O erro antigo era pular o LADO INTEIRO do polígono e colocar uma porteira de 3,9 m no meio:
+    // sobravam vários metros abertos dos dois lados. Agora o único buraco no perímetro mede exatamente
+    // a largura da porteira; o restante desse mesmo lado continua cercado e com colisão.
+    const dx=b.x-a.x,dz=b.z-a.z,len=Math.hypot(dx,dz);
+    const ux=dx/len,uz=dz/len;
+    const largura=Math.min(larguraPorteira,Math.max(2.8,len-.8));
+    const cx=(a.x+b.x)/2,cz=(a.z+b.z)/2,meia=largura/2;
+    const esquerda={x:cx-ux*meia,z:cz-uz*meia};
+    const direita ={x:cx+ux*meia,z:cz+uz*meia};
+    trechoCercaArame(parent,a,esquerda);
+    trechoCercaArame(parent,direita,b);
+    // Rotação Y do Three.js: o eixo X local vira (cos(a), -sin(a)) em X/Z.
+    // Por isso o sinal de Z é negativo aqui; o atan2 anterior inclinava algumas porteiras ao contrário.
+    vao={x:cx,z:cz,ang:Math.atan2(-uz,ux),largura,esquerda,direita,len};
+  }
+  return vao;
 }
 
 function telhadoDuasAguas(parent,x,y,z,w,d,h,cor=0x9a5437){
@@ -228,14 +248,14 @@ function reservatorioAzul(parent,x,z){
 }
 function porteiraAutomatica(parent,x,z,ang=0,larg=3.8){
   const y=chao(x,z,0),g=new THREE.Group();g.position.set(x,y,z);g.rotation.y=ang;parent.add(g);
-  const folha=larg/2-.12;
+  const folha=larg/2+.035;
   const pL=new THREE.Group(),pR=new THREE.Group();pL.position.x=-larg/2;pR.position.x=larg/2;g.add(pL,pR);
   const criarFolha=(pivo,lado)=>{
     for(const h of[.38,.82,1.18]){
       const m=new THREE.Mesh(new THREE.BoxGeometry(folha,.10,.08),matPorteira);
       m.position.set(lado*folha/2,h,0);m.castShadow=true;pivo.add(m);
     }
-    for(const px of[.12,folha-.12]){const m=new THREE.Mesh(new THREE.BoxGeometry(.10,1.15,.10),matPorteira);m.position.set(lado*px,.72,0);pivo.add(m)}
+    for(const px of[.10,Math.max(.14,folha-.10)]){const m=new THREE.Mesh(new THREE.BoxGeometry(.10,1.15,.10),matPorteira);m.position.set(lado*px,.72,0);pivo.add(m)}
   };
   criarFolha(pL,1);criarFolha(pR,-1);
   for(const lx of[-larg/2-.12,larg/2+.12]){const m=new THREE.Mesh(new THREE.CylinderGeometry(.11,.14,1.55,8),matTronco);m.position.set(lx,.72,0);m.castShadow=true;g.add(m)}
@@ -252,7 +272,7 @@ function atualizarPorteiras(dt){
     const alvo=p.aberta?Math.PI*.46:0,delta=alvo-p.angulo,passo=Math.min(Math.abs(delta),.72*dt);
     if(Math.abs(delta)>.0005)p.angulo+=Math.sign(delta)*passo;
     p.pL.rotation.y=-p.angulo;p.pR.rotation.y=p.angulo;
-    const livre=p.angulo>Math.PI*.28;
+    const livre=p.angulo>Math.PI*.34;
     if(livre&&p.colisorAtivo){p.caixa.makeEmpty();p.colisorAtivo=false}
     else if(!livre&&!p.colisorAtivo){p.caixa.copy(p.fechada);p.colisorAtivo=true}
   }
@@ -270,10 +290,10 @@ function montarFazenda(zona,i){
   ];
   preencherPoligono(grupo,rocas[0],matTerraArada(),.04);
   preencherPoligono(grupo,rocas[1],matPastoSeco,.042);
-  // Vão no lado leste/sudeste, apontado para a estrada de acesso.
-  const gap=(i*3+2)%pts.length;cercaArame(grupo,pts,gap);
-  const a=pts[gap],b=pts[(gap+1)%pts.length],gx=(a.x+b.x)/2,gz=(a.z+b.z)/2,ang=Math.atan2(b.z-a.z,b.x-a.x);
-  porteiraAutomatica(grupo,gx,gz,ang,3.9);
+  // Perímetro 100% fechado: a cerca só deixa o vão exato ocupado pela porteira.
+  const gap=(i*3+2)%pts.length;
+  const vao=cercaArame(grupo,pts,gap,3.9);
+  if(vao)porteiraAutomatica(grupo,vao.x,vao.z,vao.ang,vao.largura);
   galpao(grupo,zona.x-zona.raio*.35,zona.z-zona.raio*.18,.2+i*.42,i);
   casaRural(grupo,zona.x-zona.raio*.16,zona.z+zona.raio*.28,-.28+i*.25,i+1);
   reservatorioAzul(grupo,zona.x-zona.raio*.43,zona.z+zona.raio*.12);
