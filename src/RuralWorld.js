@@ -17,6 +17,18 @@ export const RURAL_ZONES=[
 const mundo=new THREE.Group();mundo.name='mundo-rural';scene.add(mundo);
 const grupos=[];
 
+// Estradas principais do campo: curvas longas seguindo o relevo, sem malha quadriculada.
+// Elas partem da regiao da casa e abrem o mapa em tres direcoes de cultivo.
+const redeEstradas=new THREE.Group();redeEstradas.name='rede-rural-principal';mundo.add(redeEstradas);
+const ESTRADAS_RURAIS=[
+  [[34,73],[5,92],[-45,108],[-98,99],[-145,105]],
+  [[36,73],[63,86],[91,99],[118,133]],
+  [[31,68],[66,42],[101,2],[128,-43],[154,-55]],
+];
+for(const pts of ESTRADAS_RURAIS){
+  const e=faixaCurva(pts,4.1,matTerraBatida());e.malha.position.y=.006;redeEstradas.add(e.malha);
+}
+
 function terrenoY(x,z,extra=.025){return alturaDoChaoDesenhado(x,z)+extra}
 
 function faixaCurva(pontos,largura,material){
