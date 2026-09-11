@@ -152,7 +152,7 @@ function pendurarLotes(curva,larguraDaVia,semente){
     // Os dois lados começam em pontos diferentes, senão as fileiras nascem espelhadas e o beco vira
     // um corredor de casas pareadas — o defeito que matou as duas gerações anteriores.
     let s=2.2+sorteio(semente,lado+11)*3.5;
-    for(let k=0;k<70&&s<total-3;k++){
+    for(let k=0;k<34&&s<total-3;k++){
       const sem=hashInt(semente*997+k,lado);
       const larg=LARG_MIN+((sem%1000)/1000)*(LARG_MAX-LARG_MIN);
       const u=s/total;
@@ -249,7 +249,7 @@ function becoCabe(candidato,jaAceitos,mae){
   // difícil, e testar é barato. Os aceitos ficam espalhados ao longo da via em vez de amontoados.
   const recuo=VIA_LARGURA/2+.6;
   const aceitos=[{curva:viaPrincipal,meia:VIA_LARGURA/2},{curva:viaBaixa,meia:VIA_LARGURA/2}];
-  for(const[mae,quantos,marca]of[[viaPrincipal,32,0],[viaBaixa,26,500]]){
+  for(const[mae,quantos,marca]of[[viaPrincipal,14,0],[viaBaixa,10,500]]){
     for(let i=0;i<quantos;i++){
       const u=.08+(i/(quantos-1))*.84+(sorteio(i+marca,31)-.5)*.04;
       const b=criarBeco(mae,u,(i%2)?1:-1,13+sorteio(i+marca,53)*15,i+marca,recuo);
@@ -265,7 +265,7 @@ const BECO_LARGURA=BECO_MIN+.4;
 {
   const aceitos=[{curva:viaPrincipal,meia:VIA_LARGURA/2},{curva:viaBaixa,meia:VIA_LARGURA/2},
                  ...becos.map(c=>({curva:c,meia:BECO_MIN/2}))];
-  for(let i=0;i<becos.length;i++){
+  for(let i=0;i<0;i++){
     const b=becos[i];
     if(b.getLength()<11)continue;
     const filho=criarBeco(b,.5,(i%2)?1:-1,7+sorteio(i,71)*7,i+900,BECO_MIN/2+.5);
@@ -354,6 +354,24 @@ export const diagnosticoDaPoda={gerados:0,porCorredor:0,porVizinha:0,porPorta:0,
   diagnosticoDaPoda.aceitos=aceitos.length;
   lotes.length=0;lotes.push(...aceitos);
 }
+// ===== BAIRRO COMPACTO =====
+// O jogo voltou a ser cultivo. A favela deixa de ser o mapa principal e vira um distrito secundário:
+// poucas casas úteis, bastante espaço livre e sem pagar física/render de dezenas de fachadas inúteis.
+const MAX_CASAS_BAIRRO=42;
+if(lotes.length>MAX_CASAS_BAIRRO){
+  const restantes=[...lotes],selecionados=[restantes.shift()];
+  while(selecionados.length<MAX_CASAS_BAIRRO&&restantes.length){
+    let melhorI=0,melhorD=-1;
+    for(let i=0;i<restantes.length;i++){
+      const l=restantes[i];
+      let perto=Infinity;
+      for(const q of selecionados)perto=Math.min(perto,Math.hypot(l.x-q.x,l.z-q.z));
+      if(perto>melhorD){melhorD=perto;melhorI=i}
+    }
+    selecionados.push(restantes.splice(melhorI,1)[0]);
+  }
+  lotes.length=0;lotes.push(...selecionados);
+}
 
 // ===== ONDE O BECO VIRA ESCADÃO =====
 // A escadaria não é mais um apêndice colado na lateral de uma casa. Essa era a ideia antiga e ela
@@ -416,7 +434,7 @@ function baseYDaSoleira(l){
     // fachada, e uma delas 1 m à frente da porta — a soleira fica acima de todas, e o desnível do
     // outro lado quem resolve é o `afundar` da parede.
     l.baseY=baseYDaSoleira(l);
-    l.andares=1+(l.sem%100<42?0:l.sem%100<82?1:2);// 42% térrea, 40% dois, 18% três
+    l.andares=((l.sem>>>3)%100)<68?1:2;// 68% térrea, 32% sobrado; sem terceiro andar
   }
   // Puxa a altura pra caber no pulo, do lote mais baixo pro mais alto.
   const porAltura=[...lotes].sort((a,b)=>a.baseY-b.baseY);
@@ -1154,7 +1172,7 @@ function construirCasa(l){
 // o alinhamento exato. São 14 casas entre ~110: no meio de uma fileira torta ninguém percebe 17° a
 // menos, e em troca a casa é oca de verdade e a porta é uma porta.
 const TIPOS_COMERCIO=['boteco','roupas','eletronicos'];
-const COMERCIO_ALVO=9,COMERCIO_DIST_MIN=16;
+const COMERCIO_ALVO=3,COMERCIO_DIST_MIN=18;
 // Um lote serve de casa oca? É a mesma pergunta pro comércio e pro cliente, e ela tem que ser feita
 // num lugar só: quando estava escrita duas vezes, mudar a regra num lado deixava o outro para trás.
 function serveDeCasaOca(l){
@@ -1194,7 +1212,7 @@ for(const l of lotes){
 // pura). A terceira é de jogo: LONGE DAS PORTAS DE COMÉRCIO, pra a zona de entrega (raio 2,15) não
 // engolir a porta do vizinho — foi esse o defeito de quando os quatro clientes nasceram a 68 cm de
 // uma porta alheia.
-const CLIENTE_ALVO=5,CLIENTE_DIST_MIN=18,CLIENTE_LONGE_DO_COMERCIO=16;
+const CLIENTE_ALVO=2,CLIENTE_DIST_MIN=22,CLIENTE_LONGE_DO_COMERCIO=18;
 const lotesCliente=[];
 // DUAS PASSADAS, E A SEGUNDA É O QUE GARANTE OS CINCO. O comércio serve primeiro e come os melhores
 // lotes; com o espaçamento de 18 m fixo, o quinto cliente podia simplesmente não existir e ninguém
@@ -2133,7 +2151,7 @@ for(const l of lotes){
   else if(l.papel==='bar')construirBar(l);
   else if(l.papel==='biqueira')construirBiqueira(l);
   else construirCasa(l);
-  enfeitarLaje(l);
+  if(l.papel||((l.sem>>>5)%100)<22)enfeitarLaje(l);
 }
 // A lista de casas de cliente só pode ser montada AQUI: `casasOcas` recebe os dois papéis durante a
 // construção, e antes deste laço ela está vazia.
