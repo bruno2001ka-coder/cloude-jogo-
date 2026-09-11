@@ -1,4 +1,4 @@
-// Fazenda-protótipo isolada: só aparece com ?farmtest=1.
+// Fazenda-protótipo isolada v1: só aparece com ?farmtest=1.
 // Não substitui nenhuma fazenda existente e não é carregada no jogo normal.
 import*as THREE from'three';
 import{mergeGeometries}from'three/addons/utils/BufferGeometryUtils.js';
