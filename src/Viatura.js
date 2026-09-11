@@ -1,6 +1,6 @@
 import*as THREE from'three';
 import{GLTFLoader}from'three/addons/loaders/GLTFLoader.js';
-import{scene}from'./core.js';
+import{scene}from'./core.js';\nimport{player}from'./Player.js';
 import{obterElevacao,alturaDoChaoDesenhado}from'./Terrain.js';
 import{viaPrincipal,viaBaixa,becos}from'./Favela.js';
 import{registrarCaixa,marcarObstaculoMovel,colideParedeXZ}from'./Physics.js';
@@ -8,7 +8,7 @@ import{registrarCaixa,marcarObstaculoMovel,colideParedeXZ}from'./Physics.js';
 const COMPRIMENTO=1.90,LARGURA=.86,ALTURA_COLISAO=.85,ENTRE_EIXOS=.70,ALTURA_ASSENTO=-.02;
 // Uma viatura por ocorrência: a segunda duplicava a busca global de rota no pior momento.
 const CHEGOU=2,PERSEGUICAO_DUAS=6;
-const VEL_CRUZEIRO=9,VEL_ATENDENDO=12.5,VEL_BUSCA=4.2,ACEL=3.2,FREIO=6.6;
+// Ronda tem que parecer ronda: baixa velocidade e aceleracao suave. A viatura so abre desempenho\n// quando existe perseguicao/ocorrencia ativa.\nconst VEL_CRUZEIRO=4.2,VEL_ATENDENDO=13.5,VEL_BUSCA=3.6,ACEL_RONDA=1.5,ACEL_ATENDENDO=4.8,FREIO=6.6;\n// A viatura tem campo de observacao maior que o policial a pe. So vale para RELOCALIZAR jogador\n// ja procurado; nao cria ficha do nada. Parede continua tapando a visao.\nconst VISAO_VIATURA=42,VISAO_VIATURA_COS=Math.cos(70*Math.PI/180),VISAO_VIATURA_INTERVALO=.22;
 const LATERAL_RONDA=4.5,LATERAL_ATENDENDO=8;
 const MAO=1,MAO_DESVIANDO=-.6,PERTO_PRA_DESVIAR=9,TROCA_DE_FAIXA=2.5;
 const PERSEGUICAO_RECALCULA=1.25,INTERCEPTA_MAX=4.0,ALVO_VEL_MAX=11;
@@ -205,7 +205,7 @@ function desvios(){
 export function __desvios(){return desvios().map(d=>({comp:+d.comp.toFixed(1),uEntra:+d.uEntra.toFixed(4),uSai:+d.uSai.toFixed(4)}))}
 export function __curvaDesvio(i){return desvios()[i]?.curva??null}
 
-const viaturas=[];let modelo=null;
+const viaturas=[];let modelo=null,proximaVisaoViatura=0,avistamentoViatura=null;\nfunction linhaLivreViatura(v){\n  const dx=player.position.x-v.grupo.position.x,dz=player.position.z-v.grupo.position.z,d=Math.hypot(dx,dz);\n  if(d>VISAO_VIATURA||d<.01)return false;\n  const fx=-Math.sin(v.grupo.rotation.y),fz=-Math.cos(v.grupo.rotation.y);\n  if((fx*dx+fz*dz)/d<VISAO_VIATURA_COS)return false;\n  const n=Math.max(2,Math.ceil(d/1.2));\n  const y0=alturaDoChaoDesenhado(v.grupo.position.x,v.grupo.position.z)+.72,y1=player.position.y+.55;\n  for(let i=1;i<n;i++){\n    const t=i/n,x=v.grupo.position.x+dx*t,z=v.grupo.position.z+dz*t,y=y0+(y1-y0)*t;\n    if(colideParedeXZ(x,z,y,.04,.04,.20))return false;\n  }\n  return true;\n}\nfunction atualizarVisaoViaturas(agora){\n  if(agora<proximaVisaoViatura)return;\n  proximaVisaoViatura=agora+VISAO_VIATURA_INTERVALO;\n  for(const v of viaturas){\n    if(!v.grupo.visible||!linhaLivreViatura(v))continue;\n    avistamentoViatura={x:player.position.x,z:player.position.z,t:agora};\n    break;\n  }\n}\nexport function consumirAvistamentoViatura(){const a=avistamentoViatura;avistamentoViatura=null;return a}\n
 function criarViatura(u0){
   const grupo=new THREE.Group();grupo.name='viatura';grupo.rotation.order='YXZ';grupo.visible=false;scene.add(grupo);
   const barra=new THREE.Group();barra.position.set(0,.83,0);grupo.add(barra);
@@ -294,7 +294,7 @@ function tentarVoltarAoAnel(v){
 const despachadas=[];
 export function atualizarViaturas(dt,alvo,segurar){
   if(!modelo)return null;
-  let desembarque=null;const agora=performance.now()/1000;
+  let desembarque=null;const agora=performance.now()/1000;\n  atualizarVisaoViaturas(agora);
   const querem=alvo&&alvo.perseguicao&&(alvo.nivel??0)>=PERSEGUICAO_DUAS?2:1;
   if(!alvo&&!segurar){
     amostraAlvo=null;proximoDespacho=0;
@@ -342,7 +342,7 @@ export function atualizarViaturas(dt,alvo,segurar){
         teto=Math.min(teto,VEL_APROXIMACAO,freioJogador);
       }
       if(distJogador<=DISTANCIA_SEGURA)teto=0;
-      const lim=teto>v.vel?ACEL*dt:FREIO*dt;v.vel+=Math.max(-lim,Math.min(lim,teto-v.vel));if(v.vel<0)v.vel=0;
+      const acel=atendendo?ACEL_ATENDENDO:ACEL_RONDA;const lim=teto>v.vel?acel*dt:FREIO*dt;v.vel+=Math.max(-lim,Math.min(lim,teto-v.vel));if(v.vel<0)v.vel=0;
       const avancoJogador=Number.isFinite(distJogador)?Math.max(0,distJogador-DISTANCIA_SEGURA):Infinity;
       v.sRota+=Math.min(v.vel*dt,vaiParar?Math.max(0,falta-CHEGOU):Infinity,avancoJogador);
       if(v.retornando&&v.sRota>=r.comp-.1){v.rotaDinamica=null;v.sRota=0;v.u=v.baseU;v.retornando=false}
@@ -360,7 +360,7 @@ export function atualizarViaturas(dt,alvo,segurar){
         }
         if(distJogador<=DISTANCIA_SEGURA)teto=0;
       }
-      const lim=teto>v.vel?ACEL*dt:FREIO*dt;v.vel+=Math.max(-lim,Math.min(lim,teto-v.vel));if(v.vel<0)v.vel=0;
+      const acel=atendendo?ACEL_ATENDENDO:ACEL_RONDA;const lim=teto>v.vel?acel*dt:FREIO*dt;v.vel+=Math.max(-lim,Math.min(lim,teto-v.vel));if(v.vel<0)v.vel=0;
       const parar=atendendo&&(v.semAcesso||!alvo||alvo.quente!==false),anda=Math.min(v.vel*dt,parar?Math.max(0,falta-CHEGOU):Infinity,Number.isFinite(distJogador)?Math.max(0,distJogador-DISTANCIA_SEGURA):Infinity);
       v.u=(v.u+anda/COMPRIMENTO_DA_ROTA)%1;
       if(atendendo&&v.semAcesso&&!v.desembarcou&&falta<=DESEMBARQUE_SEM_ACESSO&&v.vel<.4){v.desembarcou=true;desembarque={x:v.grupo.position.x,z:v.grupo.position.z}}
