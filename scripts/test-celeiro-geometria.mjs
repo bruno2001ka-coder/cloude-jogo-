@@ -17,30 +17,26 @@ assert(altura>0&&profundidade>0,'dimensões inválidas');
 assert(Math.abs(agua-(Math.hypot(3,1.35)+.45))<1e-9,'comprimento do telhado inconsistente');
 assert(espessura<altura,'parede não pode ser uma laje horizontal');
 
-/* Corredor de acesso da fazenda: porteira -> porta. */
+/* Layout interno: cultivo e animais não podem se misturar. */
 function distSegmento(px,pz){
   const a=F.acesso.a,b=F.acesso.b,dx=b.x-a.x,dz=b.z-a.z,den=dx*dx+dz*dz;
   const tt=Math.max(0,Math.min(1,((px-a.x)*dx+(pz-a.z)*dz)/den));
   return Math.hypot(px-(a.x+dx*tt),pz-(a.z+dz*tt));
 }
-const xIni=F.cx-F.meiaLarg+7.5,xFim=F.cx+F.meiaLarg-2.2;
-const zIni=F.cz-F.meiaProf+2.2,zFim=F.cz+F.meiaProf-8,seg=1.25;
-let total=0,removidosCorredor=0,removidosServico=0;
-for(let z=zIni;z<=zFim;z+=1.7){
-  for(let x0=xIni;x0<xFim-.001;x0+=seg){
-    const comp=Math.min(seg,xFim-x0),mx=x0+comp/2;total++;
-    if(distSegmento(mx,z)<=F.acesso.raio+comp/2)removidosCorredor++;
-    else{
-      const l=F.servico.limpeza;
-      if(Math.abs(mx-l.x)<=l.meiaX+comp/2&&Math.abs(z-l.z)<=l.meiaZ+.51)removidosServico++;
-    }
-  }
+const C=F.cultivo,A=F.animais,seg=C.segmento;
+let canteiros=0,linhas=0;
+for(let z=C.minZ;z<=C.maxZ;z+=C.espacamentoLinha){
+  linhas++;
+  for(let x0=C.minX;x0<C.maxX-.001;x0+=seg)canteiros++;
 }
-assert(removidosCorredor===42,`esperados 42 segmentos fora do corredor, calculados ${removidosCorredor}`);
-assert(removidosServico===8,`esperados 8 segmentos fora do pátio de serviço, calculados ${removidosServico}`);
-assert(total===98,`grade original de canteiros mudou: ${total}`);
+assert(linhas===4,`esperadas 4 linhas de cultivo, calculadas ${linhas}`);
+assert(canteiros===56,`esperados 56 segmentos de canteiro, calculados ${canteiros}`);
+assert(A.maxZ<C.minZ,`campo animal e cultivo se sobrepõem em Z: ${A.maxZ} / ${C.minZ}`);
+assert(C.minZ-A.maxZ>=7,`separação entre campo e roça menor que 7 m: ${C.minZ-A.maxZ}`);
+for(const[x,z]of[[A.minX+A.margem,A.minZ+A.margem],[A.maxX-A.margem,A.maxZ-A.margem]])
+  assert(distSegmento(x,z)>F.acesso.raio+.8,'campo dos animais invade corredor principal');
 assert(distSegmento(-94,-53)<F.acesso.raio,'o antigo balcão deve continuar proibido no corredor');
 console.log(JSON.stringify({largura,profundidade,altura,vao,lateral,subida,agua,
   acessoA:F.acesso.a,acessoB:F.acesso.b,larguraCorredor:F.acesso.raio*2,
-  canteirosTotal:total,canteirosRemovidosCorredor:removidosCorredor,
-  canteirosRemovidosServico:removidosServico,canteirosRestantes:total-removidosCorredor-removidosServico},null,2));
+  cultivo:{linhas,canteiros,minX:C.minX,maxX:C.maxX,minZ:C.minZ,maxZ:C.maxZ},
+  campoAnimais:A,separacaoMetros:C.minZ-A.maxZ},null,2));
