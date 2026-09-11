@@ -4,8 +4,8 @@
 import*as THREE from'three';
 import{scene}from'./core.js';
 import{obterElevacao}from'./Terrain.js';
-import{registrarObstaculo,registrarCaixa,superficiesAndaveis,marcarObstaculoMovel}from'./Physics.js';
-import{bmat,matTelha,matConcreto,matParedeRural,matTelhaBarroRural,matMadeira,matTerraArada,matTerraBatida,uvPorMetro,janela,porta,agua,posteMat,folhaMat,folhaClara,criarSombraContato}from'./Materials.js';
+import{registrarObstaculo,registrarCaixa,superficiesAndaveis,marcarObstaculoMovel,marcarSemFusao}from'./Physics.js';
+import{bmat,matTelha,matConcreto,matParedeRural,matTelhaBarroRural,matMadeira,matTerraArada,matTerraBatida,matPastoFazenda,uvPorMetro,janela,porta,agua,posteMat,folhaMat,folhaClara,criarSombraContato}from'./Materials.js';
 import{POLOS}from'./Poles.js';
 import{FAZENDA_CONFIG}from'./FarmConfig.js';
 
@@ -264,7 +264,11 @@ function criarFazenda(){
   const larguraLateral=(6-LARGURA_PORTA_CELEIRO)/2;
   const paredeFrenteE=bloco(new THREE.BoxGeometry(larguraLateral,ALTURA_CELEIRO,.18),paredeCasa,bx-((LARGURA_PORTA_CELEIRO+larguraLateral)/2),by+1.6,bz+2.41);
   const paredeFrenteD=bloco(new THREE.BoxGeometry(larguraLateral,ALTURA_CELEIRO,.18),paredeCasa,bx+((LARGURA_PORTA_CELEIRO+larguraLateral)/2),by+1.6,bz+2.41);
-  for(const parede of[paredeFundo,paredeLateralE,paredeLateralD,paredeFrenteE,paredeFrenteD])registrarObstaculo(parede,'celeiro');
+  // Fundo e laterais podem ser otimizados normalmente. As duas peças da FACHADA não podem fundir
+  // com a verga: se fundirem, o otimizador transforma o vão de 2,35 m numa parede invisível inteira.
+  for(const parede of[paredeFundo,paredeLateralE,paredeLateralD])registrarObstaculo(parede,'celeiro');
+  marcarSemFusao(registrarObstaculo(paredeFrenteE,'celeiro'));
+  marcarSemFusao(registrarObstaculo(paredeFrenteD,'celeiro'));
   // Telhado de duas águas. A inclinação sai da geometria (meia largura x altura do cume), não de um
   // ângulo escolhido no olho: a empena logo abaixo é montada com a MESMA conta, e foi assim que ela
   // parou de furar o telhado. Antes o ângulo era .55 rad chutado e a empena vinha de larguras fixas —
@@ -319,7 +323,7 @@ function criarFazenda(){
   for(const lado of[-1,1])bloco(new THREE.BoxGeometry(.14,2.8,.16),ripaEscura,bx+lado*(LARGURA_PORTA_CELEIRO/2+.07),by+1.4,bz+2.58);
   // Fecha a faixa de alvenaria entre a porta e a empena sem alterar a altura externa da construção.
   const vergaParede=bloco(new THREE.BoxGeometry(LARGURA_PORTA_CELEIRO,.25,.18),paredeCasa,bx,by+3.075,bz+2.41);
-  registrarObstaculo(vergaParede,'celeiro');
+  marcarSemFusao(registrarObstaculo(vergaParede,'celeiro'));
   portasCeleiro.x=bx;portasCeleiro.y=by;portasCeleiro.z=bz+2.7;portasCeleiro.pivos=pivosCeleiro;portasCeleiro.aberta=true;aplicarPortasCeleiroImediata();
   bloco(new THREE.BoxGeometry(.9,.7,.1),ripaEscura,bx,by+3.05,bz+2.53);// portinhola do feno, lá em cima
   // Cocho e barril continuam existindo, mas saem da parede: antes atravessavam o canto traseiro.
@@ -406,21 +410,39 @@ function criarFazenda(){
   }
   mesaTravessa.instanceMatrix.needsUpdate=true;bairro.add(mesaTravessa);
 
-  // --- ROÇA: canteiros de terra arada com os pés plantados em cima ---
-  // O acesso principal é uma faixa REAL entre o centro da porteira e a porta da casa/celeiro.
-  // Antes a roça era gerada em grade sem olhar esse caminho e três fileiras atravessavam a entrada.
-  // Não movemos a casa, a porteira nem os canteiros restantes: só deixamos de criar os segmentos que
-  // invadem esse corredor.
-  const acessoA=FAZENDA_CONFIG.acesso.a,acessoB=FAZENDA_CONFIG.acesso.b;
+  // --- CAMPO DOS ANIMAIS ---
+  // Uma única manta de pasto acompanha o relevo e deixa o setor dos bichos legível de longe.
+  // Não tem colisor próprio: a física continua sendo o terreno real por baixo.
+  const campoAnimais=FAZENDA_CONFIG.animais;
+  const campoL=campoAnimais.maxX-campoAnimais.minX,campoP=campoAnimais.maxZ-campoAnimais.minZ;
+  const campoCx=(campoAnimais.minX+campoAnimais.maxX)/2,campoCz=(campoAnimais.minZ+campoAnimais.maxZ)/2;
+  const geoCampo=new THREE.PlaneGeometry(campoL,campoP,Math.ceil(campoL/1.2),Math.ceil(campoP/1.2));
+  const vc=geoCampo.attributes.position,cotaCampo=obterElevacao(campoCx,campoCz);
+  for(let i=0;i<vc.count;i++){
+    const lx=vc.getX(i),ly=vc.getY(i);
+    vc.setZ(i,obterElevacao(campoCx+lx,campoCz-ly)-cotaCampo);
+  }
+  geoCampo.computeVertexNormals();
+  const uvCampo=geoCampo.attributes.uv.clone();
+  for(let i=0;i<uvCampo.count;i++)uvCampo.setXY(i,uvCampo.getX(i)*campoL/4,uvCampo.getY(i)*campoP/4);
+  geoCampo.setAttribute('uv',uvCampo);geoCampo.setAttribute('uv1',uvCampo);
+  const pastoCampo=new THREE.Mesh(geoCampo,matPastoFazenda());
+  pastoCampo.rotation.x=-Math.PI/2;pastoCampo.position.set(campoCx,cotaCampo+.055,campoCz);
+  pastoCampo.receiveShadow=true;bairro.add(pastoCampo);
+
+  // --- ROÇA: setor NORTE, separado do campo dos animais ---
+  // A roça agora nasce exclusivamente dentro de FAZENDA_CONFIG.cultivo. O intervalo em Z entre
+  // cultivo e animais é de 7,7 m, então uma vaca nunca aparece dentro dos canteiros.
+  const cultivo=FAZENDA_CONFIG.cultivo;
   const RAIO_CORREDOR_ACESSO=FAZENDA_CONFIG.acesso.raio;
   const areaServico=FAZENDA_CONFIG.servico.limpeza;
   const invadeServico=(x,z,meiaX=0,meiaZ=0)=>
     Math.abs(x-areaServico.x)<=areaServico.meiaX+meiaX&&
     Math.abs(z-areaServico.z)<=areaServico.meiaZ+meiaZ;
   const canteiros=[],pes=[];
-  const zIni=cz-meiaProf+2.2,zFim=cz+meiaProf-8,xIni=cx-meiaLarg+7.5,xFim=cx+meiaLarg-2.2;
-  const comprimento=xFim-xIni,meioX=(xIni+xFim)/2,SEGMENTO_CANTEIRO=1.25;
-  for(let z=zIni;z<=zFim;z+=1.7){
+  const zIni=cultivo.minZ,zFim=cultivo.maxZ,xIni=cultivo.minX,xFim=cultivo.maxX;
+  const SEGMENTO_CANTEIRO=cultivo.segmento;
+  for(let z=zIni;z<=zFim;z+=cultivo.espacamentoLinha){
     // Uma caixa única atravessava o relevo com a cota do centro e deixava as pontas suspensas. Segmentos
     // curtos permitem apoiar cada parte na altura local sem perder o baixo custo do InstancedMesh.
     for(let x0=xIni;x0<xFim-.001;x0+=SEGMENTO_CANTEIRO){
@@ -618,13 +640,22 @@ function criarAnimal(tipo,x,z){
   animais.push(animal);
   return animal;
 }
-[['vaca',-84,-48],['vaca',-82,-47],['porco',-88,-45],['porco',-83,-44],['galinha',-79,-45],['galinha',-81,-46],['galinha',-78,-57]].forEach(a=>criarAnimal(a[0],a[1],a[2]));
-function dentroDoCurral(x,z){
-  if(x<FAZENDA.cx-FAZENDA.meiaLarg+1||x>FAZENDA.cx+FAZENDA.meiaLarg-1||z<FAZENDA.cz-FAZENDA.meiaProf+1||z>FAZENDA.cz+FAZENDA.meiaProf-1)return false;
-  const c=FAZENDA.celeiro;
-  return!(Math.abs(x-c.x)<c.meiaLarg+.8&&Math.abs(z-c.z)<c.meiaProf+.8);
+[
+  ['vaca',-84.6,-58.2],['vaca',-81.5,-56.8],
+  ['porco',-79.1,-58.1],['porco',-76.8,-56.4],
+  ['galinha',-84.2,-55.5],['galinha',-80.5,-58.7],['galinha',-76.4,-58.8]
+].forEach(a=>criarAnimal(a[0],a[1],a[2]));
+function dentroCampoAnimais(x,z){
+  const c=FAZENDA_CONFIG.animais,m=c.margem;
+  return x>=c.minX+m&&x<=c.maxX-m&&z>=c.minZ+m&&z<=c.maxZ-m;
 }
-function novoAlvoAnimal(){let x,z,t=0;do{x=FAZENDA.cx+(Math.random()*2-1)*(FAZENDA.meiaLarg-2);z=FAZENDA.cz+(Math.random()*2-1)*(FAZENDA.meiaProf-2);t++}while((!dentroDoCurral(x,z)||distanciaAoCorredorFazenda(x,z)<FAZENDA_CONFIG.acesso.raio+.55)&&t<20);return{x,z}}
+function novoAlvoAnimal(){
+  const c=FAZENDA_CONFIG.animais,m=c.margem;
+  return{
+    x:c.minX+m+Math.random()*(c.maxX-c.minX-2*m),
+    z:c.minZ+m+Math.random()*(c.maxZ-c.minZ-2*m)
+  };
+}
 export function atualizarAnimais(dt){
   atualizarPorteiraFazenda(dt);
   atualizarPortasCeleiro(dt);
