@@ -1465,6 +1465,10 @@ const ESTADOS={
       // Era `if(alvo.colhida) volta pra ronda`: colher UM pé encerrava a batida e soltava o heli pra
       // achar o pé do lado meio minuto depois. Agora ele só larga quando não sobra pé florido ali.
       const vivos=pesVivosDaPlantacao();
+      if(SOMENTE_HELICOPTERO&&policia.desembarqueFeitos>=DESEMBARQUE_QTD&&!policia.multaAplicada&&!policiais.some(p=>p.vivo&&p.tipo==='helicoptero')){
+        marcarPlantacaoBatida(agora);policia.alvoPlanta=null;policia.alvoPlantacao=null;policia.confiscoAte=0;
+        mostrarAviso('🚁 Equipe neutralizada. O helicóptero recuou.',2600);transitar('rondando');return;
+      }
       if(!policia.alvoPlantacao||!vivos.length){
         if(SOMENTE_HELICOPTERO&&policiais.some(p=>p.vivo&&p.tipo==='helicoptero'))return;
         marcarPlantacaoBatida(agora);
@@ -1895,7 +1899,9 @@ function atualizarAbordagem(agora){
 // por policial já causaram uma vez neste arquivo, só que em CPU em vez de VRAM.
 function removerPolicial(i){
   const pol=policiais[i];
-  scene.remove(pol.grupo);pol.barra.descartar();despirPolicial(pol.corpo);
+  scene.remove(pol.grupo);
+  if(pol.cordaRapel){scene.remove(pol.cordaRapel);pol.cordaRapel.geometry?.dispose?.();pol.cordaRapel.material?.dispose?.();pol.cordaRapel=null}
+  pol.barra.descartar();despirPolicial(pol.corpo);
   policiais.splice(i,1);
 }
 
