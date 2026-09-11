@@ -1,7 +1,7 @@
 // Service worker do Quintal 3D.
 // Navegacao e codigo usam rede primeiro SEM cache HTTP para cada release aparecer imediatamente.
 // Assets pesados continuam cache-first para o PWA abrir rapido e funcionar offline.
-const VERSAO='quintal3d-v92-farm-layout-hotfix-048';
+const VERSAO='quintal3d-v93-farm-layout-hotfix2';
 const CASCA=[
   './',
   './index.html',
