@@ -5,7 +5,7 @@ import{player,PLAYER_HEIGHT}from'./Player.js';
 import{obterElevacao}from'./Terrain.js';
 import{registrarObstaculo,registrarCaixa,marcarSemFusao,marcarObstaculoMovel,superficiesAndaveis}from'./Physics.js';
 import{matReboco,matTelha,matMadeira,matConcreto,uvPorMetro,criarSombraContato}from'./Materials.js';
-import{casasOcas,sumirCaixa,ESP_PAREDE,PORTA_ALTURA,VAO_PORTA,PORTA_ABERTA_RAD}from'./Favela.js';
+import{casasOcas,sumirCaixa,ESP_PAREDE,PORTA_ALTURA,VAO_PORTA,PORTA_ABERTA_RAD}from'./WorldGenerator.js';
 
 const AREA={x:31.3,z:71.7,larg:10,prof:8};
 const amostras=[];

@@ -4,9 +4,9 @@
 import*as THREE from'three';
 import{scene}from'./core.js';
 import{obterElevacao,alturaDoChaoDesenhado}from'./Terrain.js';
-import{levanteContraQuina,PASSO_DA_FITA}from'./Favela.js';
 import{registrarCaixa,superficiesAndaveis}from'./Physics.js';
 import{matAsfalto,matMeioFio,matReboco,matConcreto,matMadeira,matTelha,uvPorMetro}from'./Materials.js';
+import{levanteContraQuina,PASSO_DA_FITA}from'./WorldGenerator.js';
 
 export const BAIRRO_NOBRE={nome:'Jardins do Morro',casa:{x:31.3,z:71.7},conexaoFavela:{x:31,z:1.2}};
 const bairro=new THREE.Group();bairro.name='bairro-nobre-jardins-do-morro';scene.add(bairro);

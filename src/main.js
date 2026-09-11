@@ -24,7 +24,7 @@ import{valorAcelerador,reSegurada,configurar as configurarAcelerador,modoDirigin
 import{atualizarCarro,maxVelCarro}from'./Carro.js';
 import{atualizarChaoVisivel}from'./Terrain.js';
 import{atualizarMundoRural}from'./RuralWorld.js';
-import{atualizarFavelaVisivel}from'./Favela.js';
+import{atualizarFavelaVisivel}from'./WorldGenerator.js';
 
 camera.position.set(0,EYE_HEIGHT,16);
 initDragLook(renderer.domElement);

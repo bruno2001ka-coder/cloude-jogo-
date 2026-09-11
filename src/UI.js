@@ -8,7 +8,7 @@ import{plantas,lojaPos,receptadorPos,fazendaPos,armasPos}from'./Economy.js';
 import{POLOS}from'./Poles.js';
 import{marcaCarro}from'./Carro.js';
 import{marcaMoto}from'./Moto.js';
-import{corredores}from'./Favela.js';
+import{corredores}from'./WorldGenerator.js';
 import{npcs}from'./NPCs.js';
 import{ALT_CANO,ALT_TORSO}from'./Combate.js';
 import{RURAL_ZONES}from'./RuralWorld.js';
