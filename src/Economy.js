@@ -5,7 +5,7 @@ import{scene,camera}from'./core.js';
 import{ground}from'./Terrain.js';
 import{obstaculos,superficiesAndaveis}from'./Physics.js';
 import{criarSombraContato,folhaMat,folhaClara}from'./Materials.js';
-import{criarEsconderijo,casaOcaEmQueEsta,alternarPorta,porteiraFazenda,alternarPorteira,pertoDaPorteira,BAR,BIQUEIRA}from'./WorldGenerator.js';
+import{criarEsconderijo,casaOcaEmQueEsta,alternarPorta,porteiraFazenda,alternarPorteira,pertoDaPorteira,portasCeleiro,alternarPortasCeleiro,pertoDasPortasCeleiro,BAR,BIQUEIRA}from'./WorldGenerator.js';
 import{player}from'./Player.js';
 import{POLOS,PRECOS}from'./Poles.js';
 import{ARMAS,ORDEM_ARMAS,equiparArma}from'./Weapons.js';
@@ -184,6 +184,7 @@ export function contextoAtual(){
   // A porteira vem antes dos polos: ela fica a 21 m do Depósito Rural, então não disputam contexto —
   // a ordem aqui é só pra deixar as duas ações de abrir/fechar juntas no topo.
   if(pertoDaPorteira(p))return{tipo:'porteira',chave:'porteira'+(porteiraFazenda.aberta?'A':'F')};
+  if(pertoDasPortasCeleiro(p))return{tipo:'portasCeleiro',chave:'celeiro'+(portasCeleiro.aberta?'A':'F')};
   // A chave carrega se precisa curar: o painel só se redesenha quando ela muda, e sem isso o botão
   // continuaria escrito "Você está inteiro" depois de levar tiro parado no balcão.
   if(distXZ(p,lojaPos)<POLOS.sementes.raio)return{tipo:'loja',chave:'loja'+(jogadorPrecisaCurar()?'F':'C')};
@@ -426,6 +427,12 @@ export function renderizarAcoes(){
     const b=document.createElement('button');
     b.textContent=porteiraFazenda.aberta?'🚧 Fechar a porteira':'🚧 Abrir a porteira';
     b.onclick=()=>{alternarPorteira();renderizarAcoes()};
+    acaoPanel.appendChild(b);
+    acaoPanel.style.display='flex';
+  }else if(tipo==='portasCeleiro'){
+    const b=document.createElement('button');
+    b.textContent=portasCeleiro.aberta?'🚪 Fechar portas do celeiro':'🚪 Abrir portas do celeiro';
+    b.onclick=()=>{alternarPortasCeleiro();renderizarAcoes()};
     acaoPanel.appendChild(b);
     acaoPanel.style.display='flex';
   }else if(tipo==='loja'){
