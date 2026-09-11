@@ -122,17 +122,35 @@ function arvore(x,z,s=1){const g=new THREE.Group();g.position.set(x,obterElevaca
 // acesso nenhum. A entrega agora acontece onde dá pra chegar andando: dentro das casas de cliente,
 // que têm porta (ver `casasCliente` e DeliveryPoints.js).
 
-export const porteiraFazenda={x:0,y:0,z:0,aberta:true,raio:3.6,pivos:[],caixa:null,caixaFechada:null};
+export const porteiraFazenda={x:0,y:0,z:0,aberta:true,raio:3.6,pivos:[],caixa:null,caixaFechada:null,anguloAtual:0,colisorAtivo:false};
 const PORTEIRA_ABERTA_RAD=Math.PI*.55;// abre pra dentro do sítio, encostando na cerca
-function aplicarPorteira(){
-  for(const{pivo,lado}of porteiraFazenda.pivos)
-    pivo.rotation.y=porteiraFazenda.aberta?lado*PORTEIRA_ABERTA_RAD:0;
-  if(porteiraFazenda.aberta)sumirCaixa(porteiraFazenda.caixa);
-  else porteiraFazenda.caixa.copy(porteiraFazenda.caixaFechada);
+const PORTEIRA_VEL=.72;// rad/s: leva ~2,4 s do fechado ao totalmente aberto
+function aplicarPorteiraImediata(){
+  porteiraFazenda.anguloAtual=porteiraFazenda.aberta?PORTEIRA_ABERTA_RAD:0;
+  for(const{pivo,lado}of porteiraFazenda.pivos)pivo.rotation.y=lado*porteiraFazenda.anguloAtual;
+  if(porteiraFazenda.aberta){sumirCaixa(porteiraFazenda.caixa);porteiraFazenda.colisorAtivo=false}
+  else{porteiraFazenda.caixa.copy(porteiraFazenda.caixaFechada);porteiraFazenda.colisorAtivo=true}
+}
+function atualizarPorteiraFazenda(dt){
+  if(!porteiraFazenda.pivos.length||!porteiraFazenda.caixa)return;
+  const alvo=porteiraFazenda.aberta?PORTEIRA_ABERTA_RAD:0;
+  const delta=alvo-porteiraFazenda.anguloAtual;
+  if(Math.abs(delta)>.0005){
+    porteiraFazenda.anguloAtual+=Math.sign(delta)*Math.min(Math.abs(delta),PORTEIRA_VEL*dt);
+    for(const{pivo,lado}of porteiraFazenda.pivos)pivo.rotation.y=lado*porteiraFazenda.anguloAtual;
+  }
+  // Enquanto a folha ainda ocupa a passagem, o colisor continua fechado. Só libera quando
+  // a abertura já é suficiente para uma pessoa/moto passar sem atravessar madeira.
+  const deveLiberar=porteiraFazenda.anguloAtual>PORTEIRA_ABERTA_RAD*.62;
+  if(deveLiberar&&porteiraFazenda.colisorAtivo){
+    sumirCaixa(porteiraFazenda.caixa);porteiraFazenda.colisorAtivo=false;
+  }else if(!deveLiberar&&!porteiraFazenda.colisorAtivo){
+    porteiraFazenda.caixa.copy(porteiraFazenda.caixaFechada);porteiraFazenda.colisorAtivo=true;
+  }
 }
 export function alternarPorteira(){
+  // O clique só muda o destino. A animação é física/visual e acontece quadro a quadro.
   porteiraFazenda.aberta=!porteiraFazenda.aberta;
-  aplicarPorteira();
   return porteiraFazenda.aberta;
 }
 export function pertoDaPorteira(pos){
@@ -383,7 +401,7 @@ function criarFazenda(cx,cz){
   porteiraFazenda.x=porteiraX;porteiraFazenda.z=porteiraZ;porteiraFazenda.y=yPorteira;
   porteiraFazenda.caixa=caixaPorteira;porteiraFazenda.caixaFechada=caixaPorteiraFechada;
   porteiraFazenda.pivos=pivos;porteiraFazenda.aberta=true;
-  aplicarPorteira();
+  aplicarPorteiraImediata();
 
   // Árvores no fundo do sítio, fora da roça e longe do celeiro.
   for(const[ax,az]of[[cx-meiaLarg-3,cz+6],[cx-meiaLarg-2,cz-8],[cx+meiaLarg+3,cz-4],[cx+meiaLarg+2,cz+8],[cx-4,cz+meiaProf+3]])
@@ -514,6 +532,7 @@ function dentroDoCurral(x,z){
 }
 function novoAlvoAnimal(){let x,z,t=0;do{x=FAZENDA.cx+(Math.random()*2-1)*(FAZENDA.meiaLarg-2);z=FAZENDA.cz+(Math.random()*2-1)*(FAZENDA.meiaProf-2);t++}while(!dentroDoCurral(x,z)&&t<10);return{x,z}}
 export function atualizarAnimais(dt){
+  atualizarPorteiraFazenda(dt);
   const agora=performance.now()/1000;
   for(const a of animais){
     if(agora>a.proximaDecisao){a.alvo=novoAlvoAnimal();a.proximaDecisao=agora+4+Math.random()*5}
