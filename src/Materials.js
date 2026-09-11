@@ -102,6 +102,65 @@ export const tijolo=pbr('tijolo',0xb84a28,{vertexColors:true}),telha=matTelha(0x
 // compartilhado é o que deixa elas caberem em InstancedMesh.
 const cacheMadeira=new Map();
 export const matMadeira=c=>{if(!cacheMadeira.has(c))cacheMadeira.set(c,pbr('madeira',c));return cacheMadeira.get(c)};
+
+// ===== MATERIAIS RURAIS DA FAZENDA =====
+// Não reutilizam reboco/telha da favela. São texturas próprias geradas uma vez em canvas, leves,
+// repetíveis e sem arquivos externos adicionais. Isso evita a fazenda parecer uma casa do morro
+// apenas com outra cor.
+function canvasTexRural(tipo){
+  const s=256,cv=document.createElement('canvas');cv.width=cv.height=s;
+  const ctx=cv.getContext('2d');
+  if(tipo==='parede'){
+    ctx.fillStyle='#d8c9ad';ctx.fillRect(0,0,s,s);
+    // Reboco caiado irregular: pontos e passadas suaves, sem padrão de bloco.
+    for(let i=0;i<900;i++){
+      const x=(i*73)%s,y=(i*151+37)%s,v=185+((i*29)%45);
+      ctx.fillStyle=`rgba(${v},${Math.max(150,v-16)},${Math.max(130,v-34)},0.055)`;
+      ctx.fillRect(x,y,1+(i%3),1+(i%2));
+    }
+    for(let y=18;y<s;y+=31){
+      ctx.fillStyle='rgba(100,80,60,.025)';ctx.fillRect(0,y,s,2);
+    }
+  }else{
+    // Telha cerâmica: fileiras desencontradas com canais verticais. A própria textura carrega
+    // a leitura de barro, e o bump abaixo dá o relevo sem geometria extra.
+    ctx.fillStyle='#8e432d';ctx.fillRect(0,0,s,s);
+    for(let y=0,row=0;y<s;y+=32,row++){
+      ctx.fillStyle=row%2?'#a65337':'#98492f';ctx.fillRect(0,y,s,30);
+      ctx.fillStyle='rgba(70,35,24,.32)';ctx.fillRect(0,y+29,s,3);
+      const off=row%2?16:0;
+      for(let x=off;x<s;x+=32){
+        ctx.fillStyle='rgba(70,35,24,.30)';ctx.fillRect(x,y,2,30);
+        ctx.fillStyle='rgba(235,170,120,.10)';ctx.fillRect(x+3,y+2,2,25);
+      }
+    }
+  }
+  const t=new THREE.CanvasTexture(cv);t.wrapS=t.wrapT=THREE.RepeatWrapping;
+  t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=anisotropia;return t;
+}
+function bumpTelhaRural(){
+  const s=256,cv=document.createElement('canvas');cv.width=cv.height=s;
+  const ctx=cv.getContext('2d');ctx.fillStyle='#777';ctx.fillRect(0,0,s,s);
+  for(let y=0,row=0;y<s;y+=32,row++){
+    ctx.fillStyle='#4f4f4f';ctx.fillRect(0,y+28,s,4);
+    const off=row%2?16:0;
+    for(let x=off;x<s;x+=32){
+      const g=ctx.createLinearGradient(x,y,x+16,y);
+      g.addColorStop(0,'#555');g.addColorStop(.5,'#d0d0d0');g.addColorStop(1,'#666');
+      ctx.fillStyle=g;ctx.fillRect(x,y,16,28);
+    }
+  }
+  const t=new THREE.CanvasTexture(cv);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.anisotropy=anisotropia;return t;
+}
+const paredeRuralMat=new THREE.MeshStandardMaterial({
+  map:canvasTexRural('parede'),color:0xffffff,roughness:.94,metalness:0
+});
+const telhaBarroRuralMat=new THREE.MeshStandardMaterial({
+  map:canvasTexRural('telha'),bumpMap:bumpTelhaRural(),bumpScale:.08,
+  color:0xffffff,roughness:.88,metalness:0
+});
+export const matParedeRural=()=>paredeRuralMat;
+export const matTelhaBarroRural=()=>telhaBarroRuralMat;
 // Terra arada dos canteiros: mesmo mapa do chão, tinta bem mais escura e úmida. Reaproveitar o
 // conjunto custa zero textura nova na memória de vídeo.
 export const matTerraArada=()=>pbrTerraArada;
