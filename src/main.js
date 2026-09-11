@@ -244,7 +244,8 @@ function quadro(){
   // jogador subiu a câmera — quem olha de cima tem que ver a rua viva.
   // Ela devolve o ponto onde estacionou numa ocorrência, no quadro da chegada. Quem sabe o que fazer
   // com isso é a polícia, e quem conhece as duas é aqui — o Viatura.js segue só dirigindo.
-  desembarcarDaViatura(atualizarViaturas(dt,ocorrenciaAtual(),viaturaEsperando()));\n  registrarAvistamentoViatura(consumirAvistamentoViatura());
+  desembarcarDaViatura(atualizarViaturas(dt,ocorrenciaAtual(),viaturaEsperando()));
+  registrarAvistamentoViatura(consumirAvistamentoViatura());
   if(isInventarioAberto()){atualizarMiraPlantio();renderizarInventario()}
   {const chave=chaveContexto(contextoAtual());if(chave!==getUltimoContextoTipo())renderizarAcoes()}
   pos.textContent=droneState.ativo?`🚁 x ${droneState.x.toFixed(1)} · z ${droneState.z.toFixed(1)} · alt ${droneState.y.toFixed(0)}m`:`x ${player.position.x.toFixed(1)} · z ${player.position.z.toFixed(1)}`;
