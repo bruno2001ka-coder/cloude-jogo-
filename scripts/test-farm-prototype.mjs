@@ -28,15 +28,15 @@ assert.ok(prototype.indexOf("requireLevelBuildingPad(cx,cz,w+2.6,d+2.4,'Galpao'"
 assert.doesNotMatch(prototype,/farm-prototype-level-pad/,'Nivelamento nao pode empilhar caixa sobre o terreno');
 assert.match(prototype,/closedRoof\(cx,cz,w\+1\.2,d\+1\.2,floor\+3\.10,floor\+4\.72,M\.wall,\.18\)/,
   'Telhado da sede precisa seguir a espessura da arquitetura rural existente');
+assert.match(prototype,/function gablePrismGeometry\(/,'Empenas precisam ser solidas, nao triangulos de uma face');
+assert.match(prototype,/0,2,1, 3,4,5/,'Empenas precisam ter faces externas nos dois sentidos');
 assert.equal((prototype.match(/createDoor[ZX]\(/g)||[]).length,5,
   'Sede precisa declarar dois construtores e criar suas tres portas moveis');
 assert.match(prototype,/gate\.leafColliders\[0\]\.setFromObject\(gate\.left\)/,
   'Colisor esquerdo da porteira precisa acompanhar a folha');
 assert.match(prototype,/gate\.leafColliders\[1\]\.setFromObject\(gate\.right\)/,
   'Colisor direito da porteira precisa acompanhar a folha');
-assert.match(terrain,/function flattenForPrototype\(/,'Platos precisam deformar a propria altura do terreno');
-assert.match(terrain,/hx:12\.2,hz:8\.6/,'Plato da sede sem folga para a interpolacao da malha');
-assert.match(terrain,/hx:9\.8,hz:7\.7/,'Plato do galpao sem folga para a interpolacao da malha');
+assert.match(terrain,/flattenPrototypeHeight\(h,x,z,PROTOTYPE_PADS\)/,'Terreno precisa aplicar os platos testados');
 
 assert.match(world,/FARM_PROTOTYPE_MODE\?null:criarFazenda/,'Fazenda antiga deve nascer apenas fora do ensaio');
 assert.match(rural,/FARM_PROTOTYPE_MODE\?\[\]:LEGACY_RURAL_ZONES/,'Tres fazendas antigas devem ficar fora do ensaio');

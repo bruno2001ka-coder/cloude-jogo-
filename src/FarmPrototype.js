@@ -163,11 +163,19 @@ function wallX(x,cz,d,h,floor,openings=[]){
   }
   for(const o of openings){const top=h-o.height;if(top>.02){batch.box(.22,top,o.width,x,floor+o.height+top/2,o.center,M.wall,0,0,0,true);axisCollider(x,o.center,.22,o.width,floor+o.height,floor+h,'farm-prototype-wall')}}
 }
-function gableGeometry(cx,z,w,eave,ridge,reverse=false){
+function gablePrismGeometry(cx,z,w,eave,ridge,thickness=.16){
+  const za=z-thickness/2,zb=z+thickness/2,left=cx-w/2,right=cx+w/2;
   const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute([
-    cx-w/2,eave,z,cx+w/2,eave,z,cx,ridge,z,
-  ],3));geo.setAttribute('uv',new THREE.Float32BufferAttribute([0,0,1,0,.5,1],2));geo.setAttribute('uv1',geo.attributes.uv.clone());
-  geo.setIndex(reverse?[0,2,1]:[0,1,2]);geo.computeVertexNormals();return geo;
+    left,eave,za,right,eave,za,cx,ridge,za,
+    left,eave,zb,right,eave,zb,cx,ridge,zb,
+  ],3));
+  geo.setIndex([
+    0,2,1, 3,4,5,// faces sul e norte, com normais para fora
+    0,1,4, 0,4,3,// base
+    0,3,5, 0,5,2,// agua esquerda
+    1,2,5, 1,5,4,// agua direita
+  ]);
+  geo.computeVertexNormals();return ensureUv1(geo);
 }
 function closedRoof(cx,cz,w,d,eave,ridge,gableMaterial=M.wall,thickness=.18){
   const run=w/2,rise=ridge-eave,angle=Math.atan2(rise,run),slope=Math.hypot(run,rise);
@@ -177,8 +185,8 @@ function closedRoof(cx,cz,w,d,eave,ridge,gableMaterial=M.wall,thickness=.18){
     cx+side*Math.cos(angle)*slope/2,ridge-Math.sin(angle)*slope/2,cz,
     M.roof,0,0,-side*angle,true);
   batch.box(.28,thickness+.08,d+.10,cx,ridge+.01,cz,M.roof,0,0,0,true);
-  batch.add(gableGeometry(cx,cz-d/2-.01,w,eave,ridge,false),gableMaterial,0,0,0,0,0,0,true);
-  batch.add(gableGeometry(cx,cz+d/2+.01,w,eave,ridge,true),gableMaterial,0,0,0,0,0,0,true);
+  batch.add(gablePrismGeometry(cx,cz-d/2,w,eave,ridge),gableMaterial,0,0,0,0,0,0,true);
+  batch.add(gablePrismGeometry(cx,cz+d/2,w,eave,ridge),gableMaterial,0,0,0,0,0,0,true);
 }
 
 function movingColliderFor(object,category){
