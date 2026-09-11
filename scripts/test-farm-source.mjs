@@ -25,6 +25,17 @@ exigir(farm.includes('export function destroyFarm('),'FarmGenerator não exporta
 exigir(farm.includes('removerCaixa(b)'),'destroyFarm não remove Box3 antigos');
 exigir(farm.includes('disposeTree(h.group,h.ownedMaterials)'),'destroyFarm não descarta geometrias/materiais');
 exigir(farm.includes('ground(p.x,p.z)'),'objetos rurais deixaram de consultar o terreno');
+exigir(farm.includes('function buildPastureZone('),'fazendas perderam a zona de pasto/curral');
+exigir(farm.includes("handle.pasto={"),'buildFarm não expõe o pasto para a lógica dos animais');
+exigir(farm.includes('Cumeeira física/visual'),'telhado voltou ao helper antigo sem cumeeira fechada');
+exigir(farm.includes('Empenas triangulares fecham frente e fundo'),'telhado perdeu fechamento das empenas');
+exigir(farm.includes('skirtH=1.00'),'rodapé de pedra deixou de ter 1m');
+exigir(farm.includes('color:0x9e3d1b'),'telha deixou a paleta terracota rural');
+exigir(farm.includes('color:0x4a2e18'),'madeira deixou a paleta escura tratada');
+exigir(world.includes("pasto:{...HANDLE_FAZENDA_BASE.pasto"),'fazenda-base não repassa a zona C aos animais');
+exigir(world.includes("function pontoDoPasto"),'animais voltaram a usar coordenadas absolutas antigas');
+for(const antigo of["['vaca',-84,-48]","['galinha',-79,-49]"])
+  exigir(!world.includes(antigo),`spawn antigo de animal reapareceu: ${antigo}`);
 
 exigir(physics.includes('export function removerCaixa('),'Physics não oferece remoção real de collider');
 exigir(physics.includes('export function removerSuperficieAndavel('),'Physics não oferece remoção de superfície');
