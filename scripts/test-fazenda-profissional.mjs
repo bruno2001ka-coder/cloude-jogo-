@@ -5,6 +5,7 @@ const wg=fs.readFileSync(new URL('../src/WorldGenerator.js',import.meta.url),'ut
 const economy=fs.readFileSync(new URL('../src/Economy.js',import.meta.url),'utf8');
 const terrain=fs.readFileSync(new URL('../src/Terrain.js',import.meta.url),'utf8');
 const materials=fs.readFileSync(new URL('../src/Materials.js',import.meta.url),'utf8');
+const animalPens=fs.readFileSync(new URL('../src/AnimalPens.js',import.meta.url),'utf8');
 
 const resultados=[];
 function check(nome,cond,detalhe=''){
@@ -22,9 +23,10 @@ const larguraLateral=(F.casa.largura-F.casa.portaVao)/2;
 const folha=F.casa.portaVao/2-.05;
 const subidaTelhado=4.55-F.casa.altura;
 const compAgua=Math.hypot(F.casa.largura/2,subidaTelhado)+.45;
-const animais=[
-  [-84.6,-58.2],[-81.5,-56.8],[-79.1,-58.1],[-76.8,-56.4],[-84.2,-55.5],[-80.5,-58.7],[-76.4,-58.8]
-];
+const boundsCurral=c=>({minX:c.cx-c.w/2,maxX:c.cx+c.w/2,minZ:c.cz-c.d/2,maxZ:c.cz+c.d/2});
+const sobrepoe=(a,b)=>Math.min(a.maxX,b.maxX)>Math.max(a.minX,b.minX)&&Math.min(a.maxZ,b.maxZ)>Math.max(a.minZ,b.minZ);
+const cultivoBox={minX:F.cultivo.minX,maxX:F.cultivo.maxX,minZ:F.cultivo.minZ,maxZ:F.cultivo.maxZ};
+const currais=Object.values(F.currais).map(boundsCurral);
 
 // 01–09 · geometria fixa da casa
 check('01 centro da casa preservado',F.casa.x===-94&&F.casa.z===-56);
@@ -55,20 +57,26 @@ check('19 novo polo fica fora do corredor',distSeg(F.polo.x,F.polo.z)>F.acesso.r
 }
 
 // 21–30 · regressões de código/física/interação
-check('21 roça nasce só no setor de cultivo',wg.includes('const cultivo=FAZENDA_CONFIG.cultivo')&&wg.includes('const zIni=cultivo.minZ,zFim=cultivo.maxZ,xIni=cultivo.minX,xFim=cultivo.maxX'));
-check('22 vão do celeiro não pode ser fundido pelo otimizador',wg.includes("marcarSemFusao(registrarObstaculo(paredeFrenteE,'celeiro'))")&&wg.includes("marcarSemFusao(registrarObstaculo(paredeFrenteD,'celeiro'))")&&wg.includes("marcarSemFusao(registrarObstaculo(vergaParede,'celeiro'))"));
-{
-  const a=F.animais,m=a.margem;
-  check('23 animais nascem dentro do campo próprio',animais.every(([x,z])=>x>=a.minX+m&&x<=a.maxX-m&&z>=a.minZ+m&&z<=a.maxZ-m));
-}
-check('24 novos alvos ficam restritos ao campo dos animais',wg.includes('const c=FAZENDA_CONFIG.animais,m=c.margem')&&wg.includes('x:c.minX+m+Math.random()*(c.maxX-c.minX-2*m)'));
+check('21 roça nasce só no campo configurado e recusa qualquer curral',
+  wg.includes('const cultivo=FAZENDA_CONFIG.cultivo')&&
+  wg.includes('const invadeCurral=')&&
+  wg.includes('!invadeCurral(mx,z,comp/2,.51)'));
+check('22 vão do celeiro não pode ser fundido pelo otimizador',
+  wg.includes("marcarSemFusao(registrarObstaculo(paredeFrenteE,'celeiro'))")&&
+  wg.includes("marcarSemFusao(registrarObstaculo(paredeFrenteD,'celeiro'))")&&
+  wg.includes("marcarSemFusao(registrarObstaculo(vergaParede,'celeiro'))"));
+check('23 AnimalPens usa os mesmos currais do FarmConfig',
+  animalPens.includes('Object.values(FAZENDA_CONFIG.currais)')&&!animalPens.includes("cx:-85.5,cz:-55.2"));
+check('24 campo de plantio não sobrepõe nenhum curral real',
+  currais.every(c=>!sobrepoe(c,cultivoBox)));
 check('25 fundação é superfície andável',wg.includes('superficiesAndaveis.push(baseCeleiro)'));
 check('26 tecla E aciona portas da fazenda',economy.includes("ctx.tipo==='portasCeleiro'")&&economy.includes("alternarPortasCeleiro()"));
 check('27 portas usam colisores segmentados por folha',wg.includes("criarSegmentosFolha(folha,'x',LARGURA_FOLHA,2.45,.12,'porta-celeiro')")&&wg.includes('atualizarColisoresFolhas(portasCeleiro.pivos)'));
 check('28 porteira usa colisores segmentados por folha',wg.includes("criarSegmentosFolha(folha,'z',folhaLarg,ALTURA_PORTEIRA,.12,'porteira')")&&wg.includes('atualizarColisoresFolhas(porteiraFazenda.pivos)'));
 check('29 materiais da fazenda são próprios',wg.includes('matParedeRural()')&&wg.includes('matTelhaBarroRural()')&&materials.includes('bumpMap:bumpTelhaRural()'));
-check('30 terreno nivela casa e porteira e zonas rurais não se sobrepõem',
+check('30 terreno continua nivelado e campo fica dentro da cerca externa',
   terrain.includes('FAZENDA_CONFIG.nivelamentoCasa')&&terrain.includes('FAZENDA_CONFIG.nivelamentoPorteira')&&
-  F.animais.maxZ<F.cultivo.minZ&&F.cultivo.minZ-F.animais.maxZ>=7);
+  F.cultivo.minX>=F.cx-F.meiaLarg+2&&F.cultivo.maxX<=F.cx+F.meiaLarg-2&&
+  F.cultivo.minZ>=F.cz-F.meiaProf+2&&F.cultivo.maxZ<=F.cz+F.meiaProf-2);
 
 console.log(JSON.stringify({ok:true,total:resultados.length,checks:resultados},null,2));
