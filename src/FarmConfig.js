@@ -26,6 +26,9 @@ export const FAZENDA_CONFIG=Object.freeze({
   servico:Object.freeze({
     cocho:Object.freeze({x:casaX+4.5,z:casaZ,largura:2.1,profundidade:.7}),
     barril:Object.freeze({x:casaX+4.3,z:casaZ-1.2,raio:.4}),
+    // Área já existente ao lado da casa reservada para circulação/serviço. Não cria piso nem construção:
+    // apenas impede a roça de nascer atravessando cocho, barril e ponto de compra.
+    limpeza:Object.freeze({x:casaX+4.85,z:casaZ-.6,meiaX:1.7,meiaZ:1.5}),
   }),
   // O ponto de compra fica ao lado externo do cocho, sem entrar no objeto, sem disputar a porta e
   // sem ocupar o corredor principal. Não existe construção nova aqui: é apenas a coordenada de ação.
