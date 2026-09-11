@@ -11,6 +11,7 @@ import{marcaMoto}from'./Moto.js';
 import{corredores}from'./Favela.js';
 import{npcs}from'./NPCs.js';
 import{ALT_CANO,ALT_TORSO}from'./Combate.js';
+import{RURAL_ZONES}from'./RuralWorld.js';
 import{amostrarCelulasBloqueadas}from'./NavMesh.js';
 import{heli,policiais,policia,__estadoDeCombate as estadoDeCombate}from'./Police.js';
 
@@ -201,6 +202,8 @@ export function atualizarRadar(){
   desenharPontoRadar(fazendaPos.x,fazendaPos.z,POLOS.fazenda.cor,5,true,SIGLAS.fazenda);
   desenharPontoRadar(armasPos.x,armasPos.z,POLOS.armas.cor,5,true,SIGLAS.armas);
   desenharPontoRadar(POLOS.delegacia.x,POLOS.delegacia.z,POLOS.delegacia.cor,5,true,SIGLAS.delegacia);
+  // Areas rurais sao destinos permanentes de expansao do cultivo.
+  for(const zona of RURAL_ZONES)desenharPontoRadar(zona.x,zona.z,'#9bc46d',4.5,true,zona.sigla,RADAR_LIMITE-4);
   // Os do morro não grudam na borda: encher a borda de marca tira a leitura dos que ficam longe.
   desenharPontoRadar(BIQUEIRA.x,BIQUEIRA.z,'#c86bff',4.5,false,'BIQ');
   desenharPontoRadar(BAR.x,BAR.z,'#ffc14d',4.5,false,'BAR');
