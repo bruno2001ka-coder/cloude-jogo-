@@ -29,7 +29,8 @@ export let dinheiro=CONFIG_ECONOMIA.DINHEIRO_INICIAL;
 // dentro do Police, porque Economy → Police seria dependência circular: o Police já importa a Economy.
 // `armas` (o que o jogador POSSUI) e `municao` (estoque POR ARMA) seguem a mesma regra: o Weapons.js
 // só sabe qual está equipada; quem tem e quanto tem é economia.
-export const inventario={vaso:0,terra:0,semente:0,pacote:0,colete:0,
+// Novo jogo começa com um kit de três cultivos: o primeiro minuto já ensina o loop principal.
+export const inventario={vaso:3,terra:3,semente:3,pacote:0,colete:0,
   armas:{pistola:true,rifle:false,escopeta:false,metralhadora:false},
   municao:{pistola:24,rifle:0,escopeta:0,metralhadora:0}};
 const potMat=new THREE.MeshStandardMaterial({color:0x8a5a3a,roughness:.85});
