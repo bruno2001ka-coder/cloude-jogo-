@@ -44,12 +44,13 @@ function criarNPC(corRoupa,corPele,indice){
   return{grupo:g,pernas:visual.pernas,bracos:visual.bracos,pos:new THREE.Vector3(),alvo:null,rota:[],velocidade:1.4+Math.random()*.6,caminhando:Math.random()*10,acumPerf:Math.random()*.15};
 }
 
-for(let i=0;i<3;i++){
+if(waypointsVielas.length)for(let i=0;i<3;i++){
   const wp=waypointsVielas[Math.floor(Math.random()*waypointsVielas.length)];
   const npc=criarNPC(CORES_ROUPA_NPC[i%CORES_ROUPA_NPC.length],CORES_PELE_NPC[i%CORES_PELE_NPC.length],i);
   npc.pos.set(wp.x,0,wp.z);npcs.push(npc);
 }
 function escolherProximoAlvo(npc){
+  if(!waypointsVielas.length){npc.alvo=null;npc.rota=[];return}
   if(npc.rota.length){npc.alvo=npc.rota.shift();return}
   const destino=waypointsVielas[Math.floor(Math.random()*waypointsVielas.length)];
   npc.rota=rotaAteDestino(npc,destino);
