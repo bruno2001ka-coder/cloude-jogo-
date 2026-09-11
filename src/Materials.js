@@ -182,6 +182,10 @@ const pbrTerraArada=pbr('chao',0x6d5334,{roughness:1});
 // montada num deserto. Mesmo conjunto de textura, tinta de terra pisada.
 export const matTerraBatida=()=>pbrTerraBatida;
 const pbrTerraBatida=pbr('chao',0xc0a074);
+// Pasto da fazenda principal: reaproveita o MESMO conjunto PBR do chão, só com tonalidade vegetal.
+// Zero textura nova em VRAM; uma manta de terreno deixa o campo dos animais visualmente separado da roça.
+const pbrPastoFazenda=pbr('chao',0x73805a,{roughness:1});
+export const matPastoFazenda=()=>pbrPastoFazenda;
 
 // ===== UV EM METROS =====
 // BoxGeometry nasce com UV de 0 a 1 por face: uma parede de 6 m e uma mureta de 12 cm receberiam a
