@@ -105,15 +105,12 @@ function footprintHeights(cx,cz,w,d,sx=10,sz=8){
   }
   return{min,max,mean:sum/count,delta:max-min};
 }
-// Prepara primeiro um plato nivelado e so depois permite erguer a construcao. O aterro parte da
-// maior cota real do footprint, portanto o terreno original nunca atravessa o piso; as laterais
-// descem ate abaixo do ponto mais baixo e fecham visualmente a encosta, sem alterar o mapa inteiro.
-function prepareBuildingPad(cx,cz,w,d,margin,material=M.dirt){
-  const scan=footprintHeights(cx,cz,w+margin*2,d+margin*2,12,10);
-  const level=scan.max+.12,bottom=scan.min-.42,height=level-bottom;
-  const surface=addWalkableBox(w+margin*2,height,d+margin*2,cx,level-height/2,cz,material);
-  surface.name='farm-prototype-level-pad';
-  return{level,scan,width:w+margin*2,depth:d+margin*2};
+// Terrain.js ja deforma a propria malha antes do mundo nascer. Aqui medimos o resultado e recusamos
+// construir caso o footprint ainda nao esteja plano; nao existe mais caixa de aterro sobre o mapa.
+function requireLevelBuildingPad(cx,cz,w,d,label){
+  const scan=footprintHeights(cx,cz,w,d,14,10);
+  if(scan.delta>.035)throw new Error(`${label} fora de nivel: ${scan.delta.toFixed(3)} m`);
+  return{level:scan.mean,scan};
 }
 function polygonMesh(points,material,yOffset=.025){
   const cx=points.reduce((s,p)=>s+p.x,0)/points.length,cz=points.reduce((s,p)=>s+p.z,0)/points.length;
@@ -172,14 +169,14 @@ function gableGeometry(cx,z,w,eave,ridge,reverse=false){
   ],3));geo.setAttribute('uv',new THREE.Float32BufferAttribute([0,0,1,0,.5,1],2));geo.setAttribute('uv1',geo.attributes.uv.clone());
   geo.setIndex(reverse?[0,2,1]:[0,1,2]);geo.computeVertexNormals();return geo;
 }
-function closedRoof(cx,cz,w,d,eave,ridge,gableMaterial=M.wall,thickness=.26){
+function closedRoof(cx,cz,w,d,eave,ridge,gableMaterial=M.wall,thickness=.18){
   const run=w/2,rise=ridge-eave,angle=Math.atan2(rise,run),slope=Math.hypot(run,rise);
   // Duas aguas SOLIDAS, com espessura real. Os centros sao calculados pela mesma reta e se encontram
   // exatamente na cumeeira; a pequena sobra de 4 cm fica escondida sob a capa e elimina fresta.
   for(const side of[-1,1])batch.box(slope+.04,thickness,d,
     cx+side*Math.cos(angle)*slope/2,ridge-Math.sin(angle)*slope/2,cz,
     M.roof,0,0,-side*angle,true);
-  batch.box(.34,thickness+.10,d+.10,cx,ridge+.02,cz,M.roof,0,0,0,true);
+  batch.box(.28,thickness+.08,d+.10,cx,ridge+.01,cz,M.roof,0,0,0,true);
   batch.add(gableGeometry(cx,cz-d/2-.01,w,eave,ridge,false),gableMaterial,0,0,0,0,0,0,true);
   batch.add(gableGeometry(cx,cz+d/2+.01,w,eave,ridge,true),gableMaterial,0,0,0,0,0,0,true);
 }
@@ -205,9 +202,8 @@ function createDoorZ(x,z,width,height,floor,swing=-1){
 
 function buildHouse(){
   const {x:cx,z:cz,w,d}=FARM_PROTOTYPE.house,H=3;
-  const pad=prepareBuildingPad(cx,cz,w,d,2.5,M.dirt),scan=pad.scan;
-  if(scan.delta>3.2)throw new Error(`Desnivel excessivo na sede: ${scan.delta.toFixed(2)} m`);
-  const floor=pad.level+.34,foundationH=.34;
+  const pad=requireLevelBuildingPad(cx+1.2,cz,w+5,d+3,'Sede'),scan=pad.scan;
+  const floor=pad.level+.18,foundationH=.18;
   batch.box(w+1.2,foundationH,d+1.2,cx,pad.level+foundationH/2,cz,M.stone,0,0,0,true);
   addWalkableBox(w-.44,.14,d-.44,cx,floor-.07,cz);
   // Fachadas com vaos reais. Entrada principal na face leste, voltada para a porteira.
@@ -239,7 +235,9 @@ function buildHouse(){
   batch.box(.24,.24,d+.7,cx+w/2+2.18,floor+2.68,cz,M.wood,0,0,0,true);
   const aw=2.9,ah=.13,ad=d+1.4;
   batch.box(aw,ah,ad,cx+w/2+1.22,floor+2.62,cz,M.roof,0,0,-.09,true);
-  closedRoof(cx,cz,w+1.2,d+1.2,floor+3.06,floor+5.0,M.wall,.30);
+  // Forro plano impede ceu/faces escuras dentro da sede; o telhado colonial fica todo acima dele.
+  batch.box(w-.30,.08,d-.30,cx,floor+3.02,cz,M.wall,0,0,0,false);
+  closedRoof(cx,cz,w+1.2,d+1.2,floor+3.10,floor+4.72,M.wall,.18);
 
   // Interior economico, com medidas reais e colisores so onde bloqueiam.
   const table={x:cx+.7,z:cz-1.0};batch.box(2.35,.10,1.05,table.x,floor+.75,table.z,M.wood,0,0,0,false);
@@ -266,8 +264,10 @@ function buildHouse(){
 }
 
 function buildBarn(){
-  const {x:cx,z:cz,w,d}=FARM_PROTOTYPE.barn,pad=prepareBuildingPad(cx,cz,w,d,2.2,M.dirt),scan=pad.scan;
+  const {x:cx,z:cz,w,d}=FARM_PROTOTYPE.barn,pad=requireLevelBuildingPad(cx,cz,w+2.6,d+2.4,'Galpao'),scan=pad.scan;
   const eave=pad.level+2.8,ridge=pad.level+4.2;
+  polygonMesh([{x:cx-w/2-1.1,z:cz-d/2-1},{x:cx+w/2+1.1,z:cz-d/2-1},
+    {x:cx+w/2+1.1,z:cz+d/2+1},{x:cx-w/2-1.1,z:cz+d/2+1}],M.dirt,.025);
   for(const x of[cx-w/2,cx+w/2])for(const z of[cz-d/2,cz,cz+d/2]){
     const base=pad.level-.08,h=eave-base;
     batch.add(new THREE.CylinderGeometry(.17,.21,h,9),M.wood,x,base+h/2,z,0,0,0,true);
@@ -278,7 +278,7 @@ function buildBarn(){
     const half=w/2,rise=ridge-eave,angle=Math.atan2(rise,half),len=Math.hypot(half,rise);
     for(const side of[-1,1])batch.box(len,.18,.18,cx+side*Math.cos(angle)*len/2,ridge-Math.sin(angle)*len/2,z,M.wood,0,0,-side*angle,true);
   }
-  closedRoof(cx,cz,w+1.2,d+1.2,eave,ridge,M.wood,.24);
+  closedRoof(cx,cz,w+1.2,d+1.2,eave,ridge,M.wood,.16);
   // Fechamento parcial de tabuas nas laterais; corredor central de 5,2 m permanece livre.
   for(const x of[cx-w/2+.08,cx+w/2-.08])for(const z of[cz-d/2+1.3,cz+d/2-1.3]){
     batch.box(.16,1.65,2.4,x,pad.level+.825,z,M.wood,0,0,0,true);

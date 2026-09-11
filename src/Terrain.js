@@ -5,6 +5,8 @@ import{scene}from'./core.js';
 import{MAP_HALF_SIZE,MAP_SIZE}from'./WorldBounds.js';
 import{registrarCaixa}from'./Physics.js';
 import{deformarTerrenoLago}from'./LakeConfig.js';
+import{FARM_PROTOTYPE_MODE}from'./GameMode.js';
+import{FARM_PROTOTYPE}from'./FarmPrototypeConfig.js';
 
 // ===== O MORRO NÃO É UM CONE =====
 // Já foi UMA gaussiana em (0,-24): matematicamente perfeita e, por isso mesmo, lendo como uma bolha
@@ -55,7 +57,7 @@ const MORROS=[
   {x:  19,z:  87,a: 2.8,s: 8},// contraforte sudoeste, quebra a simetria da encosta
 ];
 const PLATO_PASSO=2.6,PLATO_FORCA=.7;
-export function obterElevacao(x,z){
+function elevacaoBase(x,z){
   let h=0;
   for(let i=0;i<MORROS.length;i++){
     const m=MORROS[i],dx=x-m.x,dz=z-m.z;
@@ -69,6 +71,32 @@ export function obterElevacao(x,z){
   // O lago e uma ESCAVACAO do proprio terreno. Player, veiculos e malha visual leem esta mesma altura.
   h=deformarTerrenoLago(h,x,z);
   return THREE.MathUtils.clamp(h,-2.5,22);
+}
+
+// No ensaio rural, o nivelamento faz parte DO TERRENO. Cada footprint tem um miolo realmente plano
+// e uma transicao de 5 m que corta/aterra a encosta gradualmente. Isso evita o erro de colocar uma
+// caixa enorme por cima do relevo, que criava paredoes e deixava a construcao parecendo suspensa.
+const PROTOTYPE_PADS=FARM_PROTOTYPE_MODE?[
+  // O miolo excede o footprint em pelo menos um passo da malha (1,55 m). Sem essa folga, um ponto
+  // aparentemente interno ainda interpolaria um vertice da transicao e o piso voltaria a inclinar.
+  {id:'house',x:FARM_PROTOTYPE.house.x+1.2,z:FARM_PROTOTYPE.house.z,hx:12.2,hz:8.6,blend:5.2},
+  {id:'barn',x:FARM_PROTOTYPE.barn.x,z:FARM_PROTOTYPE.barn.z,hx:9.8,hz:7.7,blend:5.0},
+]:[];
+for(const pad of PROTOTYPE_PADS)pad.level=elevacaoBase(pad.x,pad.z);
+function flattenForPrototype(h,x,z){
+  let result=h;
+  for(const pad of PROTOTYPE_PADS){
+    const ox=Math.max(Math.abs(x-pad.x)-pad.hx,0),oz=Math.max(Math.abs(z-pad.z)-pad.hz,0);
+    const distance=Math.hypot(ox,oz);
+    if(distance>=pad.blend)continue;
+    const t=distance/pad.blend,smooth=t*t*(3-2*t);
+    result=THREE.MathUtils.lerp(pad.level,result,smooth);
+  }
+  return result;
+}
+export function obterElevacao(x,z){
+  const h=elevacaoBase(x,z);
+  return FARM_PROTOTYPE_MODE?flattenForPrototype(h,x,z):h;
 }
 
 // Chão de terra com PBR: a mesma textura tileável do resto do bairro, repetida a cada 4 m. O normal é

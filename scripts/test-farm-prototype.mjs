@@ -3,9 +3,9 @@ import{readFile,access}from'node:fs/promises';
 import{FARM_PROTOTYPE,pointInPolygon,validateFarmPrototypeConfig}from'../src/FarmPrototypeConfig.js';
 
 const read=path=>readFile(path,'utf8');
-const [prototype,world,rural,physics,main]=await Promise.all([
+const [prototype,world,rural,physics,main,terrain]=await Promise.all([
   read('src/FarmPrototype.js'),read('src/WorldGenerator.js'),read('src/RuralWorld.js'),
-  read('src/Physics.js'),read('src/main.js'),
+  read('src/Physics.js'),read('src/main.js'),read('src/Terrain.js'),
 ]);
 
 const config=validateFarmPrototypeConfig();
@@ -20,19 +20,23 @@ assert.match(prototype,/removerSuperficieAndavel\(surface\)/,'Desmontagem precis
 assert.match(prototype,/geometry\.dispose\(\)/,'Desmontagem precisa liberar geometrias');
 assert.match(prototype,/material\.dispose\(\)/,'Desmontagem precisa liberar materiais exclusivos');
 assert.doesNotMatch(prototype,/export function buildFarm\b/,'Nao criar gerador replicavel antes da aprovacao');
-assert.match(prototype,/function prepareBuildingPad\(/,'Construcoes precisam de plato nivelado');
-assert.ok(prototype.indexOf('prepareBuildingPad(cx,cz,w,d,2.5')<prototype.indexOf('wallX(cx+w/2'),
+assert.match(prototype,/function requireLevelBuildingPad\(/,'Construcoes precisam validar o plato nivelado');
+assert.ok(prototype.indexOf("requireLevelBuildingPad(cx+1.2,cz,w+5,d+3,'Sede'")<prototype.indexOf('wallX(cx+w/2'),
   'Plato da sede precisa existir antes das paredes');
-assert.ok(prototype.indexOf('prepareBuildingPad(cx,cz,w,d,2.2')<prototype.indexOf("'farm-prototype-barn-post'"),
+assert.ok(prototype.indexOf("requireLevelBuildingPad(cx,cz,w+2.6,d+2.4,'Galpao'")<prototype.indexOf("'farm-prototype-barn-post'"),
   'Plato do galpao precisa existir antes dos pilares');
-assert.match(prototype,/closedRoof\(cx,cz,w\+1\.2,d\+1\.2,floor\+3\.06,floor\+5\.0,M\.wall,\.30\)/,
-  'Telhado da sede precisa ter aguas solidas de 30 cm');
+assert.doesNotMatch(prototype,/farm-prototype-level-pad/,'Nivelamento nao pode empilhar caixa sobre o terreno');
+assert.match(prototype,/closedRoof\(cx,cz,w\+1\.2,d\+1\.2,floor\+3\.10,floor\+4\.72,M\.wall,\.18\)/,
+  'Telhado da sede precisa seguir a espessura da arquitetura rural existente');
 assert.equal((prototype.match(/createDoor[ZX]\(/g)||[]).length,5,
   'Sede precisa declarar dois construtores e criar suas tres portas moveis');
 assert.match(prototype,/gate\.leafColliders\[0\]\.setFromObject\(gate\.left\)/,
   'Colisor esquerdo da porteira precisa acompanhar a folha');
 assert.match(prototype,/gate\.leafColliders\[1\]\.setFromObject\(gate\.right\)/,
   'Colisor direito da porteira precisa acompanhar a folha');
+assert.match(terrain,/function flattenForPrototype\(/,'Platos precisam deformar a propria altura do terreno');
+assert.match(terrain,/hx:12\.2,hz:8\.6/,'Plato da sede sem folga para a interpolacao da malha');
+assert.match(terrain,/hx:9\.8,hz:7\.7/,'Plato do galpao sem folga para a interpolacao da malha');
 
 assert.match(world,/FARM_PROTOTYPE_MODE\?null:criarFazenda/,'Fazenda antiga deve nascer apenas fora do ensaio');
 assert.match(rural,/FARM_PROTOTYPE_MODE\?\[\]:LEGACY_RURAL_ZONES/,'Tres fazendas antigas devem ficar fora do ensaio');
