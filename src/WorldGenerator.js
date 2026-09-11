@@ -1,6 +1,6 @@
 // Mundo construído FORA do morro: a FAZENDA (porteira, curral, canteiros, bichos), as duas lojas e o
 // esconderijo do Receptador.
-// A favela em si mora em `Favela.js` e é só reexportada daqui (ver o bloco logo abaixo).
+// A favela foi removida para focar apenas na área rural/fazenda.
 import*as THREE from'three';
 import{scene}from'./core.js';
 import{obterElevacao}from'./Terrain.js';
@@ -30,21 +30,32 @@ function projetaSombra(geo){
 }
 function bloco(geo,material,x,y,z,parent=bairro){if(material&&material.map)uvPorMetro(geo);const m=new THREE.Mesh(geo,material);m.position.set(x,y,z);m.castShadow=projetaSombra(geo);m.receiveShadow=true;parent.add(m);return m}
 
-// ===== A FAVELA VEM DE Favela.js =====
-// O bairro foi reescrito do zero num módulo próprio (`Favela.js`) e este arquivo ficou com o que
-// nunca foi favela: a FAZENDA (porteira, curral, canteiros, bichos), as duas lojas fora do morro e o
+// ===== FAZENDA: área rural afastada da cidade, além do limite oeste do bairro.
+// A favela foi removida para focar apenas na área rural/fazenda.
+// Este arquivo agora contém apenas a FAZENDA (porteira, curral, canteiros, bichos), as duas lojas fora do morro e o
 // esconderijo do Receptador.
-//
-// A separação não é arrumação: a favela precisa nascer de RUA — spline, becos, escadão, lote pendurado
-// na curva — e isso não cabia ao lado de um gerador de sítio sem virar o arquivo de mil linhas que já
-// foi. Cinco módulos (Economy, Police, NPCs, UI e main) importam a favela DAQUI; em vez de mandar os
-// cinco mudarem de endereço, este arquivo reexporta. É uma linha de indireção contra cinco de
-// mudança espalhada.
-import{favela,casasPos,casasCliente,BECOS,casasOcas,BAR,BIQUEIRA,sumirCaixa,alternarPorta,
-  casaOcaEmQueEsta,atualizarPortas}from'./Favela.js';
-bairro.add(favela);
-export{casasPos,casasCliente,BECOS,casasOcas,BAR,BIQUEIRA,sumirCaixa,alternarPorta,
-  casaOcaEmQueEsta,atualizarPortas};
+
+// Exportações vazias para manter compatibilidade com módulos que importam da favela
+export const favela=new THREE.Group();
+export const casasPos=[];
+export const casasCliente=[];
+export const BECOS={viaPrincipal:{getPointAt:()=>({x:0,y:0,z:0}),getTangentAt:()=>({x:0,y:0,z:0})},viaBaixa:{getPointAt:()=>({x:0,y:0,z:0}),getTangentAt:()=>({x:0,y:0,z:0})}};
+export const casasOcas=[];
+export const BAR=null;
+export const BIQUEIRA=null;
+export function sumirCaixa(){}
+export function alternarPorta(){}
+export function casaOcaEmQueEsta(){return null}
+export function atualizarPortas(){}
+export const lotes=[];
+export const viaPrincipal={getPointAt:()=>({x:0,y:0,z:0}),getTangentAt:()=>({x:0,y:0,z:0})};
+export const viaBaixa={getPointAt:()=>({x:0,y:0,z:0}),getTangentAt:()=>({x:0,y:0,z:0})};
+export const becos=[];
+export const corredores=[];
+export function levanteContraQuina(x,z,r){return obterElevacao(x,z)}
+export const PASSO_DA_FITA=1.0;
+export const ESP_PAREDE=.18,PORTA_ALTURA=2.55,VAO_PORTA=1.8,PORTA_ABERTA_RAD=1.9;
+export function atualizarFavelaVisivel(x,z){}
 
 // ===== ÁREA NIVELADA 10 x 8 =====
 // Posição indicada pelo HUD da referência enviada: o platô fica no lado leste do mapa e não depende

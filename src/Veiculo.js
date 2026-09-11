@@ -18,7 +18,7 @@ import{player,topoAndavelAbaixo}from'./Player.js';
 import{scene}from'./core.js';
 import{obterElevacao,alturaDoChaoDesenhado}from'./Terrain.js';
 import{separarRodas}from'./Rodas.js';
-import{levanteContraQuina,PASSO_DA_FITA}from'./Favela.js';
+import{levanteContraQuina,PASSO_DA_FITA}from'./WorldGenerator.js';
 import{colideObstaculoXZ,registrarCaixa,marcarObstaculoMovel,buscarPosicaoLivre}from'./Physics.js';
 import{PLAYER_LIMIT}from'./WorldBounds.js';
 
