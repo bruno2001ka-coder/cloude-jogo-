@@ -413,6 +413,10 @@ function criarFazenda(){
   // invadem esse corredor.
   const acessoA=FAZENDA_CONFIG.acesso.a,acessoB=FAZENDA_CONFIG.acesso.b;
   const RAIO_CORREDOR_ACESSO=FAZENDA_CONFIG.acesso.raio;
+  const areaServico=FAZENDA_CONFIG.servico.limpeza;
+  const invadeServico=(x,z,meiaX=0,meiaZ=0)=>
+    Math.abs(x-areaServico.x)<=areaServico.meiaX+meiaX&&
+    Math.abs(z-areaServico.z)<=areaServico.meiaZ+meiaZ;
   const canteiros=[],pes=[];
   const zIni=cz-meiaProf+2.2,zFim=cz+meiaProf-8,xIni=cx-meiaLarg+7.5,xFim=cx+meiaLarg-2.2;
   const comprimento=xFim-xIni,meioX=(xIni+xFim)/2,SEGMENTO_CANTEIRO=1.25;
@@ -422,11 +426,11 @@ function criarFazenda(){
     for(let x0=xIni;x0<xFim-.001;x0+=SEGMENTO_CANTEIRO){
       const comp=Math.min(SEGMENTO_CANTEIRO,xFim-x0),mx=x0+comp/2;
       // Soma meia peça ao raio para nenhuma ponta do canteiro invadir a passagem.
-      if(distanciaAoCorredorFazenda(mx,z)>RAIO_CORREDOR_ACESSO+comp/2)canteiros.push([mx,z,comp]);
+      if(distanciaAoCorredorFazenda(mx,z)>RAIO_CORREDOR_ACESSO+comp/2&&!invadeServico(mx,z,comp/2,.51))canteiros.push([mx,z,comp]);
     }
     for(let x=xIni+.35;x<=xFim-.35;x+=.62){
       const px=x+(Math.random()-.5)*.16,pz=z+(Math.random()-.5)*.22;
-      if(distanciaAoCorredorFazenda(px,pz)>RAIO_CORREDOR_ACESSO+.25)pes.push([px,pz]);
+      if(distanciaAoCorredorFazenda(px,pz)>RAIO_CORREDOR_ACESSO+.25&&!invadeServico(px,pz,.25,.25))pes.push([px,pz]);
     }
   }
   const mesaCanteiro=new THREE.InstancedMesh(uvPorMetro(new THREE.BoxGeometry(1,.13,1.02)),matTerraArada(),canteiros.length);
