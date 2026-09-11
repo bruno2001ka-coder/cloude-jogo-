@@ -1,7 +1,7 @@
 // Service worker do Quintal 3D.
 // Navegacao e codigo usam rede primeiro SEM cache HTTP para cada release aparecer imediatamente.
 // Assets pesados continuam cache-first para o PWA abrir rapido e funcionar offline.
-const VERSAO='quintal3d-v78-performance-0328';
+const VERSAO='quintal3d-v79-police-performance-0329';
 const CASCA=[
   './',
   './index.html',
