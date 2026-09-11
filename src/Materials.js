@@ -138,6 +138,18 @@ function canvasTexRural(tipo){
   const t=new THREE.CanvasTexture(cv);t.wrapS=t.wrapT=THREE.RepeatWrapping;
   t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=anisotropia;return t;
 }
+function bumpParedeRural(){
+  const s=128,cv=document.createElement('canvas');cv.width=cv.height=s;
+  const ctx=cv.getContext('2d');ctx.fillStyle='#888';ctx.fillRect(0,0,s,s);
+  // Granulação de reboco/tinta: determinística e tileável o bastante na escala de 2 m da UV.
+  // É relevo pequeno; exagerar aqui faria a parede parecer pedra.
+  for(let i=0;i<1800;i++){
+    const x=(i*47)%s,y=(i*83+19)%s,v=105+((i*31)%70);
+    ctx.fillStyle=`rgb(${v},${v},${v})`;ctx.fillRect(x,y,1+(i%2),1+(i%2));
+  }
+  for(let y=13;y<s;y+=29){ctx.fillStyle='rgba(80,80,80,.18)';ctx.fillRect(0,y,s,1)}
+  const t=new THREE.CanvasTexture(cv);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.anisotropy=anisotropia;return t;
+}
 function bumpTelhaRural(){
   const s=256,cv=document.createElement('canvas');cv.width=cv.height=s;
   const ctx=cv.getContext('2d');ctx.fillStyle='#777';ctx.fillRect(0,0,s,s);
@@ -153,7 +165,8 @@ function bumpTelhaRural(){
   const t=new THREE.CanvasTexture(cv);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.anisotropy=anisotropia;return t;
 }
 const paredeRuralMat=new THREE.MeshStandardMaterial({
-  map:canvasTexRural('parede'),color:0xffffff,roughness:.94,metalness:0
+  map:canvasTexRural('parede'),bumpMap:bumpParedeRural(),bumpScale:.035,
+  color:0xffffff,roughness:.94,metalness:0
 });
 const telhaBarroRuralMat=new THREE.MeshStandardMaterial({
   map:canvasTexRural('telha'),bumpMap:bumpTelhaRural(),bumpScale:.08,
