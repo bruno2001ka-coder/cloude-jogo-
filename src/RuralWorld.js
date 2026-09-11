@@ -7,6 +7,7 @@ import{alturaDoChaoDesenhado}from'./Terrain.js';
 import{player}from'./Player.js';
 import{matTerraArada,matTerraBatida,matMadeira,matReboco,matTelha,matConcreto,bmat,uvPorMetro}from'./Materials.js';
 import{registrarObstaculo,registrarCaixa,marcarObstaculoMovel}from'./Physics.js';
+import{criarArquiteturaRuralPadrao}from'./FarmGenerator.js';
 
 export const RURAL_ZONES=[
   {id:'boa-vista',nome:'Sítio Boa Vista',sigla:'BV',x:-145,z:76,raio:30},
@@ -294,8 +295,13 @@ function montarFazenda(zona,i){
   const gap=(i*3+2)%pts.length;
   const vao=cercaArame(grupo,pts,gap,3.9);
   if(vao)porteiraAutomatica(grupo,vao.x,vao.z,vao.ang,vao.largura);
-  galpao(grupo,zona.x-zona.raio*.35,zona.z-zona.raio*.18,.2+i*.42,i);
-  casaRural(grupo,zona.x-zona.raio*.16,zona.z+zona.raio*.28,-.28+i*.25,i+1);
+  // TODAS as fazendas usam agora a mesma linguagem arquitetônica das referências:
+  // sede colonial contemporânea transitável + galpão/curral de madeira em escala métrica.
+  // A fazenda antiga (-86,-50) não é tocada por este gerador.
+  criarArquiteturaRuralPadrao({
+    parent:grupo,cx:zona.x,cz:zona.z,seed:i+1,nome:zona.nome,
+    porte:i===1?'grande':i===2?'compacta':'media'
+  });
   reservatorioAzul(grupo,zona.x-zona.raio*.43,zona.z+zona.raio*.12);
   bananeiras(grupo,zona.x+zona.raio*.37,zona.z+zona.raio*.2,30+i);
   // Vegetação de borda irregular: árvore grande + arbusto + alguns eucaliptos.
