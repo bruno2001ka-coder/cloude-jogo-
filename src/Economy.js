@@ -437,11 +437,10 @@ export function renderizarAcoes(){
     acaoPanel.appendChild(b);
     acaoPanel.style.display='flex';
   }else if(tipo==='loja'){
-    // Com a favela removida, a biqueira não existe mais. A semente volta para o mercadinho para o
-    // ciclo de cultivo continuar completo sem criar uma construção substituta.
-    botaoLoja(`🌱 Comprar Semente (R${PRECOS.biqueiraSemente})`,PRECOS.biqueiraSemente,
-      ()=>comprar('semente',PRECOS.biqueiraSemente));
-    const b1=botaoLoja(`🍱 Marmita (R${PRECOS.mercadoMarmita}) +${PRECOS.mercadoMarmitaCura} de vida`,
+    // O Mercado virou o que mercadinho é: COMIDA E ÁGUA. A semente foi pra biqueira — semente se
+    // compra na boca. Aqui a cura é barata e PARCIAL, e é o contraponto da dose do bar (cura tudo,
+    // R$30): quem está quase cheio come, quem está quase morto bebe no bar.
+    const b1=botaoLoja(`🍱 Marmita (R$${PRECOS.mercadoMarmita}) +${PRECOS.mercadoMarmitaCura} de vida`,
       PRECOS.mercadoMarmita,()=>comer(PRECOS.mercadoMarmita,PRECOS.mercadoMarmitaCura));
     const b2=botaoLoja(`💧 Água (R$${PRECOS.mercadoAgua}) +${PRECOS.mercadoAguaCura} de vida`,
       PRECOS.mercadoAgua,()=>comer(PRECOS.mercadoAgua,PRECOS.mercadoAguaCura));

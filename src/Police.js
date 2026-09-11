@@ -63,7 +63,6 @@ import{jogadorEmVeiculo}from'./Veiculo.js';
 
 
 // O terreno mede 260x260 (aprox. -130 a 130). O limite antigo de 95 deixava uma faixa grande sem patrulha.
-const HELICOPTERO_ATIVO=false;
 const HELI_ALTURA=38,HELI_VELOCIDADE=14,MAPA_LIMITE=124;
 const SALDO_RESPAWN=300;
 // Raio de detecção dimensionado pra funcionar em SOBREVOO, agora que o heli não vai mais direto na
@@ -242,15 +241,33 @@ const FRACAO_DE_PASSO_TRAVADO=.35;
 const ORCAMENTO_A_ESTRELA=1;
 let caminhosNesteQuadro=0;
 
-// ===== HELICÓPTERO REMOVIDO DO RUNTIME =====
-// Mantemos apenas objetos vazios para compatibilidade de save/testes e imports antigos.
-// Não há malha, material, SpotLight, cone de holofote, rotor ou objeto adicionado à cena.
-const heli=new THREE.Group();
-const rotorCauda=new THREE.Group(),rotorPrincipal=new THREE.Group();
-const luzV={material:{emissiveIntensity:0}},luzA={material:{emissiveIntensity:0}};
-const holofoteAlvo=new THREE.Object3D(),feixe=new THREE.Object3D();
+// ===== Helicóptero: fuselagem em cápsula, cauda com rotor, rotor principal girando, luzes de alerta piscando.
+const heliMat=new THREE.MeshStandardMaterial({color:0x2b3a2e,roughness:.55,metalness:.35});
+const heliVidro=new THREE.MeshPhysicalMaterial({color:0x1a2c33,roughness:.15,metalness:.2,clearcoat:.6,emissive:0x1a2c33,emissiveIntensity:.15});
+const rotorMat=new THREE.MeshStandardMaterial({color:0x1c1c1c,roughness:.6,metalness:.4});
+const lampVermelha=new THREE.MeshStandardMaterial({color:0xff2a2a,emissive:0xff2a2a,emissiveIntensity:1.6});
+const lampAzul=new THREE.MeshStandardMaterial({color:0x2a6bff,emissive:0x2a6bff,emissiveIntensity:1.6});
+function blocoHeli(geo,mat,x,y,z,parent){const m=new THREE.Mesh(geo,mat);m.position.set(x,y,z);m.castShadow=true;parent.add(m);return m}
+
+const heli=new THREE.Group();scene.add(heli);
+const fuselagem=blocoHeli(new THREE.CapsuleGeometry(.85,2.1,4,8),heliMat,0,0,0,heli);fuselagem.rotation.x=Math.PI/2;
+blocoHeli(new THREE.SphereGeometry(.68,10,8),heliVidro,0,-.1,1.5,heli);
+const caudaBoom=blocoHeli(new THREE.CylinderGeometry(.14,.22,2.6,6),heliMat,0,.15,-2.35,heli);caudaBoom.rotation.x=Math.PI/2;
+const rotorCauda=new THREE.Group();rotorCauda.position.set(.28,.35,-3.55);heli.add(rotorCauda);
+blocoHeli(new THREE.BoxGeometry(.04,1,.1),rotorMat,0,0,0,rotorCauda);blocoHeli(new THREE.BoxGeometry(.04,1,.1),rotorMat,0,0,0,rotorCauda).rotation.z=Math.PI/2;
+const mastro=blocoHeli(new THREE.CylinderGeometry(.08,.1,.35,6),rotorMat,0,.95,0,heli);
+const rotorPrincipal=new THREE.Group();rotorPrincipal.position.set(0,1.15,0);heli.add(rotorPrincipal);
+for(const ang of[0,Math.PI/2]){const pa=blocoHeli(new THREE.BoxGeometry(5.2,.05,.22),rotorMat,0,0,0,rotorPrincipal);pa.rotation.y=ang}
+for(const xx of[-.55,.55])blocoHeli(new THREE.CylinderGeometry(.05,.06,.9,6),heliMat,xx,-.85,.15,heli).rotation.z=.15*Math.sign(-xx);
+const luzBarra=new THREE.Group();luzBarra.position.set(0,.62,0);heli.add(luzBarra);
+const luzV=blocoHeli(new THREE.BoxGeometry(.22,.1,.22),lampVermelha,-.3,0,0,luzBarra);
+const luzA=blocoHeli(new THREE.BoxGeometry(.22,.1,.22),lampAzul,.3,0,0,luzBarra);
+const holofoteSpot=new THREE.SpotLight(0xfff2c8,3.2,60,Math.PI*.11,.45,1.4);holofoteSpot.castShadow=false;heli.add(holofoteSpot);
+const holofoteAlvo=new THREE.Object3D();scene.add(holofoteAlvo);holofoteSpot.target=holofoteAlvo;
+const feixeMat=new THREE.MeshBasicMaterial({color:0xfff2c8,transparent:true,opacity:.1,depthWrite:false,side:THREE.DoubleSide});
+const feixe=new THREE.Mesh(new THREE.ConeGeometry(1,1,16,1,true),feixeMat);feixe.renderOrder=1;scene.add(feixe);
 heli.position.set(0,HELI_ALTURA,0);
-let heliAlvo={x:0,z:0};
+let heliAlvo={x:(Math.random()*2-1)*MAPA_LIMITE,z:(Math.random()*2-1)*MAPA_LIMITE};
 
 // ===== Policiais: mesma técnica de bloco do NPC comum, uniforme escuro + boné + "arma" na mão.
 const skinPolicial=[0xc79067,0x8a5a3c,0xe0b088,0x6b4a30];
@@ -647,7 +664,7 @@ function avisarFloracao(){
   for(const p of plantas){
     if(p.colhida||p.avisadaFloracao||p.estagio<PLANTA_DETECTAVEL_ESTAGIO)continue;
     p.avisadaFloracao=true;
-    mostrarAviso('🌾 Sua muda floresceu e está pronta para entrar na fase de risco.',2600);
+    mostrarAviso('🌾 Sua muda floresceu — do alto dá pra ver. Colha rápido ou se esconda.',3400);
   }
 }
 
@@ -1416,7 +1433,6 @@ const ESTADOS={
       heliAlvo=sortearWaypointPatrulha();
     },
     aoAtualizar(dt,agora){
-      if(!HELICOPTERO_ATIVO)return;
       const dx=heliAlvo.x-heli.position.x,dz=heliAlvo.z-heli.position.z,d=Math.hypot(dx,dz);
       if(d<3)heliAlvo=sortearWaypointPatrulha();
       else{
@@ -1445,10 +1461,6 @@ const ESTADOS={
   },
   apontando:{
     aoAtualizar(dt,agora){
-      if(!HELICOPTERO_ATIVO){
-        policia.alvoPlanta=null;policia.alvoPlantacao=null;policia.confiscoAte=0;
-        transitar('rondando');return;
-      }
       // ===== A BATIDA ACABA QUANDO O CANTEIRO ACABA =====
       // Era `if(alvo.colhida) volta pra ronda`: colher UM pé encerrava a batida e soltava o heli pra
       // achar o pé do lado meio minuto depois. Agora ele só larga quando não sobra pé florido ali.
@@ -2131,12 +2143,9 @@ export function atualizarPolicia(dt){
   if(policiais.length&&(policia.procurado>0||rastroValido(agora)))
     distribuirPapeis(policiais,agora,
       rastroValido(agora)?rastro.x:player.position.x,rastroValido(agora)?rastro.z:player.position.z);
-  // Helicóptero removido: nenhum rotor, luz ou material é atualizado por quadro.
-  if(HELICOPTERO_ATIVO){
-    rotorPrincipal.rotation.y+=dt*26;rotorCauda.rotation.x+=dt*40;
-    const pisca=Math.floor(agora*3)%2===0;
-    luzV.material.emissiveIntensity=pisca?1.6:.1;luzA.material.emissiveIntensity=pisca?.1:1.6;
-  }
+  // Rotor sempre girando e luzes piscando, em qualquer estado — o helicóptero nunca "desliga".
+  rotorPrincipal.rotation.y+=dt*26;rotorCauda.rotation.x+=dt*40;
+  const pisca=Math.floor(agora*3)%2===0;luzV.material.emissiveIntensity=pisca?1.6:.1;luzA.material.emissiveIntensity=pisca?.1:1.6;
 
   // ===== A FICHA DESCE COM O TEMPO SEM SEREM TE ACHAR =====
   // Dois relógios em série, e é a ordem deles que faz a mecânica funcionar:
@@ -2172,7 +2181,7 @@ export function atualizarPolicia(dt){
     }
   }
 
-  if(HELICOPTERO_ATIVO)ESTADOS[policia.estado].aoAtualizar(dt,agora);
+  ESTADOS[policia.estado].aoAtualizar(dt,agora);
   atualizarPatrulha(dt,agora);
   separarCorpos();
   // Um quadro de animação por policial VIVO. Morto não anima: ele está tombando por rotação do grupo,
@@ -2182,17 +2191,17 @@ export function atualizarPolicia(dt){
   montarAlvosDoFrame();
   atualizarBalas(dt,alvosDaBala);
 
-  // Sem helicóptero não existe holofote para posicionar nem cone transparente para redesenhar.
-  if(HELICOPTERO_ATIVO){
-    const travado=policia.estado==='apontando'&&!!policia.alvoPlanta;
-    const focoX=travado?policia.pontoAlvo.x:heli.position.x;
-    const focoZ=travado?policia.pontoAlvo.z:heli.position.z;
-    const chaoAbaixo=obterElevacao(focoX,focoZ);
-    holofoteAlvo.position.set(focoX,chaoAbaixo,focoZ);
-    const alturaFeixe=heli.position.y-chaoAbaixo;
-    feixe.position.set((heli.position.x+focoX)/2,(heli.position.y+chaoAbaixo)/2,(heli.position.z+focoZ)/2);
-    feixe.scale.set(alturaFeixe*.32,alturaFeixe,alturaFeixe*.32);
-  }
+  // Holofote: rondando, varre o chão logo abaixo do heli; achou a plantação, TRAVA NA MUDA. Ele já
+  // seguiu o JOGADOR — era a leitura visual da caçada aérea, que deixou de existir. Agora o facho só
+  // aponta planta, que é a única coisa que este helicóptero procura.
+  const travado=policia.estado==='apontando'&&!!policia.alvoPlanta;
+  const focoX=travado?policia.pontoAlvo.x:heli.position.x;
+  const focoZ=travado?policia.pontoAlvo.z:heli.position.z;
+  const chaoAbaixo=obterElevacao(focoX,focoZ);
+  holofoteAlvo.position.set(focoX,chaoAbaixo,focoZ);
+  const alturaFeixe=heli.position.y-chaoAbaixo;
+  feixe.position.set((heli.position.x+focoX)/2,(heli.position.y+chaoAbaixo)/2,(heli.position.z+focoZ)/2);
+  feixe.scale.set(alturaFeixe*.32,alturaFeixe,alturaFeixe*.32);
 
   // Vida regenera devagar fora de combate; HUD de alerta/despiste, munição e mira de combate.
   avisarFloracao();conferirColete();atualizarHudMunicao();
