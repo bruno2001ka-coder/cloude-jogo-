@@ -2,11 +2,12 @@
 // O movimento original dos animais continua em WorldGenerator.js; aqui so restringimos os alvos ao
 // retangulo do curral e cuidamos da geometria/colisao das porteiras.
 import*as THREE from'three';
-import{bairro,animais,FAZENDA,sumirCaixa}from'./WorldGenerator.js';
+import{bairro,animais,sumirCaixa}from'./WorldGenerator.js';
 import{obterElevacao}from'./Terrain.js';
 import{registrarCaixa,marcarObstaculoMovel}from'./Physics.js';
 import{criarSombraContato}from'./Materials.js';
 import{player}from'./Player.js';
+import{FAZENDA_CONFIG}from'./FarmConfig.js';
 
 const madeira=new THREE.MeshStandardMaterial({color:0x7a5738,roughness:.94,metalness:0});
 const madeiraEscura=new THREE.MeshStandardMaterial({color:0x4e3928,roughness:.96,metalness:0});
@@ -19,13 +20,13 @@ const capim=new THREE.MeshStandardMaterial({color:0x72844f,roughness:1,metalness
 const ALT_POSTE=1.12,RAIO_INTERACAO=2.6,VAO=1.75;
 const porteirasAnimais=[];
 
-// Layout medido dentro da metade leste da FAZENDA, deixando o deposito/celeiro do lado oeste livre.
-// Entre os currais existe corredor de 1,5-2 m para o jogador circular sem esbarrar nos bichos.
-const CURRAIS=[
-  {tipo:'vaca',nome:'Vacas',icone:'🐄',cx:-85.5,cz:-55.2,w:7.0,d:6.8,spawn:[[-87,-56.2],[-84.3,-54.2]]},
-  {tipo:'porco',nome:'Porcos',icone:'🐖',cx:-85.5,cz:-45.5,w:7.0,d:6.2,spawn:[[-87,-46.2],[-84.2,-44.8]]},
-  {tipo:'galinha',nome:'Galinhas',icone:'🐔',cx:-77.1,cz:-55.0,w:5.8,d:6.4,spawn:[[-78.4,-56],[-76.5,-54.2],[-75.5,-56.1]]},
-];
+// Layout único compartilhado com o gerador da fazenda. Antes os currais moravam só neste arquivo
+// e a roça era calculada em outro módulo sem saber onde eles estavam — exatamente por isso os
+// canteiros nasceram DENTRO do curral dos porcos.
+const CURRAIS=Object.values(FAZENDA_CONFIG.currais).map(c=>({
+  ...c,
+  spawn:c.spawn.map(p=>[p[0],p[1]]),
+}));
 
 function mesh(geo,mat,x,y,z,parent=bairro){
   const m=new THREE.Mesh(geo,mat);m.position.set(x,y,z);m.castShadow=true;m.receiveShadow=true;parent.add(m);return m;
