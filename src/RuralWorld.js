@@ -7,12 +7,15 @@ import{alturaDoChaoDesenhado}from'./Terrain.js';
 import{player}from'./Player.js';
 import{matTerraArada,matTerraBatida,matMadeira,matReboco,matTelha,matConcreto,bmat,uvPorMetro}from'./Materials.js';
 import{registrarObstaculo,registrarCaixa,marcarObstaculoMovel}from'./Physics.js';
+import{FARM_PROTOTYPE_MODE}from'./GameMode.js';
 
-export const RURAL_ZONES=[
+const LEGACY_RURAL_ZONES=[
   {id:'boa-vista',nome:'Sítio Boa Vista',sigla:'BV',x:-145,z:76,raio:30},
   {id:'vale-cedro',nome:'Fazenda Vale do Cedro',sigla:'VC',x:126,z:112,raio:35},
   {id:'ribeirao',nome:'Roça do Ribeirão',sigla:'RR',x:154,z:-86,raio:32},
 ];
+// Os marcadores antigos também somem do radar durante a revisão: não existe ponto fantasma no mapa.
+export const RURAL_ZONES=FARM_PROTOTYPE_MODE?[]:LEGACY_RURAL_ZONES;
 const VILA={x:82,z:98,raio:46};
 
 const mundo=new THREE.Group();mundo.name='cidade-rural-brasileira';scene.add(mundo);

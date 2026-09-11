@@ -2,7 +2,9 @@
 import*as THREE from'three';
 import{animais}from'./WorldGenerator.js';
 import'./AnimalPens.js';
-import'./FishPond.js';
+import{FARM_PROTOTYPE_MODE}from'./GameMode.js';
+// O lago pertence ao conjunto rural antigo. No ensaio ele nao e sequer importado/criado.
+if(!FARM_PROTOTYPE_MODE)await import('./FishPond.js');
 
 const mats=new Map();
 function mat(c,rough=.86){const k=`${c}-${rough}`;if(!mats.has(k))mats.set(k,new THREE.MeshStandardMaterial({color:c,roughness:rough,metalness:0}));return mats.get(k)}

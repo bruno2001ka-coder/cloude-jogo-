@@ -7,6 +7,7 @@ import{obterElevacao}from'./Terrain.js';
 import{registrarObstaculo,registrarCaixa,superficiesAndaveis,marcarObstaculoMovel}from'./Physics.js';
 import{bmat,matTelha,matConcreto,matMadeira,matTerraArada,matTerraBatida,uvPorMetro,janela,porta,agua,posteMat,folhaMat,folhaClara,criarSombraContato}from'./Materials.js';
 import{POLOS}from'./Poles.js';
+import{FARM_PROTOTYPE_MODE}from'./GameMode.js';
 
 export const bairro=new THREE.Group();scene.add(bairro);
 // ===== QUEM PROJETA SOMBRA =====
@@ -154,6 +155,7 @@ export function alternarPorteira(){
   return porteiraFazenda.aberta;
 }
 export function pertoDaPorteira(pos){
+  if(!porteiraFazenda.pivos.length)return false;
   return Math.hypot(pos.x-porteiraFazenda.x,pos.z-porteiraFazenda.z)<porteiraFazenda.raio;
 }
 
@@ -409,7 +411,9 @@ function criarFazenda(cx,cz){
 
   return{cx,cz,meiaLarg,meiaProf,celeiro:{x:bx,z:bz,meiaLarg:3.3,meiaProf:2.8}};
 }
-export const FAZENDA=criarFazenda(-86,-50);
+// No ensaio isolado a arquitetura antiga nem chega a nascer: nao fica escondida sob a nova e nao
+// registra malhas, superfícies ou colisores fantasmas. O jogo normal continua byte a byte igual.
+export const FAZENDA=FARM_PROTOTYPE_MODE?null:criarFazenda(-86,-50);
 
 // ===== BALCÃO DO DEPÓSITO RURAL (polo Fazenda) =====
 // Marca visual de que o celeiro atende: sem isso o jogador chega no ponto de interação e não entende por
@@ -524,8 +528,10 @@ function criarAnimal(tipo,x,z){
   animais.push(animal);
   return animal;
 }
-[['vaca',-84,-48],['vaca',-80,-53],['porco',-88,-45],['porco',-83,-44],['galinha',-79,-49],['galinha',-81,-46],['galinha',-77,-52]].forEach(a=>criarAnimal(a[0],a[1],a[2]));
+if(!FARM_PROTOTYPE_MODE)
+  [['vaca',-84,-48],['vaca',-80,-53],['porco',-88,-45],['porco',-83,-44],['galinha',-79,-49],['galinha',-81,-46],['galinha',-77,-52]].forEach(a=>criarAnimal(a[0],a[1],a[2]));
 function dentroDoCurral(x,z){
+  if(!FAZENDA)return false;
   if(x<FAZENDA.cx-FAZENDA.meiaLarg+1||x>FAZENDA.cx+FAZENDA.meiaLarg-1||z<FAZENDA.cz-FAZENDA.meiaProf+1||z>FAZENDA.cz+FAZENDA.meiaProf-1)return false;
   const c=FAZENDA.celeiro;
   return!(Math.abs(x-c.x)<c.meiaLarg+.8&&Math.abs(z-c.z)<c.meiaProf+.8);
