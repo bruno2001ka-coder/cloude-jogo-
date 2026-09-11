@@ -57,8 +57,8 @@ check('23 animais nascem fora do corredor',animais.every(([x,z])=>distSeg(x,z)>=
 check('24 novos alvos de animais evitam o corredor',wg.includes('distanciaAoCorredorFazenda(x,z)<FAZENDA_CONFIG.acesso.raio+.55'));
 check('25 fundação é superfície andável',wg.includes('superficiesAndaveis.push(baseCeleiro)'));
 check('26 tecla E aciona portas da fazenda',economy.includes("ctx.tipo==='portasCeleiro'")&&economy.includes("alternarPortasCeleiro()"));
-check('27 portas usam colisores por folha',wg.includes("registrarCaixa(new THREE.Box3(),'porta-celeiro')")&&wg.includes('atualizarColisoresFolhas(portasCeleiro.pivos)'));
-check('28 porteira usa colisores por folha',wg.includes("registrarCaixa(new THREE.Box3(),'porteira')")&&wg.includes('atualizarColisoresFolhas(porteiraFazenda.pivos)'));
+check('27 portas usam colisores segmentados por folha',wg.includes("criarSegmentosFolha(folha,'x',LARGURA_FOLHA,2.45,.12,'porta-celeiro')")&&wg.includes('atualizarColisoresFolhas(portasCeleiro.pivos)'));
+check('28 porteira usa colisores segmentados por folha',wg.includes("criarSegmentosFolha(folha,'z',folhaLarg,ALTURA_PORTEIRA,.12,'porteira')")&&wg.includes('atualizarColisoresFolhas(porteiraFazenda.pivos)'));
 check('29 materiais da fazenda são próprios',wg.includes('matParedeRural()')&&wg.includes('matTelhaBarroRural()')&&materials.includes('bumpMap:bumpTelhaRural()'));
 check('30 terreno nivela casa e porteira',terrain.includes('FAZENDA_CONFIG.nivelamentoCasa')&&terrain.includes('FAZENDA_CONFIG.nivelamentoPorteira'));
 
