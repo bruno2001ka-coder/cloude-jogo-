@@ -5,7 +5,7 @@ import*as THREE from'three';
 import{scene}from'./core.js';
 import{obterElevacao}from'./Terrain.js';
 import{registrarObstaculo,registrarCaixa,superficiesAndaveis,marcarObstaculoMovel}from'./Physics.js';
-import{bmat,matTelha,matConcreto,matReboco,matMadeira,matTerraArada,matTerraBatida,uvPorMetro,janela,porta,agua,posteMat,folhaMat,folhaClara,criarSombraContato}from'./Materials.js';
+import{bmat,matTelha,matConcreto,matParedeRural,matTelhaBarroRural,matMadeira,matTerraArada,matTerraBatida,uvPorMetro,janela,porta,agua,posteMat,folhaMat,folhaClara,criarSombraContato}from'./Materials.js';
 import{POLOS}from'./Poles.js';
 
 export const bairro=new THREE.Group();scene.add(bairro);
@@ -193,9 +193,9 @@ export function pertoDaPorteira(pos){
 function criarFazenda(cx,cz){
   const meiaLarg=13,meiaProf=11;
   const bx=cx-meiaLarg+5,bz=cz-meiaProf+5,by=obterElevacao(bx,bz);
-  // Mesmas geometrias e medidas; só o acabamento muda. Parede recebe reboco/tinta PBR, enquanto
-  // folhas, vigas e cerca continuam madeira texturizada. Ferragem é um único material compartilhado.
-  const paredeCasa=matReboco(0xcbbf9f),madeiraCeleiro=matMadeira(0x8f5737),madeiraCerca=matMadeira(0x765238),ripaEscura=matMadeira(0x4d3728);
+  // Materiais próprios da fazenda: a parede rural e a telha de barro NÃO vêm do conjunto visual
+  // da favela. As geometrias e as medidas continuam exatamente as mesmas.
+  const paredeCasa=matParedeRural(),madeiraCeleiro=matMadeira(0x8f5737),madeiraCerca=matMadeira(0x765238),ripaEscura=matMadeira(0x4d3728);
   const ferragemPorta=new THREE.MeshStandardMaterial({color:0x3a342d,roughness:.58,metalness:.48});
 
   // --- PÁTIO ---
@@ -238,9 +238,9 @@ function criarFazenda(cx,cz){
   // ângulo escolhido no olho: a empena logo abaixo é montada com a MESMA conta, e foi assim que ela
   // parou de furar o telhado. Antes o ângulo era .55 rad chutado e a empena vinha de larguras fixas —
   // os degraus dela apareciam por fora da água, como uma escadinha marrom saindo do telhado.
-  // Mesmo telhado, mesma espessura/inclinação/beiral. A tinta terracota usa o normal map já existente
-  // de `telha`, então ganha relevo e leitura de telha de barro sem acrescentar geometria pesada.
-  const telhadoFazenda=matTelha(0x9a5135);
+  // Mesmo telhado, mesma espessura/inclinação/beiral; só troca para o material rural próprio de
+  // cerâmica com relevo, sem reutilizar a chapa/telha do bairro.
+  const telhadoFazenda=matTelhaBarroRural();
   const meiaLargC=3,alturaParede=3.2,alturaCume=4.55,beiral=.45;
   const subidaTelhado=alturaCume-alturaParede;
   const inclinacao=Math.atan2(subidaTelhado,meiaLargC);
@@ -371,8 +371,19 @@ function criarFazenda(cx,cz){
   mesaTravessa.instanceMatrix.needsUpdate=true;bairro.add(mesaTravessa);
 
   // --- ROÇA: canteiros de terra arada com os pés plantados em cima ---
-  // Antes eram cones verdes espetados no barro seco, em grade. Canteiro é o que faz virar plantação:
-  // a fileira de terra escura dá o desenho, e o pé de planta só mora nela.
+  // O acesso principal é uma faixa REAL entre o centro da porteira e a porta da casa/celeiro.
+  // Antes a roça era gerada em grade sem olhar esse caminho e três fileiras atravessavam a entrada.
+  // Não movemos a casa, a porteira nem os canteiros restantes: só deixamos de criar os segmentos que
+  // invadem esse corredor.
+  const acessoA={x:porteiraX-.8,z:porteiraZ};
+  const acessoB={x:bx,z:bz+2.75};
+  const RAIO_CORREDOR_ACESSO=1.9;// 3,8 m livres: cabe a porteira de 3,4 m + pequena folga visual
+  function distanciaAoAcesso(px,pz){
+    const dx=acessoB.x-acessoA.x,dz=acessoB.z-acessoA.z;
+    const den=dx*dx+dz*dz;
+    const t=den?Math.max(0,Math.min(1,((px-acessoA.x)*dx+(pz-acessoA.z)*dz)/den)):0;
+    return Math.hypot(px-(acessoA.x+dx*t),pz-(acessoA.z+dz*t));
+  }
   const canteiros=[],pes=[];
   const zIni=cz-meiaProf+2.2,zFim=cz+meiaProf-8,xIni=cx-meiaLarg+7.5,xFim=cx+meiaLarg-2.2;
   const comprimento=xFim-xIni,meioX=(xIni+xFim)/2,SEGMENTO_CANTEIRO=1.25;
@@ -380,10 +391,14 @@ function criarFazenda(cx,cz){
     // Uma caixa única atravessava o relevo com a cota do centro e deixava as pontas suspensas. Segmentos
     // curtos permitem apoiar cada parte na altura local sem perder o baixo custo do InstancedMesh.
     for(let x0=xIni;x0<xFim-.001;x0+=SEGMENTO_CANTEIRO){
-      const comp=Math.min(SEGMENTO_CANTEIRO,xFim-x0);
-      canteiros.push([x0+comp/2,z,comp]);
+      const comp=Math.min(SEGMENTO_CANTEIRO,xFim-x0),mx=x0+comp/2;
+      // Soma meia peça ao raio para nenhuma ponta do canteiro invadir a passagem.
+      if(distanciaAoAcesso(mx,z)>RAIO_CORREDOR_ACESSO+comp/2)canteiros.push([mx,z,comp]);
     }
-    for(let x=xIni+.35;x<=xFim-.35;x+=.62)pes.push([x+(Math.random()-.5)*.16,z+(Math.random()-.5)*.22]);
+    for(let x=xIni+.35;x<=xFim-.35;x+=.62){
+      const px=x+(Math.random()-.5)*.16,pz=z+(Math.random()-.5)*.22;
+      if(distanciaAoAcesso(px,pz)>RAIO_CORREDOR_ACESSO+.25)pes.push([px,pz]);
+    }
   }
   const mesaCanteiro=new THREE.InstancedMesh(uvPorMetro(new THREE.BoxGeometry(1,.13,1.02)),matTerraArada(),canteiros.length);
   mesaCanteiro.castShadow=false;mesaCanteiro.receiveShadow=true;
@@ -477,23 +492,11 @@ function criarFazenda(cx,cz){
 }
 export const FAZENDA=criarFazenda(-86,-50);
 
-// ===== BALCÃO DO DEPÓSITO RURAL (polo Fazenda) =====
-// Marca visual de que o celeiro atende: sem isso o jogador chega no ponto de interação e não entende por
-// que apareceu um painel de compra. Puramente decorativo — nada aqui vira obstáculo, o celeiro já é um.
-function criarBalcaoFazenda(x,z){
-  const g=new THREE.Group();const y=obterElevacao(x,z);g.position.set(x,y,z);bairro.add(g);
-  bloco(new THREE.BoxGeometry(2.6,.12,1),matMadeira(0x9c7448),0,.95,0,g);
-  for(const lx of[-1.1,1.1])bloco(new THREE.BoxGeometry(.12,.95,.12),matMadeira(0x8a6440),lx,.48,0,g);
-  bloco(new THREE.BoxGeometry(2.9,.1,1.3),matTelha(0x6e6a62),0,2.05,-.1,g);
-  for(const lx of[-1.3,1.3])bloco(new THREE.CylinderGeometry(.05,.05,1.05,6),posteMat,lx,1.55,.5,g);
-  // Sacaria empilhada: sinaliza "terra e vaso vendidos aqui" sem precisar de texto no mundo.
-  for(const[sx,sy,sz]of[[-.7,1.14,.05],[-.35,1.14,-.05],[-.52,1.42,0],[.75,1.14,0]])
-    bloco(new THREE.BoxGeometry(.34,.26,.3),bmat(0xc7b184),sx,sy,sz,g);
-  bloco(new THREE.CylinderGeometry(.2,.16,.26,8),bmat(0x8a5a3a),.35,1.14,.1,g);
-  criarSombraContato(1.9,g);
-  return g;
-}
-criarBalcaoFazenda(POLOS.fazenda.x,POLOS.fazenda.z);
+// O antigo balcão decorativo do Depósito Rural foi removido daqui. Ele era criado em (-94,-53),
+// enquanto a soleira da porta fica em torno de z=-53,47: apenas ~47 cm de separação. Visualmente
+// tampava a entrada e ocupava exatamente o corredor porteira -> porta. A interação econômica continua
+// no mesmo POLOS.fazenda; só o obstáculo visual indevido saiu.
+
 
 // ===== LOJA DE ARMAS (polo Armas, nordeste) =====
 // Barracão de chapa com balcão gradeado e caixotes de munição. A parede é o único obstáculo registrado;
