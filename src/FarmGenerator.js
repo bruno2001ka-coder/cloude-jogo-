@@ -40,17 +40,26 @@ function normalProcedural(seed=1,size=48){
   const t=new THREE.DataTexture(data,size,size,THREE.RGBAFormat);
   t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(4,4);t.needsUpdate=true;return t;
 }
-const N_MADEIRA=normalProcedural(11),N_TELHA=normalProcedural(37),N_PEDRA=normalProcedural(71),N_REBOCO=normalProcedural(103);
+function normalTelha(size=64){
+  const data=new Uint8Array(size*size*4);
+  for(let y=0;y<size;y++)for(let x=0;x<size;x++){
+    const u=x/(size-1),onda=Math.sin(u*Math.PI*16),k=(y*size+x)*4;
+    data[k]=128+Math.round(onda*34);data[k+1]=128;data[k+2]=242;data[k+3]=255;
+  }
+  const t=new THREE.DataTexture(data,size,size,THREE.RGBAFormat);
+  t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(5,3);t.needsUpdate=true;return t;
+}
+const N_MADEIRA=normalProcedural(11),N_TELHA=normalTelha(),N_PEDRA=normalProcedural(71),N_REBOCO=normalProcedural(103);
 
 function makeMaterials(seed,owned){
   const add=m=>{owned.add(m);return m};
-  const wallColors=[0xd9cfbe,0xd6c9b5,0xcebfa8];
+  const wallColors=[0xd9cfbe,0xd9cfbe,0xd9cfbe];
   return{
     reboco:add(new THREE.MeshStandardMaterial({color:wallColors[seed%wallColors.length],roughness:.93,metalness:0,normalMap:N_REBOCO,normalScale:new THREE.Vector2(.18,.18)})),
     madeira:add(new THREE.MeshStandardMaterial({color:0x4a2e18,roughness:.85,metalness:.04,normalMap:N_MADEIRA,normalScale:new THREE.Vector2(.28,.28)})),
     madeiraEsc:add(new THREE.MeshStandardMaterial({color:0x3b2414,roughness:.87,metalness:.03})),
     madeiraClara:add(new THREE.MeshStandardMaterial({color:0x4a2e18,roughness:.85,metalness:.04,normalMap:N_MADEIRA,normalScale:new THREE.Vector2(.20,.20)})),
-    telha:add(new THREE.MeshStandardMaterial({color:0x9e3d1b,roughness:.92,metalness:.01,normalMap:N_TELHA,normalScale:new THREE.Vector2(.28,.28)})),
+    telha:add(new THREE.MeshStandardMaterial({color:0x9e3d1b,roughness:.92,metalness:.01,normalMap:N_TELHA,normalScale:new THREE.Vector2(.52,.38)})),
     pedra:add(new THREE.MeshStandardMaterial({color:0x95856f,roughness:1,metalness:0,normalMap:N_PEDRA,normalScale:new THREE.Vector2(.42,.42)})),
     vidro:add(new THREE.MeshPhysicalMaterial({color:0x718b94,roughness:.08,metalness:.03,transparent:true,opacity:.48,depthWrite:false,clearcoat:.8,side:THREE.DoubleSide})),
     piso:add(new THREE.MeshStandardMaterial({color:0xb9aa91,roughness:.92,metalness:0})),
@@ -140,6 +149,7 @@ function roof2(parent,cx,cz,w,d,yEave,yRidge,ry,mat,gableMat=mat){
   const panel=(verts,idx)=>{
     const geo=new THREE.BufferGeometry();
     geo.setAttribute('position',new THREE.Float32BufferAttribute(verts,3));
+    geo.setAttribute('uv',new THREE.Float32BufferAttribute([0,0,1,0,0,d/2,1,d/2],2));
     geo.setIndex(idx);geo.computeVertexNormals();
     const m=mesh(g,geo,mat);m.castShadow=true;m.receiveShadow=true;return m;
   };
@@ -162,6 +172,7 @@ function roof2(parent,cx,cz,w,d,yEave,yRidge,ry,mat,gableMat=mat){
     geo.setAttribute('position',new THREE.Float32BufferAttribute([
       -half,yEave,z, half,yEave,z, 0,yRidge,z
     ],3));
+    geo.setAttribute('uv',new THREE.Float32BufferAttribute([0,0,1,0,.5,1],2));
     geo.setIndex(front?[0,2,1]:[0,1,2]);geo.computeVertexNormals();
     return mesh(g,geo,gableMat);
   };
