@@ -70,10 +70,14 @@ let dirigindoMotoAntes=false;
 // costas do veículo. 1,6 s é o que separa "olhei de relance" de "enquadrei a cena".
 const FOLGA_CAMERA=1.6;
 let folgaCamera=0;
-const startScreen=document.getElementById('startScreen'),playBtn=document.getElementById('playBtn');let gameStarted=false;playBtn.addEventListener('click',()=>{gameStarted=true;startScreen.classList.add('hide');document.body.classList.add('started');
+const startScreen=document.getElementById('startScreen'),playBtn=document.getElementById('playBtn');let gameStarted=!!window.__quintalStartRequested;
+const iniciarPartida=()=>{gameStarted=true;window.__quintalStartRequested=true;startScreen?.classList.add('hide');document.body.classList.add('started')};
+playBtn?.addEventListener('click',iniciarPartida);document.addEventListener('quintal:start',iniciarPartida);
+{
   // O hint cobre a faixa dos botões embaixo. Ele serve pra primeira partida, não pro jogo todo:
   // some sozinho depois de meio minuto em vez de disputar espaço com o PULAR pra sempre.
-  setTimeout(()=>{const h=document.getElementById('hint');if(h)h.style.display='none'},30000)});
+  setTimeout(()=>{const h=document.getElementById('hint');if(h)h.style.display='none'},30000);
+}
 // O botão DEBUG é ferramenta de desenvolvimento e fica escondido por padrão (ver CSS): ?debug=1 na URL
 // traz ele de volta sem precisar mexer no código.
 if(new URLSearchParams(location.search).has('debug'))document.body.classList.add('debug');

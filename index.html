@@ -243,8 +243,20 @@ body.debug #debugBtn{display:block}
      Os dois entram no editor de HUD, então dá pra arrastar pro lugar que a mão dele pedir. -->
 <div id="acelerador" aria-label="Acelerador" hidden><div id="acelTrilho"><div id="acelMarcas"></div><div id="acelPreenche"></div><div id="acelPuxador"></div></div><div id="acelValor">0</div><div id="acelUnidade">km/h</div></div>
 <button id="reBtn" aria-label="Ré" hidden>R</button>
+<script>
+// O início da partida não pode depender da conclusão de módulos opcionais.
+addEventListener('click',function(e){
+  const botao=e.target.closest&&e.target.closest('#playBtn');
+  if(!botao)return;
+  window.__quintalStartRequested=true;
+  const tela=document.getElementById('startScreen');
+  if(tela)tela.classList.add('hide');
+  document.body.classList.add('started');
+  document.dispatchEvent(new Event('quintal:start'));
+});
+</script>
 <div id="vinheta"></div>
 <div id="danoFlash"></div>
-<script type="module" src="./src/main.js?v=20260905s"></script>
+<script type="module" src="./src/main.js?v=20260911-start"></script>
 </body>
 </html>
