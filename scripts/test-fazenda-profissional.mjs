@@ -48,10 +48,14 @@ check('16 corredor liga porteira e porta sem ser degenerado',Math.hypot(F.acesso
 check('17 antigo balcão realmente invadia o corredor',distSeg(-94,-53)<F.acesso.raio);
 check('18 novo polo não disputa com a porta',Math.hypot(F.polo.x-portaPonto.x,F.polo.z-portaPonto.z)>3.2);
 check('19 novo polo fica fora do corredor',distSeg(F.polo.x,F.polo.z)>F.acesso.raio+1);
-check('20 novo polo continua dentro da fazenda',Math.abs(F.polo.x-F.cx)<F.meiaLarg-1&&Math.abs(F.polo.z-F.cz)<F.meiaProf-1);
+{
+  const c=F.servico.cocho,foraCocho=Math.abs(F.polo.x-c.x)>c.largura/2+.25||Math.abs(F.polo.z-c.z)>c.profundidade/2+.25;
+  const l=F.servico.limpeza,dentroServico=Math.abs(F.polo.x-l.x)<=l.meiaX&&Math.abs(F.polo.z-l.z)<=l.meiaZ;
+  check('20 polo fica acessível no pátio de serviço',Math.abs(F.polo.x-F.cx)<F.meiaLarg-1&&Math.abs(F.polo.z-F.cz)<F.meiaProf-1&&foraCocho&&dentroServico);
+}
 
 // 21–30 · regressões de código/física/interação
-check('21 roça filtra o corredor',wg.includes('distanciaAoCorredorFazenda(mx,z)>RAIO_CORREDOR_ACESSO+comp/2'));
+check('21 roça filtra corredor e área de serviço',wg.includes('distanciaAoCorredorFazenda(mx,z)>RAIO_CORREDOR_ACESSO+comp/2')&&wg.includes('!invadeServico(mx,z,comp/2,.51)'));
 check('22 balcão que tampava a porta não voltou',!wg.includes('function criarBalcaoFazenda'));
 check('23 animais nascem fora do corredor',animais.every(([x,z])=>distSeg(x,z)>=F.acesso.raio+.55));
 check('24 novos alvos de animais evitam o corredor',wg.includes('distanciaAoCorredorFazenda(x,z)<FAZENDA_CONFIG.acesso.raio+.55'));
