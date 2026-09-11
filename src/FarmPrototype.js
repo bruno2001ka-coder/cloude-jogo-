@@ -19,6 +19,7 @@ const colliders=[];
 const walkSurfaces=[];
 const ownedMaterials=new Set();
 const animals=[];
+const doors=[];
 let mounted=false,gate=null,metrics=null;
 
 const own=material=>{ownedMaterials.add(material);return material};
@@ -104,6 +105,16 @@ function footprintHeights(cx,cz,w,d,sx=10,sz=8){
   }
   return{min,max,mean:sum/count,delta:max-min};
 }
+// Prepara primeiro um plato nivelado e so depois permite erguer a construcao. O aterro parte da
+// maior cota real do footprint, portanto o terreno original nunca atravessa o piso; as laterais
+// descem ate abaixo do ponto mais baixo e fecham visualmente a encosta, sem alterar o mapa inteiro.
+function prepareBuildingPad(cx,cz,w,d,margin,material=M.dirt){
+  const scan=footprintHeights(cx,cz,w+margin*2,d+margin*2,12,10);
+  const level=scan.max+.12,bottom=scan.min-.42,height=level-bottom;
+  const surface=addWalkableBox(w+margin*2,height,d+margin*2,cx,level-height/2,cz,material);
+  surface.name='farm-prototype-level-pad';
+  return{level,scan,width:w+margin*2,depth:d+margin*2};
+}
 function polygonMesh(points,material,yOffset=.025){
   const cx=points.reduce((s,p)=>s+p.x,0)/points.length,cz=points.reduce((s,p)=>s+p.z,0)/points.length;
   const positions=[cx,ground(cx,cz)+yOffset,cz],uv=[cx/4,cz/4],indices=[];
@@ -155,34 +166,49 @@ function wallX(x,cz,d,h,floor,openings=[]){
   }
   for(const o of openings){const top=h-o.height;if(top>.02){batch.box(.22,top,o.width,x,floor+o.height+top/2,o.center,M.wall,0,0,0,true);axisCollider(x,o.center,.22,o.width,floor+o.height,floor+h,'farm-prototype-wall')}}
 }
-function roofGeometry(cx,cz,w,d,eave,ridge,side){
-  const x0=side<0?cx-w/2:cx,x1=side<0?cx:cx+w/2,z0=cz-d/2,z1=cz+d/2;
-  const y0=side<0?eave:ridge,y1=side<0?ridge:eave;
-  const positions=[x0,y0,z0,x1,y1,z0,x0,y0,z1,x1,y1,z1];
-  const slope=Math.hypot(w/2,ridge-eave);
-  const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
-  geo.setAttribute('uv',new THREE.Float32BufferAttribute([0,0,slope/1.2,0,0,d/1.2,slope/1.2,d/1.2],2));
-  geo.setAttribute('uv1',geo.attributes.uv.clone());geo.setIndex([0,2,1,2,3,1]);geo.computeVertexNormals();return geo;
-}
 function gableGeometry(cx,z,w,eave,ridge,reverse=false){
   const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute([
     cx-w/2,eave,z,cx+w/2,eave,z,cx,ridge,z,
   ],3));geo.setAttribute('uv',new THREE.Float32BufferAttribute([0,0,1,0,.5,1],2));geo.setAttribute('uv1',geo.attributes.uv.clone());
   geo.setIndex(reverse?[0,2,1]:[0,1,2]);geo.computeVertexNormals();return geo;
 }
-function closedRoof(cx,cz,w,d,eave,ridge,gableMaterial=M.wall){
-  batch.add(roofGeometry(cx,cz,w,d,eave,ridge,-1),M.roof,0,0,0,0,0,0,true);
-  batch.add(roofGeometry(cx,cz,w,d,eave,ridge,1),M.roof,0,0,0,0,0,0,true);
-  batch.box(.24,.18,d+.08,cx,ridge+.04,cz,M.roof,0,0,0,true);
+function closedRoof(cx,cz,w,d,eave,ridge,gableMaterial=M.wall,thickness=.26){
+  const run=w/2,rise=ridge-eave,angle=Math.atan2(rise,run),slope=Math.hypot(run,rise);
+  // Duas aguas SOLIDAS, com espessura real. Os centros sao calculados pela mesma reta e se encontram
+  // exatamente na cumeeira; a pequena sobra de 4 cm fica escondida sob a capa e elimina fresta.
+  for(const side of[-1,1])batch.box(slope+.04,thickness,d,
+    cx+side*Math.cos(angle)*slope/2,ridge-Math.sin(angle)*slope/2,cz,
+    M.roof,0,0,-side*angle,true);
+  batch.box(.34,thickness+.10,d+.10,cx,ridge+.02,cz,M.roof,0,0,0,true);
   batch.add(gableGeometry(cx,cz-d/2-.01,w,eave,ridge,false),gableMaterial,0,0,0,0,0,0,true);
   batch.add(gableGeometry(cx,cz+d/2+.01,w,eave,ridge,true),gableMaterial,0,0,0,0,0,0,true);
 }
 
+function movingColliderFor(object,category){
+  object.updateWorldMatrix(true,true);
+  return marcarObstaculoMovel(addCollider(new THREE.Box3().setFromObject(object),category));
+}
+function createDoorX(x,z,width,height,floor,swing=1){
+  const pivot=new THREE.Group();pivot.position.set(x,floor,z-width/2);ROOT.add(pivot);
+  const leaf=new THREE.Mesh(boxGeometry(.10,height,width,M.wood),M.wood);
+  leaf.position.set(0,height/2,width/2);leaf.castShadow=true;leaf.receiveShadow=true;pivot.add(leaf);
+  const collider=movingColliderFor(leaf,'farm-prototype-door');
+  doors.push({pivot,leaf,collider,angle:0,target:0,x,z,swing});
+}
+function createDoorZ(x,z,width,height,floor,swing=-1){
+  const pivot=new THREE.Group();pivot.position.set(x-width/2,floor,z);ROOT.add(pivot);
+  const leaf=new THREE.Mesh(boxGeometry(width,height,.10,M.wood),M.wood);
+  leaf.position.set(width/2,height/2,0);leaf.castShadow=true;leaf.receiveShadow=true;pivot.add(leaf);
+  const collider=movingColliderFor(leaf,'farm-prototype-door');
+  doors.push({pivot,leaf,collider,angle:0,target:0,x,z,swing});
+}
+
 function buildHouse(){
-  const {x:cx,z:cz,w,d}=FARM_PROTOTYPE.house,H=3,scan=footprintHeights(cx,cz,w+3,d+5);
+  const {x:cx,z:cz,w,d}=FARM_PROTOTYPE.house,H=3;
+  const pad=prepareBuildingPad(cx,cz,w,d,2.5,M.dirt),scan=pad.scan;
   if(scan.delta>3.2)throw new Error(`Desnivel excessivo na sede: ${scan.delta.toFixed(2)} m`);
-  const floor=scan.max+.16,foundationH=Math.max(.55,floor-scan.min+.35);
-  batch.box(w+1.2,foundationH,d+1.2,cx,floor-foundationH/2,cz,M.stone,0,0,0,true);
+  const floor=pad.level+.34,foundationH=.34;
+  batch.box(w+1.2,foundationH,d+1.2,cx,pad.level+foundationH/2,cz,M.stone,0,0,0,true);
   addWalkableBox(w-.44,.14,d-.44,cx,floor-.07,cz);
   // Fachadas com vaos reais. Entrada principal na face leste, voltada para a porteira.
   wallX(cx+w/2,cz,d,H,floor,[{center:cz,width:1.2,height:2.15},{center:cz-3.0,width:2.4,height:1.65}]);
@@ -192,6 +218,10 @@ function buildHouse(){
   // Quarto e cozinha separados sem emparedar a circulacao.
   wallX(cx-2.8,cz+2.0,d-4,H,floor,[{center:cz+.7,width:1.0,height:2.15}]);
   wallZ(cx+2.6,cz+1.2,w-5.2,H,floor,[{center:cx+1.2,width:1.0,height:2.15}]);
+  // Todas as tres portas possuem folha, vao real e colisor movel que acompanha a abertura.
+  createDoorX(cx+w/2,cz,1.2,2.15,floor,1);
+  createDoorX(cx-2.8,cz+.7,1.0,2.15,floor,-1);
+  createDoorZ(cx+1.2,cz+1.2,1.0,2.15,floor,1);
   // Vidros ocupam apenas os vaos, nunca ficam colados sobre parede macica.
   for(const [x,y,z,wg,hg,ry]of[
     [cx+w/2+.012,floor+1.42,cz-3,2.32,1.5,Math.PI/2],
@@ -202,14 +232,14 @@ function buildHouse(){
   // Varanda de 2,4 m e pilares com base consultada individualmente.
   const verandaX=cx+w/2+1.2;addWalkableBox(2.4,.14,d+1.2,verandaX,floor-.07,cz,M.stone);
   for(const z of[cz-d/2+.35,cz-1.8,cz+1.8,cz+d/2-.35]){
-    const base=ground(cx+w/2+2.18,z)-.08,top=floor+2.72,h=top-base;
+    const base=pad.level-.08,top=floor+2.72,h=top-base;
     batch.add(new THREE.CylinderGeometry(.15,.18,h,9),M.wood,cx+w/2+2.18,base+h/2,z,0,0,0,true);
     axisCollider(cx+w/2+2.18,z,.36,.36,base,top,'farm-prototype-pillar');
   }
   batch.box(.24,.24,d+.7,cx+w/2+2.18,floor+2.68,cz,M.wood,0,0,0,true);
   const aw=2.9,ah=.13,ad=d+1.4;
   batch.box(aw,ah,ad,cx+w/2+1.22,floor+2.62,cz,M.roof,0,0,-.09,true);
-  closedRoof(cx,cz,w+1.2,d+1.2,floor+3.06,floor+5.0);
+  closedRoof(cx,cz,w+1.2,d+1.2,floor+3.06,floor+5.0,M.wall,.30);
 
   // Interior economico, com medidas reais e colisores so onde bloqueiam.
   const table={x:cx+.7,z:cz-1.0};batch.box(2.35,.10,1.05,table.x,floor+.75,table.z,M.wood,0,0,0,false);
@@ -232,15 +262,14 @@ function buildHouse(){
   axisCollider(fireplace.x,fireplace.z,1.7,.72,floor,floor+2.25,'farm-prototype-fireplace');
   // Tapetes e quadros sao decoracao sem colisao.
   batch.box(3.2,.025,2.0,cx+1.0,floor+.018,cz-1.0,M.dryGrass);
-  return{floor,terrain:scan};
+  return{floor,terrain:scan,padLevel:pad.level};
 }
 
 function buildBarn(){
-  const {x:cx,z:cz,w,d}=FARM_PROTOTYPE.barn,scan=footprintHeights(cx,cz,w+2,d+2);
-  const eave=scan.max+2.8,ridge=scan.max+4.2;
-  polygonMesh([{x:cx-w/2-3,z:cz-d/2-3},{x:cx+w/2+3,z:cz-d/2-2},{x:cx+w/2+2,z:cz+d/2+3},{x:cx-w/2-3,z:cz+d/2+2}],M.dirt,.03);
+  const {x:cx,z:cz,w,d}=FARM_PROTOTYPE.barn,pad=prepareBuildingPad(cx,cz,w,d,2.2,M.dirt),scan=pad.scan;
+  const eave=pad.level+2.8,ridge=pad.level+4.2;
   for(const x of[cx-w/2,cx+w/2])for(const z of[cz-d/2,cz,cz+d/2]){
-    const base=ground(x,z)-.08,h=eave-base;
+    const base=pad.level-.08,h=eave-base;
     batch.add(new THREE.CylinderGeometry(.17,.21,h,9),M.wood,x,base+h/2,z,0,0,0,true);
     axisCollider(x,z,.42,.42,base,eave,'farm-prototype-barn-post');
   }
@@ -249,19 +278,19 @@ function buildBarn(){
     const half=w/2,rise=ridge-eave,angle=Math.atan2(rise,half),len=Math.hypot(half,rise);
     for(const side of[-1,1])batch.box(len,.18,.18,cx+side*Math.cos(angle)*len/2,ridge-Math.sin(angle)*len/2,z,M.wood,0,0,-side*angle,true);
   }
-  closedRoof(cx,cz,w+1.2,d+1.2,eave,ridge,M.wood);
+  closedRoof(cx,cz,w+1.2,d+1.2,eave,ridge,M.wood,.24);
   // Fechamento parcial de tabuas nas laterais; corredor central de 5,2 m permanece livre.
   for(const x of[cx-w/2+.08,cx+w/2-.08])for(const z of[cz-d/2+1.3,cz+d/2-1.3]){
-    batch.box(.16,1.65,2.4,x,ground(x,z)+.825,z,M.wood,0,0,0,true);
+    batch.box(.16,1.65,2.4,x,pad.level+.825,z,M.wood,0,0,0,true);
   }
-  const work={x:cx-3.8,z:cz+d/2-.7,y:ground(cx-3.8,cz+d/2-.7)};
+  const work={x:cx-3.8,z:cz+d/2-.7,y:pad.level};
   batch.box(3.0,.12,.74,work.x,work.y+.9,work.z,M.wood);
   axisCollider(work.x,work.z,3.0,.74,work.y,work.y+.98,'farm-prototype-workbench');
   // Feno e espaco de maquina/trator do lado oposto.
   for(const [x,z]of[[cx+4.7,cz+3.4],[cx+5.2,cz+2.2],[cx+3.9,cz+3.2]]){
-    const y=ground(x,z);batch.add(new THREE.CylinderGeometry(.55,.55,1.0,12),M.hay,x,y+.55,z,Math.PI/2,0,0,false);
+    const y=pad.level;batch.add(new THREE.CylinderGeometry(.55,.55,1.0,12),M.hay,x,y+.55,z,Math.PI/2,0,0,false);
   }
-  return{terrain:scan,eave,ridge};
+  return{terrain:scan,eave,ridge,padLevel:pad.level};
 }
 
 function fenceCollider(a,b,category){
@@ -311,9 +340,8 @@ function buildGate(){
   for(const zz of[z-half-.14,z+half+.14]){
     const gy=ground(x,zz);batch.add(new THREE.CylinderGeometry(.12,.16,1.62,8),M.wood,x,gy+.73,zz,0,0,0,true);
   }
-  const closed=new THREE.Box3(new THREE.Vector3(x-.18,y-.35,z-half),new THREE.Vector3(x+.18,y+1.42,z+half));
-  const collider=marcarObstaculoMovel(addCollider(closed.clone(),'farm-prototype-gate'));
-  gate={left,right,angle:0,target:0,collider,closed,x,z,open:false,colliderActive:true};
+  const leafColliders=[movingColliderFor(left,'farm-prototype-gate'),movingColliderFor(right,'farm-prototype-gate')];
+  gate={left,right,angle:0,target:0,leafColliders,x,z,open:false};
 }
 
 function buildPasture(){
@@ -432,9 +460,16 @@ export function updateFarmPrototype(dt,playerPosition){
     const delta=gate.target-gate.angle,speed=Math.PI/5;// 2,5 s para 90 graus
     gate.angle+=Math.sign(delta)*Math.min(Math.abs(delta),speed*dt);
     gate.left.rotation.y=-gate.angle;gate.right.rotation.y=gate.angle;
-    const shouldBlock=gate.angle<Math.PI*.32;
-    if(shouldBlock&&!gate.colliderActive){gate.collider.copy(gate.closed);gate.colliderActive=true}
-    else if(!shouldBlock&&gate.colliderActive){gate.collider.makeEmpty();gate.colliderActive=false}
+    gate.left.updateWorldMatrix(true,true);gate.right.updateWorldMatrix(true,true);
+    gate.leafColliders[0].setFromObject(gate.left);gate.leafColliders[1].setFromObject(gate.right);
+  }
+  for(const door of doors){
+    const distance=Math.hypot(playerPosition.x-door.x,playerPosition.z-door.z);
+    door.target=distance<2.15?Math.PI*.5:distance>3.6?0:door.target;
+    const delta=door.target-door.angle,speed=Math.PI/3.6;// abertura suave em 1,8 s
+    door.angle+=Math.sign(delta)*Math.min(Math.abs(delta),speed*dt);
+    door.pivot.rotation.y=door.swing*door.angle;door.pivot.updateWorldMatrix(true,true);
+    door.collider.setFromObject(door.leaf);
   }
   const now=performance.now()/1000;
   for(const animal of animals){
@@ -452,5 +487,5 @@ export function disposeFarmPrototype(){
   scene.remove(ROOT);for(const box of[...colliders])removerCaixa(box);colliders.length=0;
   for(const surface of[...walkSurfaces])removerSuperficieAndavel(surface);walkSurfaces.length=0;
   ROOT.traverse(o=>{if(o.geometry)o.geometry.dispose()});for(const material of ownedMaterials)material.dispose();
-  ROOT.clear();animals.length=0;gate=null;mounted=false;metrics=null;return true;
+  ROOT.clear();animals.length=0;doors.length=0;gate=null;mounted=false;metrics=null;return true;
 }
