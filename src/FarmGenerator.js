@@ -392,6 +392,64 @@ function fenceSegment(handle,a,b,M){
   }
   colliderAlong(handle,a,b);
 }
+function buildPastureZone(handle,M){
+  const p=handle.pasto;if(!p)return;
+  const halfW=p.meiaLarg,halfD=p.meiaProf,r=p.rotation;
+
+  // ZONA C — pasto exclusivo dos animais, verde e separado das construções.
+  terrainPatch(handle.group,p.x,p.z,halfW*2,halfD*2,M.grama,handle,8);
+
+  const corners=[
+    point(p.x,p.z,-halfW,-halfD,r),point(p.x,p.z,halfW,-halfD,r),
+    point(p.x,p.z,halfW, halfD,r),point(p.x,p.z,-halfW, halfD,r)
+  ];
+
+  // Entrada do pasto: cerca fecha o perímetro inteiro, com portão de madeira fechado no lado sul.
+  const A=corners[0],B=corners[1],dx=B.x-A.x,dz=B.z-A.z,len=Math.hypot(dx,dz),ux=dx/len,uz=dz/len;
+  const gateW=Math.min(2.6,Math.max(2.2,len-.8)),cx=(A.x+B.x)/2,cz=(A.z+B.z)/2;
+  const left={x:cx-ux*gateW/2,z:cz-uz*gateW/2},right={x:cx+ux*gateW/2,z:cz+uz*gateW/2};
+  fenceSegment(handle,A,left,M);fenceSegment(handle,right,B,M);
+  fenceSegment(handle,corners[1],corners[2],M);
+  fenceSegment(handle,corners[2],corners[3],M);
+  fenceSegment(handle,corners[3],corners[0],M);
+
+  // Portão fechado visual + físico, seguindo o desnível real nas duas pontas.
+  const yL=ground(left.x,left.z),yR=ground(right.x,right.z);
+  for(const h of[.40,.78,1.14])lineBar(handle.group,{x:left.x,y:yL+h,z:left.z},{x:right.x,y:yR+h,z:right.z},.08,M.madeiraEsc,false);
+  colliderAlong(handle,left,right,1.28,.10);
+
+  // Curral coberto na BORDA NORTE do pasto: o miolo permanece totalmente livre para os animais.
+  const shelterW=Math.min(7.0,halfW*1.20),shelterD=4.0;
+  const shelterC=point(p.x,p.z,0,halfD-shelterD/2-.35,r);
+  const sh=footprintHeights(shelterC.x,shelterC.z,shelterW+.6,shelterD+.6,r);
+  const eave=sh.max+2.65,ridge=eave+.85;
+
+  for(const lx of[-shelterW/2,shelterW/2])for(const lz of[-shelterD/2,shelterD/2]){
+    const wp=point(shelterC.x,shelterC.z,lx,lz,r),base=ground(wp.x,wp.z)-.06,h=eave-base;
+    const col=mesh(handle.group,new THREE.CylinderGeometry(.12,.15,h,8),M.madeiraEsc);col.position.set(wp.x,base+h/2,wp.z);
+    trackedBox(handle,new THREE.Box3(
+      new THREE.Vector3(wp.x-.16,base,wp.z-.16),
+      new THREE.Vector3(wp.x+.16,eave,wp.z+.16)
+    ),'pilar-curral');
+  }
+  roof2(handle.group,shelterC.x,shelterC.z,shelterW+.8,shelterD+.8,eave,ridge,r,M.telha,M.madeiraEsc);
+
+  // Réguas laterais do abrigo, abertas o suficiente para ventilação e leitura de curral.
+  for(const side of[-1,1]){
+    const lx=side*shelterW/2;
+    for(const h of[.55,1.00,1.45]){
+      const a=point(shelterC.x,shelterC.z,lx,-shelterD/2,r),b=point(shelterC.x,shelterC.z,lx,shelterD/2,r);
+      lineBar(handle.group,{x:a.x,y:ground(a.x,a.z)+h,z:a.z},{x:b.x,y:ground(b.x,b.z)+h,z:b.z},.10,M.madeiraClara,false);
+    }
+  }
+
+  // Cocho encostado no abrigo, fora do centro de circulação.
+  const trough=point(shelterC.x,shelterC.z,0,-shelterD/2+.55,r),ty=ground(trough.x,trough.z);
+  placeBox(handle.group,2.6,.42,.62,trough.x,ty+.21,trough.z,r,M.madeiraClara,false);
+
+  p.abrigo={x:shelterC.x,z:shelterC.z,larg:shelterW,prof:shelterD};
+}
+
 function buildPerimeter(handle,boundary,gateIndex,M,gateMode,gateStartsOpen){
   const n=boundary.length,idx=((gateIndex%n)+n)%n,a=boundary[idx],b=boundary[(idx+1)%n],dx=b.x-a.x,dz=b.z-a.z,len=Math.hypot(dx,dz);
   const gateW=Math.min(4.2,Math.max(3.4,len-.8)),ux=dx/len,uz=dz/len,cx=(a.x+b.x)/2,cz=(a.z+b.z)/2;
@@ -466,6 +524,7 @@ export function buildFarm(originX,originZ,rotation=0,opts={}){
   registry.set(id,handle);
 
   buildArchitecture(handle,originX,originZ,handle.rotation,opts.porte||'media',M);
+  buildPastureZone(handle,M);
 
   const boundary=opts.boundaryPoints?.length>=4
     ?opts.boundaryPoints.map(p=>({x:p.x,z:p.z}))
