@@ -23,6 +23,18 @@ export const FAZENDA_CONFIG=Object.freeze({
     b:Object.freeze({x:casaX,z:casaZ+2.75}),
     raio:1.9,
   }),
+  // Zonas internas SEM sobreposição. O plantio fica no setor norte; o campo dos animais fica
+  // no sudeste. Entre os dois sobram mais de 7 m de separação e o corredor principal passa no meio.
+  cultivo:Object.freeze({
+    minX:cx-meiaLarg+2.5,maxX:cx+6,
+    minZ:cz+3.2,maxZ:cz+8.5,
+    espacamentoLinha:1.55,segmento:1.25,
+  }),
+  animais:Object.freeze({
+    minX:cx+.0,maxX:cx+meiaLarg-2.0,
+    minZ:cz-meiaProf+1.5,maxZ:cz-4.5,
+    margem:.65,
+  }),
   servico:Object.freeze({
     cocho:Object.freeze({x:casaX+4.5,z:casaZ,largura:2.1,profundidade:.7}),
     barril:Object.freeze({x:casaX+4.3,z:casaZ-1.2,raio:.4}),
