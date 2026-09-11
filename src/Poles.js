@@ -1,6 +1,7 @@
+import{FAZENDA_CONFIG}from'./FarmConfig.js';
 // ===== POLOS ECONÔMICOS: as 4 coordenadas (X, Z) que estruturam a navegação do mapa =====
-// Dado puro, ZERO imports de propósito: WorldGenerator (constrói os prédios), Economy (ações do painel)
-// e UI (radar) precisam dos mesmos números. Qualquer outra colocação criaria dependência circular.
+// Coordenadas compartilhadas por WorldGenerator, Economy e UI. A fazenda principal vem de FarmConfig,
+// que não importa nenhum módulo e por isso mantém esta dependência sem ciclo.
 //
 // Critério de disposição (Level Design): quadrilátero em torno do bairro (x ∈ [-36, 35], z ∈ [-42, -4]),
 // com nenhum trecho menor que 60 m — o jogador é obrigado a atravessar o bairro, que é exatamente onde
@@ -13,7 +14,7 @@
 //   Receptador      168       67       76        —
 export const POLOS={
   // Oeste — insumo barato, mas longe: terra e vaso na fonte.
-  fazenda:{x:-94,z:-53,raio:5.5,rotulo:'Depósito Rural',cor:'#c8a24a'},
+  fazenda:{x:FAZENDA_CONFIG.polo.x,z:FAZENDA_CONFIG.polo.z,raio:3.2,rotulo:'Depósito Rural',cor:'#c8a24a'},
   // Centro/Norte, no alto do morro — comida e água. A semente saiu daqui e foi pra biqueira.
   sementes:{x:0,z:-18,raio:4.5,rotulo:'Mercadinho (comida e água)',cor:'#5ec2ff'},
   // Nordeste — munição e colete: o polo que sustenta o sistema de combate.
