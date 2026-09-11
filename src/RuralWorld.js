@@ -6,6 +6,7 @@ import*as THREE from'three';
 import{scene}from'./core.js';
 import{alturaDoChaoDesenhado}from'./Terrain.js';
 import{matTerraArada,matTerraBatida,matMadeira,matReboco,matTelha,bmat}from'./Materials.js';
+import{registrarObstaculo}from'./Physics.js';
 
 export const RURAL_ZONES=[
   {id:'boa-vista',nome:'Sítio Boa Vista',sigla:'BV',x:-145,z:76,raio:28},
@@ -72,7 +73,7 @@ function prismaTelhado(larg,comp,altura,mat){
 function criarGalpao(parent,x,z,giro,corParede,corTelha){
   const g=new THREE.Group();g.position.set(x,terrenoY(x,z),z);g.rotation.y=giro;parent.add(g);
   const parede=matReboco(corParede),madeira=matMadeira(0x65442f),telhado=matTelha(corTelha);
-  const corpo=new THREE.Mesh(new THREE.BoxGeometry(5.4,2.5,4.2),parede);corpo.position.y=1.25;corpo.castShadow=true;corpo.receiveShadow=true;g.add(corpo);
+  const corpo=new THREE.Mesh(new THREE.BoxGeometry(5.4,2.5,4.2),parede);corpo.position.y=1.25;corpo.castShadow=true;corpo.receiveShadow=true;g.add(corpo);g.updateWorldMatrix(true,true);registrarObstaculo(corpo,'galpao-rural');
   const porta=new THREE.Mesh(new THREE.BoxGeometry(2.2,2.15,.10),madeira);porta.position.set(0,1.08,-2.15);porta.castShadow=true;g.add(porta);
   const roof=prismaTelhado(6.2,4.9,1.15,telhado);roof.position.y=2.5;g.add(roof);
   const janela=new THREE.Mesh(new THREE.BoxGeometry(1.1,.8,.08),bmat(0x24343a));janela.position.set(1.8,1.45,-2.17);g.add(janela);
@@ -87,7 +88,7 @@ function cercar(parent,pts,aberturaIndex=0){
     for(let s=0;s<=steps;s++){const t=s/steps,x=a.x+dx*t,z=a.z+dz*t;postes.push({x,z,y:terrenoY(x,z)+.57})}
     for(let s=0;s<steps;s++){
       const t0=s/steps,t1=(s+1)/steps,x0=a.x+dx*t0,z0=a.z+dz*t0,x1=a.x+dx*t1,z1=a.z+dz*t1;
-      rails.push({x:(x0+x1)/2,z:(z0+z1)/2,y:terrenoY((x0+x1)/2,(z0+z1)/2)+.72,len:Math.hypot(x1-x0,z1-z0),ang:Math.atan2(x1-x0,x1?z1-z0:z1-z0)});
+      rails.push({x:(x0+x1)/2,z:(z0+z1)/2,y:terrenoY((x0+x1)/2,(z0+z1)/2)+.72,len:Math.hypot(x1-x0,z1-z0),ang:Math.atan2(x1-x0,z1-z0)});
     }
   }
   const pmesh=new THREE.InstancedMesh(postGeo,mat,postes.length);const dummy=new THREE.Object3D();
