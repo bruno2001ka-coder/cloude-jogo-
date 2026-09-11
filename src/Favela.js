@@ -449,7 +449,7 @@ function baseYDaSoleira(l){
     const alvo=alturaDaLaje(vizinha);
     // Escolhe o número de andares cuja laje fica mais perto da vizinha, sem passar do pulo.
     let melhorN=l.andares,melhorDif=Infinity;
-    for(let n=1;n<=3;n++){
+    for(let n=1;n<=2;n++){
       const dif=Math.abs((l.baseY+n*ANDAR_ALT+.12)-alvo);
       if(dif<melhorDif){melhorDif=dif;melhorN=n}
     }
@@ -463,7 +463,7 @@ function baseYDaSoleira(l){
 // linhas que só existiam no arquivo. Amostrar a curva é o que impede isso de voltar.
 export const pontosDeRonda=[];
 function amostrar(curva){
-  const total=curva.getLength(),n=Math.max(2,Math.round(total/6));
+  const total=curva.getLength(),n=Math.max(2,Math.round(total/10));
   for(let i=0;i<=n;i++){const p=curva.getPointAt(i/n);pontosDeRonda.push({x:p.x,z:p.z})}
 }
 amostrar(viaPrincipal);amostrar(viaBaixa);becos.forEach(amostrar);
