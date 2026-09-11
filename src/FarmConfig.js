@@ -23,9 +23,13 @@ export const FAZENDA_CONFIG=Object.freeze({
     b:Object.freeze({x:casaX,z:casaZ+2.75}),
     raio:1.9,
   }),
-  // O ponto de compra fica ao lado DIREITO da construção, fora do vão da porta e fora do corredor.
-  // Não existe construção nova aqui; é apenas a coordenada invisível de interação.
-  polo:Object.freeze({x:casaX+4.5,z:casaZ+.3}),
+  servico:Object.freeze({
+    cocho:Object.freeze({x:casaX+4.5,z:casaZ,largura:2.1,profundidade:.7}),
+    barril:Object.freeze({x:casaX+4.3,z:casaZ-1.2,raio:.4}),
+  }),
+  // O ponto de compra fica ao lado externo do cocho, sem entrar no objeto, sem disputar a porta e
+  // sem ocupar o corredor principal. Não existe construção nova aqui: é apenas a coordenada de ação.
+  polo:Object.freeze({x:casaX+6,z:casaZ}),
   // Platôs locais: a construção e a soleira da porteira assentam niveladas. A faixa entre inner/outer
   // faz a transição suave para o relevo original, sem degrau artificial.
   nivelamentoCasa:Object.freeze({innerX:4.8,innerZ:4.3,outerX:6.5,outerZ:6.0}),
