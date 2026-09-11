@@ -129,7 +129,12 @@ function desenharPontoRadar(x,z,cor,raio,sempreVisivel,sigla,limite=RADAR_LIMITE
   }else filaDeRotulos.push({txt:sigla,x:px,y:py,cor,tam:8});
 }
 
+let proximoRadar=0;
 export function atualizarRadar(){
+  // Radar a 10 Hz, sem alterar movimento, camera ou combate.
+  const agora=performance.now();
+  if(agora<proximoRadar)return;
+  proximoRadar=agora+100;
   radarCtx.clearRect(0,0,RADAR_TAM,RADAR_TAM);
   rotulosNoQuadro=[];filaDeRotulos.length=0;
   radarCtx.save();

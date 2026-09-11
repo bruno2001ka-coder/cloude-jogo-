@@ -28,7 +28,7 @@ document.body.appendChild(renderer.domElement);
 export const composer=new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene,camera));
 const escalaBloom=1;
-const bloomPass=noCelular?null:new UnrealBloomPass(
+export const bloomPass=noCelular?null:new UnrealBloomPass(
   new THREE.Vector2(innerWidth,innerHeight),.35,.5,.86);
 if(bloomPass)composer.addPass(bloomPass);
 composer.addPass(new OutputPass());
