@@ -2,11 +2,15 @@
 import*as THREE from'three';
 import{GLTFLoader}from'three/addons/loaders/GLTFLoader.js';
 import{clone as clonarComEsqueleto}from'three/addons/utils/SkeletonUtils.js';
+import{camera,noCelular}from'./core.js';
 import{PLAYER_HEIGHT,maoDireita}from'./Player.js';
 import{AJUSTE}from'./Personagem.js';
 
 const ANIM_POL={andar:'Walking',correr:'Running',atirandoParado:'01a05f36-abe2-72cf-b71b-cd8f5821a04d'};
 const TRANSICAO=.18,VEL_CORRIDA_POL=2.6;
+// Animacao e apenas visual. Longe da camera ela pode atualizar em passos maiores sem mexer em IA,
+// tiro, colisao ou rota. Isso tira trabalho justamente quando ha varios policiais em campo.
+const ANIM_DIST_MEDIA=25,ANIM_DIST_LONGE=45,ANIM_PASSO_MEDIA=.05,ANIM_PASSO_LONGE=.10;
 let modelo=null,carregando=false,falhou=false;
 const pendentes=[],vestidos=[];
 const _v=new THREE.Vector3();
@@ -52,7 +56,14 @@ function pedirModelo(){
 function vestir(pedido){
   const{grupo,caixas}=pedido;
   const raiz=clonarComEsqueleto(modelo.scene);
-  raiz.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;o.frustumCulled=false}});
+  raiz.traverse(o=>{if(o.isMesh){
+    // No celular, cada SkinnedMesh projetando sombra custa outra passada de pele no shadow map.
+    // O corpo continua recebendo sombra; so deixa de projeta-la. No PC mantem a qualidade completa.
+    o.castShadow=!noCelular;o.receiveShadow=true;
+    // Antes estava false, obrigando render ate fora da camera. O policial inteiro se move pelo grupo,
+    // entao o bounding volume acompanha a posicao e o culling volta a ser seguro.
+    o.frustumCulled=true;
+  }});
   const mixer=new THREE.AnimationMixer(raiz),acoes={};
   for(const clipe of modelo.animations){
     if(clipe.name!==ANIM_POL.andar&&clipe.name!==ANIM_POL.correr&&clipe.name!==ANIM_POL.atirandoParado)continue;
@@ -94,7 +105,7 @@ function vestir(pedido){
       }
     }
   }
-  const estado={mixer,acoes,atual:null,raiz};
+  const estado={mixer,acoes,atual:null,raiz,grupo,animAcum:0};
   vestidos.push(estado);pedido.aoVestir?.(estado);return estado;
 }
 
@@ -122,6 +133,20 @@ export function atualizarCorpoPolicial(estado,dt,velocidade,atirandoParado=false
     if(parado&&!atirandoParado)estado.atual.time=0;
     estado.atual.setEffectiveWeight(1);
   }
+
+  // Perto do jogador/camera: 60 Hz visual. Medio: ate 20 Hz. Longe: ate 10 Hz.
+  // Em combate parado nao reduz, para a animacao de tiro continuar responsiva.
+  let passo=0;
+  if(!atirandoParado&&estado.grupo){
+    const dx=estado.grupo.position.x-camera.position.x,dz=estado.grupo.position.z-camera.position.z,d2=dx*dx+dz*dz;
+    if(d2>ANIM_DIST_LONGE*ANIM_DIST_LONGE)passo=ANIM_PASSO_LONGE;
+    else if(d2>ANIM_DIST_MEDIA*ANIM_DIST_MEDIA)passo=ANIM_PASSO_MEDIA;
+  }
+  if(passo){
+    estado.animAcum+=dt;
+    if(estado.animAcum<passo)return;
+    dt=estado.animAcum;estado.animAcum=0;
+  }else estado.animAcum=0;
   estado.mixer.update(dt);
 }
 export function temCorpo3D(){return !!modelo}
