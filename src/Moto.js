@@ -28,7 +28,9 @@ const moto=criarVeiculo({
   comprimento:1.35,largura:.47,alturaColisao:.80,raioDisco:.30,
   // Dinâmica arcade previsível. Os limites da ré são separados pra ela não disparar como marcha à
   // frente: 3,8 contra 11.
-  // XT660: antes estava limitada a 11 m/s (~40 km/h), lenta demais para uma trail 660 no mapa.\n  // Sobe para 16 m/s (~58 km/h) com mais retomada, sem exagerar a ponto de quebrar as curvas/colisao do mapa.\n  maxVel:16,maxRe:4.2,aceleracao:18,aceleracaoRe:7.5,freio:25,atrito:5.2,
+  // XT660: antes estava limitada a 11 m/s (~40 km/h), lenta demais para uma trail 660 no mapa.
+  // Sobe para 16 m/s (~58 km/h) com mais retomada, sem exagerar a ponto de quebrar as curvas/colisao do mapa.
+  maxVel:16,maxRe:4.2,aceleracao:18,aceleracaoRe:7.5,freio:25,atrito:5.2,
   esterco:1.05,estercoPorVelocidade:1.25,inclinacaoNaCurva:.22,
   // Amostragem do chão: metade da distância entre as rodas, e metade da largura.
   // O 0,47 é MEDIDO no modelo novo: os centros das duas rodas estão em x -0,454 e +0,483, ou seja
