@@ -13,6 +13,11 @@ assert.equal(config.ok,true,config.errors.join('; '));
 assert.ok(config.houseBarnDistance>=15,'Sede e galpao precisam de 15 m de separacao');
 for(const animal of FARM_PROTOTYPE.animalSpawns)
   assert.ok(pointInPolygon(animal.x,animal.z,FARM_PROTOTYPE.pasture),`${animal.id} nasceu fora do pasto`);
+const gateStart=FARM_PROTOTYPE.property[4],gateEnd=FARM_PROTOTYPE.property[5];
+assert.equal(gateStart.x,FARM_PROTOTYPE.gate.x,'Inicio do vao nao coincide com a porteira');
+assert.equal(gateEnd.x,FARM_PROTOTYPE.gate.x,'Fim do vao nao coincide com a porteira');
+assert.ok(Math.abs(gateStart.z-(FARM_PROTOTYPE.gate.z-FARM_PROTOTYPE.gate.width/2))<1e-9,'Cerca invade um lado da porteira');
+assert.ok(Math.abs(gateEnd.z-(FARM_PROTOTYPE.gate.z+FARM_PROTOTYPE.gate.width/2))<1e-9,'Cerca invade o outro lado da porteira');
 
 assert.match(prototype,/scene\.getObjectByName\(ROOT_NAME\)/,'Montagem precisa bloquear ID duplicado');
 assert.match(prototype,/removerCaixa\(box\)/,'Desmontagem precisa remover os colisores registrados');
@@ -36,6 +41,10 @@ assert.match(prototype,/gate\.leafColliders\[0\]\.setFromObject\(gate\.left\)/,
   'Colisor esquerdo da porteira precisa acompanhar a folha');
 assert.match(prototype,/gate\.leafColliders\[1\]\.setFromObject\(gate\.right\)/,
   'Colisor direito da porteira precisa acompanhar a folha');
+assert.match(prototype,/if\(i!==4\)fenceSegment/,'Trecho visual da cerca precisa pular exatamente o vao da porteira');
+assert.match(prototype,/gateWood:/,'Porteira precisa se distinguir visualmente da cerca');
+assert.match(prototype,/-side\*diagonalAngle/,'Porteira sem travessas diagonais reais');
+assert.match(prototype,/distance<10\?true:distance>14\?false/,'Porteira precisa abrir antes de o jogador chegar ao vao');
 assert.match(terrain,/flattenPrototypeHeight\(h,x,z,PROTOTYPE_PADS\)/,'Terreno precisa aplicar os platos testados');
 
 assert.match(world,/FARM_PROTOTYPE_MODE\?null:criarFazenda/,'Fazenda antiga deve nascer apenas fora do ensaio');

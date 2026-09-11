@@ -27,6 +27,7 @@ const M={
   wall:matReboco(0xd9cfbe),
   stone:own(new THREE.MeshStandardMaterial({color:0x817465,roughness:.96,metalness:0,flatShading:true})),
   wood:matMadeira(0x4a2e18),
+  gateWood:own(new THREE.MeshStandardMaterial({color:0x9a6332,roughness:.88,metalness:0})),
   roof:matTelha(0x9e3d1b),
   concrete:matConcreto(),
   dirt:matTerraBatida(),
@@ -337,16 +338,21 @@ function buildPropertyFence(){
 function buildGate(){
   const {x,z,width}=FARM_PROTOTYPE.gate,y=ground(x,z),half=width/2;
   const left=new THREE.Group(),right=new THREE.Group();left.position.set(x,y,z-half);right.position.set(x,y,z+half);ROOT.add(left,right);
-  const leaf=half+.03,addPart=(parent,w,h,d,px,py,pz)=>{
-    const m=new THREE.Mesh(boxGeometry(w,h,d,M.wood),M.wood);m.position.set(px,py,pz);m.castShadow=true;m.receiveShadow=true;parent.add(m);
+  const leaf=half+.03,addPart=(parent,w,h,d,px,py,pz,rx=0)=>{
+    const m=new THREE.Mesh(boxGeometry(w,h,d,M.gateWood),M.gateWood);m.position.set(px,py,pz);m.rotation.x=rx;
+    m.castShadow=true;m.receiveShadow=true;parent.add(m);return m;
   };
   for(const [parent,side]of[[left,1],[right,-1]]){
-    for(const h of[.38,.78,1.18])addPart(parent,.10,.11,leaf,0,h,side*leaf/2);
-    for(const zz of[.08,leaf-.08])addPart(parent,.11,1.28,.11,0,.64,side*zz);
-    const diag=addPart(parent,.10,.10,Math.hypot(leaf,1),0,.70,side*leaf/2);
+    // Moldura clara e uma diagonal REAL: o giro em X transforma a barra local Z numa travessa Y/Z.
+    for(const h of[.28,.72,1.16])addPart(parent,.13,.13,leaf,0,h,side*leaf/2);
+    for(const zz of[.08,leaf-.08])addPart(parent,.14,1.34,.14,0,.67,side*zz);
+    const diagonalLength=Math.hypot(leaf-.22,.72),diagonalAngle=Math.atan2(.72,leaf-.22);
+    addPart(parent,.12,.12,diagonalLength,0,.70,side*leaf/2,-side*diagonalAngle);
   }
   for(const zz of[z-half-.14,z+half+.14]){
-    const gy=ground(x,zz);batch.add(new THREE.CylinderGeometry(.12,.16,1.62,8),M.wood,x,gy+.73,zz,0,0,0,true);
+    const gy=ground(x,zz);
+    batch.box(.42,1.72,.42,x,gy+.78,zz,M.stone,0,0,0,true);
+    batch.box(.52,.12,.52,x,gy+1.64,zz,M.gateWood,0,0,0,true);
   }
   const leafColliders=[movingColliderFor(left,'farm-prototype-gate'),movingColliderFor(right,'farm-prototype-gate')];
   gate={left,right,angle:0,target:0,leafColliders,x,z,open:false};
@@ -464,7 +470,9 @@ export function updateFarmPrototype(dt,playerPosition){
   if(!mounted)return;
   if(gate){
     const distance=Math.hypot(playerPosition.x-gate.x,playerPosition.z-gate.z);
-    gate.open=distance<5?true:distance>8?false:gate.open;gate.target=gate.open?Math.PI*.5:0;
+    // O spawn fica a 9 m: a porteira comeca a abrir assim que o teste inicia e termina antes de o
+    // jogador chegar ao vao. A histerese ate 14 m evita abre-fecha quando ele para perto da entrada.
+    gate.open=distance<10?true:distance>14?false:gate.open;gate.target=gate.open?Math.PI*.5:0;
     const delta=gate.target-gate.angle,speed=Math.PI/5;// 2,5 s para 90 graus
     gate.angle+=Math.sign(delta)*Math.min(Math.abs(delta),speed*dt);
     gate.left.rotation.y=-gate.angle;gate.right.rotation.y=gate.angle;
