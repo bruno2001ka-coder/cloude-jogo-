@@ -8,12 +8,11 @@ import{plantas,lojaPos,receptadorPos,fazendaPos,armasPos}from'./Economy.js';
 import{POLOS}from'./Poles.js';
 import{marcaCarro}from'./Carro.js';
 import{marcaMoto}from'./Moto.js';
-import{corredores}from'./Favela.js';
 import{npcs}from'./NPCs.js';
 import{ALT_CANO,ALT_TORSO}from'./Combate.js';
 import{RURAL_ZONES}from'./RuralWorld.js';
 import{amostrarCelulasBloqueadas}from'./NavMesh.js';
-import{heli,policiais,policia,__estadoDeCombate as estadoDeCombate}from'./Police.js';
+import{policiais,policia,__estadoDeCombate as estadoDeCombate}from'./Police.js';
 
 // ===== O GPS =====
 // O Bruno pediu "mais profissional e funcional possível", com "abreviação de cada nome em cada lugar
@@ -44,7 +43,8 @@ const RADAR_LIMITE=RADAR_TAM/2-8;
 // mesmo trabalho 60 vezes por segundo pra um desenho que nunca muda — o mapa é estático. Uma passada
 // no carregamento, e depois é só recortar o pedaço perto do jogador.
 const RUAS=[];
-for(const c of corredores){
+// A favela foi removida; não há rede urbana dela para rasterizar no radar.
+for(const c of []){
   const comp=c.curva.getLength();
   const n=Math.max(2,Math.ceil(comp/2));// um ponto a cada ~2 m
   const pts=[];
@@ -219,8 +219,7 @@ export function atualizarRadar(){
       r.papel==='cliente'?4.5:4,false);
   // Muda sem sigla: são muitas, e o ponto verde já diz tudo. Sigla em cada pé viraria borrão.
   for(const pl of plantas)if(!pl.colhida)desenharPontoRadar(pl.x,pl.z,'#7cfc00',3.5,false);
-  // Helicóptero e polícia só acendem quando estão de olho em alguma coisa.
-  if(policia.estado!=='patrulha')desenharPontoRadar(heli.position.x,heli.position.z,'#8fd4ff',5,true,'HELI');
+  // Helicóptero removido do jogo. O radar mostra apenas policiais realmente em campo.
   if(policia.estado==='combate')for(const pol of policiais)if(pol.vivo)desenharPontoRadar(pol.pos.x,pol.pos.z,'#ff3b3b',3,false);
   radarCtx.restore();
 
