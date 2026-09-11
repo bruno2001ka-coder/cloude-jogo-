@@ -1,0 +1,17 @@
+const largura=6;
+const profundidade=5;
+const altura=3.2;
+const vao=2.35;
+const espessura=.18;
+const lateral=(largura-vao)/2;
+const subida=4.55-altura;
+const meiaLarg=3;
+const beiral=.45;
+const agua=Math.hypot(meiaLarg,subida)+beiral;
+const assert=(cond,msg)=>{if(!cond)throw new Error(msg)};
+assert(lateral>0,'o vão não pode ser maior que a fachada');
+assert(Math.abs(2*lateral+vao-largura)<1e-9,'as laterais não fecham a largura da fachada');
+assert(altura>0&&profundidade>0,'dimensões inválidas');
+assert(Math.abs(agua-(Math.hypot(3,1.35)+.45))<1e-9,'comprimento do telhado inconsistente');
+assert(espessura<altura,'parede não pode ser uma laje horizontal');
+console.log(JSON.stringify({largura,profundidade,altura,vao,lateral,subida,agua},null,2));

@@ -205,12 +205,14 @@ function criarFazenda(cx,cz){
   // Paredes separadas deixam uma abertura real na fachada. A caixa única antiga bloqueava a porta
   // mesmo quando o portão visual estava aberto; quatro panos mantêm a estrutura fechada e liberam o vão.
   const ALTURA_CELEIRO=3.2,LARGURA_PORTA_CELEIRO=2.35;
-  const paredeFundo=bloco(new THREE.BoxGeometry(6,.18,5),madeiraCeleiro,bx,by+1.6,bz-2.41);
+  // Todas as paredes usam largura, altura e espessura na ordem correta da BoxGeometry.
+  // A versão anterior trocou altura por profundidade e virou vigas horizontais na fachada.
+  const paredeFundo=bloco(new THREE.BoxGeometry(6,ALTURA_CELEIRO,.18),madeiraCeleiro,bx,by+1.6,bz-2.41);
   const paredeLateralE=bloco(new THREE.BoxGeometry(.18,ALTURA_CELEIRO,5),madeiraCeleiro,bx-2.91,by+1.6,bz);
   const paredeLateralD=bloco(new THREE.BoxGeometry(.18,ALTURA_CELEIRO,5),madeiraCeleiro,bx+2.91,by+1.6,bz);
   const larguraLateral=(6-LARGURA_PORTA_CELEIRO)/2;
-  const paredeFrenteE=bloco(new THREE.BoxGeometry(larguraLateral,.18,2.4),madeiraCeleiro,bx-((LARGURA_PORTA_CELEIRO+larguraLateral)/2),by+1.6,bz+2.41);
-  const paredeFrenteD=bloco(new THREE.BoxGeometry(larguraLateral,.18,2.4),madeiraCeleiro,bx+((LARGURA_PORTA_CELEIRO+larguraLateral)/2),by+1.6,bz+2.41);
+  const paredeFrenteE=bloco(new THREE.BoxGeometry(larguraLateral,ALTURA_CELEIRO,.18),madeiraCeleiro,bx-((LARGURA_PORTA_CELEIRO+larguraLateral)/2),by+1.6,bz+2.41);
+  const paredeFrenteD=bloco(new THREE.BoxGeometry(larguraLateral,ALTURA_CELEIRO,.18),madeiraCeleiro,bx+((LARGURA_PORTA_CELEIRO+larguraLateral)/2),by+1.6,bz+2.41);
   for(const parede of[paredeFundo,paredeLateralE,paredeLateralD,paredeFrenteE,paredeFrenteD])registrarObstaculo(parede,'celeiro');
   // Telhado de duas águas. A inclinação sai da geometria (meia largura x altura do cume), não de um
   // ângulo escolhido no olho: a empena logo abaixo é montada com a MESMA conta, e foi assim que ela
@@ -242,14 +244,15 @@ function criarFazenda(cx,cz){
   }
   // Portas duplas funcionais do celeiro, com travessas e dobradiças. Nascem abertas para o interior
   // continuar acessível à navegação; fechar a porta atualiza um único AABB móvel.
-  const pivosCeleiro=[];
+  const pivosCeleiro=[],LARGURA_FOLHA=LARGURA_PORTA_CELEIRO/2-.05;
   for(const lado of[-1,1]){
     const pivo=new THREE.Group();pivo.position.set(bx+lado*LARGURA_PORTA_CELEIRO/2,by+.35,bz+2.53);bairro.add(pivo);
-    const folha=new THREE.Group();folha.position.set(-lado*LARGURA_PORTA_CELEIRO/2,0,0);pivo.add(folha);
-    bloco(new THREE.BoxGeometry(LARGURA_PORTA_CELEIRO/2-.05,2.45,.12),madeiraCeleiro,0,1.22,0,folha);
-    for(const alt of[.45,1.18,1.9])bloco(new THREE.BoxGeometry(LARGURA_PORTA_CELEIRO/2-.16,.10,.16),ripaEscura,-lado*LARGURA_PORTA_CELEIRO/4,alt,.08,folha);
-    const diagonal=bloco(new THREE.BoxGeometry(LARGURA_PORTA_CELEIRO/2-.18,.09,.12),ripaEscura,-lado*LARGURA_PORTA_CELEIRO/4,1.2,.1,folha);
-    diagonal.rotation.z=lado*Math.atan2(1.2,LARGURA_PORTA_CELEIRO/2);
+    // A dobradiça fica na extremidade externa; o centro da folha fica meia folha para dentro do vão.
+    const folha=new THREE.Group();folha.position.set(-lado*LARGURA_FOLHA/2,0,0);pivo.add(folha);
+    bloco(new THREE.BoxGeometry(LARGURA_FOLHA,2.45,.12),madeiraCeleiro,0,1.22,0,folha);
+    for(const alt of[.45,1.18,1.9])bloco(new THREE.BoxGeometry(LARGURA_FOLHA-.16,.10,.16),ripaEscura,0,alt,.08,folha);
+    const diagonal=bloco(new THREE.BoxGeometry(LARGURA_FOLHA-.18,.09,.12),ripaEscura,0,1.2,.1,folha);
+    diagonal.rotation.z=lado*Math.atan2(1.2,LARGURA_FOLHA);
     pivosCeleiro.push({pivo,lado});
   }
   bloco(new THREE.BoxGeometry(LARGURA_PORTA_CELEIRO+.28,.14,.16),ripaEscura,bx,by+2.62,bz+2.58);
