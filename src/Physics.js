@@ -125,7 +125,7 @@ function otimizarObstaculos(){
         const eixo=contida(b,a)?-1:eixoDeFusao(a,b);
         if(eixo===null)continue;
         if(eixo>=0)a.union(b);
-        obstaculos.splice(j,1);j--;mudou=true;
+        obstaculos.splice(j,1);categoriasObstaculo.splice(j,1);j--;mudou=true;
       }
     }
     if(!mudou)break;
@@ -177,6 +177,26 @@ export function registrarCaixa(box,categoria='sem-categoria'){
   gradeMontada=false;otimizado=false;
   obstaculos.push(box);categoriasObstaculo.push(categoria);
   return box;
+}
+
+// Remocao real de colisor: usada por geradores que substituem uma estrutura inteira.
+// Remove a mesma Box3 de TODAS as estruturas auxiliares e força reconstrução do broadphase.
+export function removerCaixa(box){
+  const i=obstaculos.indexOf(box);
+  if(i<0)return false;
+  obstaculos.splice(i,1);
+  categoriasObstaculo.splice(i,1);
+  caixasMoveis.delete(box);
+  caixasSemFusao.delete(box);
+  const m=obstaculosMoveis.indexOf(box);if(m>=0)obstaculosMoveis.splice(m,1);
+  gradeMontada=false;otimizado=false;obstaculosOriginais=null;carimbos=null;
+  return true;
+}
+export function removerSuperficieAndavel(mesh){
+  const i=superficiesAndaveis.indexOf(mesh);
+  if(i<0)return false;
+  superficiesAndaveis.splice(i,1);
+  return true;
 }
 
 // Candidatas a uma CAIXA (não a um segmento): as células que o retângulo XZ cobre, mais as móveis.
