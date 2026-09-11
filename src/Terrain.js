@@ -5,6 +5,7 @@ import{scene}from'./core.js';
 import{MAP_HALF_SIZE,MAP_SIZE}from'./WorldBounds.js';
 import{registrarCaixa}from'./Physics.js';
 import{deformarTerrenoLago}from'./LakeConfig.js';
+import{FAZENDA_CONFIG}from'./FarmConfig.js';
 
 // ===== O MORRO NÃO É UM CONE =====
 // Já foi UMA gaussiana em (0,-24): matematicamente perfeita e, por isso mesmo, lendo como uma bolha
@@ -55,7 +56,7 @@ const MORROS=[
   {x:  19,z:  87,a: 2.8,s: 8},// contraforte sudoeste, quebra a simetria da encosta
 ];
 const PLATO_PASSO=2.6,PLATO_FORCA=.7;
-export function obterElevacao(x,z){
+function elevacaoNatural(x,z){
   let h=0;
   for(let i=0;i<MORROS.length;i++){
     const m=MORROS[i],dx=x-m.x,dz=z-m.z;
@@ -66,9 +67,35 @@ export function obterElevacao(x,z){
     +Math.cos(x*.19-z*.16)*.3
     +Math.sin(x*.33+z*.28)*.12;
   h-=PLATO_FORCA*Math.sin(2*Math.PI*h/PLATO_PASSO)/(2*Math.PI);
-  // O lago e uma ESCAVACAO do proprio terreno. Player, veiculos e malha visual leem esta mesma altura.
   h=deformarTerrenoLago(h,x,z);
   return THREE.MathUtils.clamp(h,-2.5,22);
+}
+
+// ===== TERRAPLENAGEM LOCAL DA FAZENDA PRINCIPAL =====
+// A casa tinha ~75 cm de variação de terreno sob uma base plana; a porteira, ~42 cm entre batentes.
+// Não escondemos isso engrossando a laje: o TERRENO é nivelado só onde existe a construção/soleira,
+// com uma faixa de transição suave até o relevo natural. Fora dessas duas áreas, a função é idêntica.
+const COTA_CASA_FAZENDA=elevacaoNatural(FAZENDA_CONFIG.casa.x,FAZENDA_CONFIG.casa.z);
+const COTA_PORTEIRA_FAZENDA=elevacaoNatural(FAZENDA_CONFIG.porteira.x,FAZENDA_CONFIG.porteira.z);
+const suave01=t=>{t=THREE.MathUtils.clamp(t,0,1);return t*t*(3-2*t)};
+function nivelarRetangulo(h,x,z,cx,cz,cota,cfg){
+  const ax=Math.abs(x-cx),az=Math.abs(z-cz);
+  if(ax>=cfg.outerX||az>=cfg.outerZ)return h;
+  if(ax<=cfg.innerX&&az<=cfg.innerZ)return cota;
+  const tx=ax<=cfg.innerX?0:(ax-cfg.innerX)/(cfg.outerX-cfg.innerX);
+  const tz=az<=cfg.innerZ?0:(az-cfg.innerZ)/(cfg.outerZ-cfg.innerZ);
+  // max() preserva um miolo retangular totalmente plano e faz a borda voltar ao relevo sem quina.
+  const natural=suave01(Math.max(tx,tz));
+  return cota*(1-natural)+h*natural;
+}
+export function obterElevacao(x,z){
+  let h=elevacaoNatural(x,z);
+  h=nivelarRetangulo(h,x,z,FAZENDA_CONFIG.casa.x,FAZENDA_CONFIG.casa.z,COTA_CASA_FAZENDA,FAZENDA_CONFIG.nivelamentoCasa);
+  h=nivelarRetangulo(h,x,z,FAZENDA_CONFIG.porteira.x,FAZENDA_CONFIG.porteira.z,COTA_PORTEIRA_FAZENDA,FAZENDA_CONFIG.nivelamentoPorteira);
+  return h;
+}
+export function __cotasFazendaParaTeste(){
+  return{casa:COTA_CASA_FAZENDA,porteira:COTA_PORTEIRA_FAZENDA};
 }
 
 // Chão de terra com PBR: a mesma textura tileável do resto do bairro, repetida a cada 4 m. O normal é
