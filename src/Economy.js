@@ -64,7 +64,11 @@ function carregarTexturaPlanta(url){return carregadorTexturaPlanta.load(url,
   undefined,
   erro=>console.warn('Quintal 3D: falha ao carregar asset de planta',url,erro))}
 const TEXTURAS_BASE=['assets/planta_estagio_1_muda.png','assets/planta_estagio_2_vegetativa.png','assets/planta_estagio_3_madura.png'].map(carregarTexturaPlanta);
-const TEXTURAS_ROXAS=['assets/planta_estagio_4_pre-floracao_roxa.png','assets/planta_estagio_5_floracao_roxa.png','assets/planta_estagio_6_madura_roxa.png'].map(carregarTexturaPlanta);
+// Os tres PNGs roxos somam mais de 13 MB. Antes carregavam na abertura mesmo sem nenhuma genetica
+// roxa existir. Agora cada estágio roxo entra somente quando uma planta realmente chega nele.
+const URLS_ROXAS=['assets/planta_estagio_4_pre-floracao_roxa.png','assets/planta_estagio_5_floracao_roxa.png','assets/planta_estagio_6_madura_roxa.png'];
+const CACHE_ROXAS=new Array(URLS_ROXAS.length);
+function texturaRoxa(estagio){const i=estagio-3;return CACHE_ROXAS[i]||(CACHE_ROXAS[i]=carregarTexturaPlanta(URLS_ROXAS[i]))}
 const ESCALAS_ESTAGIO=[.82,1.18,1.42,1.52,1.67,1.82];
 function spritePlanta(parent,texture,escala,estagio){
   const material=new THREE.SpriteMaterial({map:texture,transparent:true,alphaTest:.05,depthWrite:false});
@@ -79,14 +83,19 @@ function spritePlanta(parent,texture,escala,estagio){
 function criarPlanta(x,y,z,genetica){
   const tipo=genetica==='roxa'||genetica==='verde'?genetica:(Math.random()<CHANCE_GENETICA_ROXA?'roxa':'verde');
   const g=new THREE.Group();g.position.set(x,y,z);scene.add(g);
-  const fontes=tipo==='roxa'?[...TEXTURAS_BASE,...TEXTURAS_ROXAS]:TEXTURAS_BASE;
-  const revelaEm=fontes.map((texture,estagio)=>[spritePlanta(g,texture,ESCALAS_ESTAGIO[estagio],estagio),estagio]);
+  // Todo mundo começa com os três estágios-base. Os estágios roxos são criados sob demanda.
+  const revelaEm=TEXTURAS_BASE.map((texture,estagio)=>[spritePlanta(g,texture,ESCALAS_ESTAGIO[estagio],estagio),estagio]);
   revelaEm.forEach(([m,estagio])=>m.visible=estagio===0);
   criarSombraContato(.52,g,0,.02);
   return{grupo:g,x,y,z,genetica:tipo,plantadoEm:performance.now()/1000,estagio:0,revelaEm,colhida:false};
 }
 // Crescimento cumulativo: cada parte troca a imagem no estágio seguinte, mantendo o vaso ancorado no chão.
-function atualizarEstagioPlanta(planta){planta.revelaEm.forEach(([m,estagioMin])=>m.visible=planta.estagio===estagioMin)}
+function atualizarEstagioPlanta(planta){
+  if(planta.genetica==='roxa'&&planta.estagio>=3&&!planta.revelaEm.some(([,e])=>e===planta.estagio)){
+    const e=planta.estagio,m=spritePlanta(planta.grupo,texturaRoxa(e),ESCALAS_ESTAGIO[e],e);m.visible=false;planta.revelaEm.push([m,e]);
+  }
+  planta.revelaEm.forEach(([m,estagioMin])=>m.visible=planta.estagio===estagioMin)
+}
 export function plantaPronta(planta){return planta.genetica==='roxa'?planta.estagio>=MAX_ESTAGIO:planta.estagio>=MAX_ESTAGIO_VERDE}
 export function nomeEstagio(planta){
   const nomes=planta.genetica==='roxa'
