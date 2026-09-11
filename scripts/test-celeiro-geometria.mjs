@@ -17,26 +17,74 @@ assert(altura>0&&profundidade>0,'dimensões inválidas');
 assert(Math.abs(agua-(Math.hypot(3,1.35)+.45))<1e-9,'comprimento do telhado inconsistente');
 assert(espessura<altura,'parede não pode ser uma laje horizontal');
 
-/* Layout interno: cultivo e animais não podem se misturar. */
-function distSegmento(px,pz){
-  const a=F.acesso.a,b=F.acesso.b,dx=b.x-a.x,dz=b.z-a.z,den=dx*dx+dz*dz;
-  const tt=Math.max(0,Math.min(1,((px-a.x)*dx+(pz-a.z)*dz)/den));
-  return Math.hypot(px-(a.x+dx*tt),pz-(a.z+dz*tt));
+function boundsCurral(c){
+  return{minX:c.cx-c.w/2,maxX:c.cx+c.w/2,minZ:c.cz-c.d/2,maxZ:c.cz+c.d/2};
 }
-const C=F.cultivo,A=F.animais,seg=C.segmento;
+function overlap(a,b){
+  return Math.min(a.maxX,b.maxX)>Math.max(a.minX,b.minX)&&
+         Math.min(a.maxZ,b.maxZ)>Math.max(a.minZ,b.minZ);
+}
+function gapRet(a,b){
+  const gx=Math.max(0,b.minX-a.maxX,a.minX-b.maxX);
+  const gz=Math.max(0,b.minZ-a.maxZ,a.minZ-b.maxZ);
+  return Math.hypot(gx,gz);
+}
+function distPontoRet(px,pz,r){
+  const dx=Math.max(r.minX-px,0,px-r.maxX);
+  const dz=Math.max(r.minZ-pz,0,pz-r.maxZ);
+  return Math.hypot(dx,dz);
+}
+function distSegmentoRet(a,b,r){
+  let min=Infinity;
+  for(let i=0;i<=240;i++){
+    const t=i/240;
+    const x=a.x+(b.x-a.x)*t,z=a.z+(b.z-a.z)*t;
+    min=Math.min(min,distPontoRet(x,z,r));
+  }
+  return min;
+}
+
+const C=F.cultivo;
+const cultivo={minX:C.minX,maxX:C.maxX,minZ:C.minZ,maxZ:C.maxZ};
+const currais=Object.values(F.currais).map(c=>({tipo:c.tipo,...boundsCurral(c)}));
+
+// Campo dedicado: 6 x 8 m, 6 linhas, 5 segmentos por linha = 30 segmentos.
 let canteiros=0,linhas=0;
 for(let z=C.minZ;z<=C.maxZ;z+=C.espacamentoLinha){
   linhas++;
-  for(let x0=C.minX;x0<C.maxX-.001;x0+=seg)canteiros++;
+  for(let x0=C.minX;x0<C.maxX-.001;x0+=C.segmento)canteiros++;
 }
-assert(linhas===4,`esperadas 4 linhas de cultivo, calculadas ${linhas}`);
-assert(canteiros===56,`esperados 56 segmentos de canteiro, calculados ${canteiros}`);
-assert(A.maxZ<C.minZ,`campo animal e cultivo se sobrepõem em Z: ${A.maxZ} / ${C.minZ}`);
-assert(C.minZ-A.maxZ>=7,`separação entre campo e roça menor que 7 m: ${C.minZ-A.maxZ}`);
-for(const[x,z]of[[A.minX+A.margem,A.minZ+A.margem],[A.maxX-A.margem,A.maxZ-A.margem]])
-  assert(distSegmento(x,z)>F.acesso.raio+.8,'campo dos animais invade corredor principal');
-assert(distSegmento(-94,-53)<F.acesso.raio,'o antigo balcão deve continuar proibido no corredor');
-console.log(JSON.stringify({largura,profundidade,altura,vao,lateral,subida,agua,
-  acessoA:F.acesso.a,acessoB:F.acesso.b,larguraCorredor:F.acesso.raio*2,
-  cultivo:{linhas,canteiros,minX:C.minX,maxX:C.maxX,minZ:C.minZ,maxZ:C.maxZ},
-  campoAnimais:A,separacaoMetros:C.minZ-A.maxZ},null,2));
+assert(C.maxX-C.minX===6&&C.maxZ-C.minZ===8,'campo de plantio deve medir 6 x 8 m');
+assert(linhas===6,`esperadas 6 linhas de cultivo, calculadas ${linhas}`);
+assert(canteiros===30,`esperados 30 segmentos de canteiro, calculados ${canteiros}`);
+
+// Nenhum curral pode se sobrepor a outro ou ao campo.
+for(let i=0;i<currais.length;i++)for(let j=i+1;j<currais.length;j++)
+  assert(!overlap(currais[i],currais[j]),`currais ${currais[i].tipo}/${currais[j].tipo} se sobrepõem`);
+for(const c of currais)
+  assert(!overlap(c,cultivo),`cultivo invade curral ${c.tipo}`);
+
+// O caso crítico do print: porcos x plantio. São 2 m de folga lateral.
+const porco=currais.find(c=>c.tipo==='porco');
+assert(Math.abs(gapRet(porco,cultivo)-2)<1e-9,`folga plantio/porcos deveria ser 2 m, veio ${gapRet(porco,cultivo)}`);
+
+// Recuos estruturais do campo.
+const fazenda={minX:F.cx-F.meiaLarg,maxX:F.cx+F.meiaLarg,minZ:F.cz-F.meiaProf,maxZ:F.cz+F.meiaProf};
+assert(C.minX-fazenda.minX>=2,'campo ficou perto demais da cerca oeste');
+assert(fazenda.maxZ-C.maxZ>=2,'campo ficou perto demais da cerca norte');
+const casa={minX:F.casa.x-F.casa.baseLargura/2,maxX:F.casa.x+F.casa.baseLargura/2,
+  minZ:F.casa.z-F.casa.baseProfundidade/2,maxZ:F.casa.z+F.casa.baseProfundidade/2};
+assert(gapRet(casa,cultivo)>=4.3,`campo ficou perto demais da casa: ${gapRet(casa,cultivo).toFixed(2)} m`);
+
+const distCorredor=distSegmentoRet(F.acesso.a,F.acesso.b,cultivo);
+assert(distCorredor-F.acesso.raio>=1.6,
+  `campo invade folga do corredor principal: só ${(distCorredor-F.acesso.raio).toFixed(2)} m livres`);
+
+console.log(JSON.stringify({
+  largura,profundidade,altura,vao,lateral,subida,agua,
+  cultivo:{...cultivo,largura:C.maxX-C.minX,profundidade:C.maxZ-C.minZ,linhas,canteiros},
+  currais,
+  folgaPlantioPorcos:gapRet(porco,cultivo),
+  folgaPlantioCasa:gapRet(casa,cultivo),
+  folgaExtraCorredor:distCorredor-F.acesso.raio
+},null,2));
