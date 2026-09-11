@@ -7,6 +7,7 @@ import{obterElevacao}from'./Terrain.js';
 import{registrarCaixa,marcarObstaculoMovel}from'./Physics.js';
 import{criarSombraContato}from'./Materials.js';
 import{player}from'./Player.js';
+import{FARM_PROTOTYPE_MODE}from'./GameMode.js';
 
 const madeira=new THREE.MeshStandardMaterial({color:0x7a5738,roughness:.94,metalness:0});
 const madeiraEscura=new THREE.MeshStandardMaterial({color:0x4e3928,roughness:.96,metalness:0});
@@ -117,7 +118,7 @@ function criarCurral(curral){
   criarCocho(curral);criarAbrigo(curral);
   curral.bounds={minX:x0+.55,maxX:x1-.55,minZ:z0+.55,maxZ:z1-.55};
 }
-for(const c of CURRAIS)criarCurral(c);
+if(!FARM_PROTOTYPE_MODE)for(const c of CURRAIS)criarCurral(c);
 
 function tipoPorIndice(i){return i<2?'vaca':i<4?'porco':'galinha'}
 function sortearAlvo(c){
