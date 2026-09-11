@@ -324,8 +324,11 @@ function criarFazenda(){
   bloco(new THREE.BoxGeometry(.9,.7,.1),ripaEscura,bx,by+3.05,bz+2.53);// portinhola do feno, lá em cima
   // Cocho e barril continuam existindo, mas saem da parede: antes atravessavam o canto traseiro.
   // Agora formam a área de serviço lateral, fora da porta e fora do corredor da porteira.
-  bloco(new THREE.BoxGeometry(2.1,.4,.7),ripaEscura,bx+4.5,obterElevacao(bx+4.5,bz)+.3,bz);
-  bloco(new THREE.CylinderGeometry(.35,.4,.7,10),ripaEscura,bx+4.3,obterElevacao(bx+4.3,bz-1.2)+.35,bz-1.2);
+  const cocho=FAZENDA_CONFIG.servico.cocho,barril=FAZENDA_CONFIG.servico.barril;
+  bloco(new THREE.BoxGeometry(cocho.largura,.4,cocho.profundidade),ripaEscura,
+    cocho.x,obterElevacao(cocho.x,cocho.z)+.3,cocho.z);
+  bloco(new THREE.CylinderGeometry(.35,barril.raio,.7,10),ripaEscura,
+    barril.x,obterElevacao(barril.x,barril.z)+.35,barril.z);
 
   const m4=new THREE.Matrix4(),posV=new THREE.Vector3(),quatV=new THREE.Quaternion(),escalaV=new THREE.Vector3();
   const eixoY=new THREE.Vector3(0,1,0),eixoX=new THREE.Vector3(1,0,0);
