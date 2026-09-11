@@ -470,6 +470,12 @@ import{matRebocoSujo,matTelha,matConcreto,tijolo,concreto,janela,janelaAcesa,mol
   matMadeira,graffiteMat,bmat,uvPorMetro}from'./Materials.js';
 
 export const favela=new THREE.Group();
+// A favela continua inteira e funcional, mas nao precisa ser desenhada quando o jogador esta
+// atravessando o campo a centenas de metros. Colisores, rotas e dados continuam carregados.
+export function atualizarFavelaVisivel(x,z){
+  const dx=x+4,dz=z+25;
+  favela.visible=dx*dx+dz*dz<175*175;
+}
 
 // Acumuladores por material: a geometria entra aqui e no fim vira UMA malha por lista.
 // Duas pilhas, não uma. A ANDÁVEL é o que o jogador pisa (laje, escadão) e vira `superficiesAndaveis`,
