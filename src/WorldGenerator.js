@@ -41,8 +41,12 @@ export const casasPos=[];
 export const casasCliente=[];
 export const BECOS={viaPrincipal:{getPointAt:()=>({x:0,y:0,z:0}),getTangentAt:()=>({x:0,y:0,z:0})},viaBaixa:{getPointAt:()=>({x:0,y:0,z:0}),getTangentAt:()=>({x:0,y:0,z:0})}};
 export const casasOcas=[];
-export const BAR=null;
-export const BIQUEIRA=null;
+// A favela saiu, mas Economy/UI ainda consultam coordenadas de BAR/BIQUEIRA.
+// Nunca exportar null aqui: acessar .x em null interrompe o quadro antes do composer.render().
+// Pontos desativados ficam muito fora do mapa com raio zero, então preservam a API sem aparecer
+// no radar nem criar interação fantasma.
+export const BAR={x:1e6,z:1e6,raio:0,desativado:true};
+export const BIQUEIRA={x:1e6,z:1e6,raio:0,desativado:true};
 export function sumirCaixa(){}
 export function alternarPorta(){}
 export function casaOcaEmQueEsta(){return null}
