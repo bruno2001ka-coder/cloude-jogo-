@@ -57,7 +57,7 @@ document.getElementById('destravarBtn').addEventListener('click',()=>destravarJo
 // Marca de versão na tela inicial. Existe por um motivo prático: quando uma novidade "não aparece",
 // a primeira pergunta é se o navegador está servindo o build novo ou um cache velho — e sem isso não
 // há como responder olhando a tela. O segundo campo diz se o boneco 3D entrou.
-const VERSAO_JOGO='0.4.9-farm-reverted';
+const VERSAO_JOGO='0.4.10-startup-fix';
 {const el=document.getElementById('versaoJogo');
  if(el){el.textContent=`versão ${VERSAO_JOGO} · boneco 3D: carregando…`;
    const marcar=()=>{el.textContent=`versão ${VERSAO_JOGO} · boneco 3D: ${personagemCarregado()?'ok':'não carregou'}`};
@@ -139,6 +139,9 @@ function tick(){
       if(el){el.textContent='Alguma coisa falhou — o jogo segue rodando.';el.style.display='block';el.style.opacity='1';
         setTimeout(()=>{el.style.opacity='0';setTimeout(()=>{el.style.display='none'},300)},3000);}
     }catch(e){}
+    // Um erro de IA/economia/radar não pode transformar a tela inteira em preto. Se o quadro abortou
+    // antes do render normal, desenha o último estado válido da cena mesmo assim.
+    try{composer.render()}catch(e){}
   }
 }
 function quadro(){
