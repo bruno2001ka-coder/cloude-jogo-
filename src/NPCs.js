@@ -13,7 +13,17 @@ const ESCALA_NPC=PLAYER_HEIGHT/1.75;
 export const PEDESTRE_MEIA_LARG=.45*ESCALA_NPC,PEDESTRE_MEIA_PROF=.22*ESCALA_NPC,PEDESTRE_ALTURA=PLAYER_HEIGHT;
 const LOOKAHEAD=2.2;
 
-export const waypointsVielas=BECOS;
+// Depois da remoção da favela, WorldGenerator mantém BECOS apenas como objeto de compatibilidade.
+// NPC e polícia, porém, precisam de uma LISTA real de pontos. Se a favela não fornece essa lista,
+// usamos pontos sobre as estradas rurais já existentes, em vez de tentar indexar um objeto e derrubar
+// todo o grafo de módulos antes do primeiro frame (HUD aparecia, mundo 3D ficava preto).
+const WAYPOINTS_RURAIS_FALLBACK=[
+  {x:34,z:72},{x:13,z:85},{x:-18,z:98},{x:-58,z:104},{x:-101,z:94},
+  {x:49,z:84},{x:67,z:96},{x:84,z:104},{x:105,z:110},
+  {x:31,z:68},{x:50,z:52},{x:73,z:30},{x:99,z:2},{x:118,z:-28}
+];
+const becosValidos=Array.isArray(BECOS)?BECOS.filter(p=>Number.isFinite(p?.x)&&Number.isFinite(p?.z)):[];
+export const waypointsVielas=becosValidos.length?becosValidos:WAYPOINTS_RURAIS_FALLBACK;
 function rotaAteDestino(npc,destino){
   const caminho=encontrarCaminho(npc.pos.x,npc.pos.z,destino.x,destino.z);
   return caminho&&caminho.length?caminho:[destino];
