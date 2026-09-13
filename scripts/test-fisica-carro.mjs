@@ -12,6 +12,9 @@ const checks=[
   ['perda de velocidade na batida',/velocidade\*=Math\.max\(\.08,1-severidade\*\.92\)/.test(veiculo)],
   ['dano acumulado conservado',/dano=Math\.min\(cfg\.danoMaximo/.test(veiculo)&&/eficiencia=Math\.max\(\.35,1-dano/.test(veiculo)],
   ['som de colisão',/tocarSomColisaoCarro\(impacto,player\.position\)/.test(veiculo)&&/export function tocarSomColisaoCarro/.test(audio)],
+  ['coeficientes de pneu',/aderenciaPneu:1\.08/.test(carro)&&/resistenciaRolamento:\.22/.test(carro)],
+  ['patinagem longitudinal',/patinagemLongitudinal=THREE\.MathUtils\.clamp/.test(veiculo)&&/1\+patinagemLongitudinal\*\.75/.test(veiculo)],
+  ['deslizamento lateral e freio de mão traseiro',/deslizamentoLateral=THREE\.MathUtils\.clamp/.test(veiculo)&&/freioDeMaoAderenciaTraseira/.test(veiculo)],
 ];
 const falhas=checks.filter(([,ok])=>!ok);
 console.log(JSON.stringify({ok:!falhas.length,total:checks.length,checks:checks.map(([nome,ok])=>({nome,ok})),falhas:falhas.map(([nome])=>nome)},null,2));

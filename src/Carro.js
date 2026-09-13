@@ -26,6 +26,8 @@ const carro=criarVeiculo({
   // 120 km/h = 33,33 m/s. A aceleração progressiva fica no Veiculo.js: o acelerador
   // define um alvo e o motor se aproxima dele sem salto instantâneo.
   maxVel:33.333,maxRe:4.5,aceleracao:12,aceleracaoRe:5,freio:24,atrito:4.5,
+  aderenciaPneu:1.08,aderenciaLongitudinal:1.02,resistenciaRolamento:.22,
+  limiteDeslizamento:.72,freioDeMaoAderenciaTraseira:.16,distribuicaoFreio:.62,
   // Esterço bem mais lento que o da moto (1,05 + 1,25): carro não pivota no lugar.
   esterco:.55,estercoPorVelocidade:.55,inclinacaoNaCurva:.06,
   entreEixos:.72,meiaBitola:.40,
@@ -126,6 +128,7 @@ export function maxVelCarro(){return carro.maxVel()}
 export function sondasCarro(){return carro.sondas()}
 export function danoCarro(){return carro.dano()}
 export function ultimoImpactoCarro(){return carro.ultimoImpacto()}
+export function atritoCarro(){return carro.atrito()}
 // Onde ele está parado, pro radar (null enquanto não carregou, e null quando o jogador está
 // montado nele — ver `marcaNoMapa` em Veiculo.js).
 export function marcaCarro(){return carro.marcaNoMapa()}

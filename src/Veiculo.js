@@ -63,7 +63,7 @@ export function criarVeiculo(cfg){
   // Em 'YXZ' o giro vem primeiro e a inclinação acontece nos eixos DELE.
   grupo.rotation.order='YXZ';
   let montado=false,carregado=false,velocidade=0;
-  let dano=0,ultimoImpacto=0;
+  let dano=0,ultimoImpacto=0,patinagemLongitudinal=0,deslizamentoLateral=0,forcaAtritoPneus=0;
   const sondas=[{nome:'dianteira-esquerda',x:-1,z:-1,altura:0},{nome:'dianteira-direita',x:1,z:-1,altura:0},{nome:'traseira-esquerda',x:-1,z:1,altura:0},{nome:'traseira-direita',x:1,z:1,altura:0}];
   let botaoVisivel=null;// null = ainda não decidido, pra o primeiro quadro sempre escrever
   // A parcela de CURVA da rolagem, guardada à parte pra poder ser amortecida sozinha, sem arrastar a
@@ -466,6 +466,28 @@ export function criarVeiculo(cfg){
     }
   }
 
+  // ===== ATRITO REALISTA DOS PNEUS =====
+  // A aceleração continua previsível, mas as quatro rodas têm um limite de força: excedê-lo gera
+  // patinagem longitudinal; esterçar além da aderência gera escorregamento lateral; o freio de mão
+  // reduz a aderência traseira. A roda visual gira um pouco mais quando está patinando.
+  function atualizarAtrito(dt,acelerador,direcao,freioDeMao){
+    const velocidadeAbsoluta=Math.abs(velocidade),g=9.81;
+    const mu=Math.max(.25,(cfg.aderenciaPneu||1)*Math.max(.45,1-dano/Math.max(1,cfg.danoMaximo||100)*.35));
+    const capacidade=g*mu*(cfg.aderenciaLongitudinal||1);
+    const demandaMotor=Math.abs(acelerador)*cfg.aceleracao;
+    patinagemLongitudinal=THREE.MathUtils.clamp((demandaMotor-capacidade)/Math.max(1,capacidade),0,1);
+    const resistencia=(cfg.resistenciaRolamento||0)*(.7+velocidadeAbsoluta*.035);
+    if(velocidadeAbsoluta>.08&&!acelerador&&!freioDeMao){
+      const queda=Math.min(velocidadeAbsoluta,resistencia*dt);
+      velocidade-=Math.sign(velocidade)*queda;
+    }
+    const aderenciaLateral=freioDeMao?(cfg.freioDeMaoAderenciaTraseira||.18):mu;
+    const demandaLateral=Math.abs(direcao)*velocidadeAbsoluta*.82;
+    deslizamentoLateral=THREE.MathUtils.clamp(demandaLateral/(g*Math.max(.1,aderenciaLateral))-.42,0,1);
+    forcaAtritoPneus=Math.min(1,Math.hypot(patinagemLongitudinal,deslizamentoLateral));
+    return direcao*(1-deslizamentoLateral*.28);
+  }
+
   // ===== O BOTÃO SÓ EXISTE QUANDO SERVE PRA ALGUMA COISA =====
   // "os botão de carro e moto devem aparecer só quando estiver perto do veículo."
   // Eram dois botões fixos no meio da tela, o tempo todo, ocupando o espaço bom do polegar — e a
@@ -565,13 +587,14 @@ export function criarVeiculo(cfg){
     const velocidadeAntes=velocidade;
     atualizarVelocidade(dt,acelerador,freioDeMao);
     const aceleracao=(velocidade-velocidadeAntes)/Math.max(.001,dt);
+    const direcaoComAderencia=atualizarAtrito(dt,acelerador,direcao,freioDeMao);
 
     const rapidez=Math.min(1,Math.abs(velocidade)/cfg.maxVel);
-    if(Math.abs(velocidade)>.08&&direcao){
+    if(Math.abs(velocidade)>.08&&direcaoComAderencia){
       // Leve ao manobrar devagar e firme em velocidade; na ré o sentido do esterço inverte sozinho.
       // A convenção do jogo usa -Z como frente: com ela, diminuir o yaw é a curva pra direita.
       const taxa=cfg.esterco+rapidez*cfg.estercoPorVelocidade;
-      player.rotation.y-=direcao*taxa*dt*Math.sign(velocidade);
+      player.rotation.y-=direcaoComAderencia*taxa*dt*Math.sign(velocidade);
     }
 
     _frente.set(-Math.sin(player.rotation.y),0,-Math.cos(player.rotation.y));
@@ -628,7 +651,7 @@ export function criarVeiculo(cfg){
       // então o sinal local é o mesmo do mundo — não há inversão escondida no caminho.
       const esterco=-direcao*ESTERCO_VISUAL;
       for(const r of rodas){
-        r.angulo=(r.angulo||0)+distancia/Math.max(.05,r.raio);
+        r.angulo=(r.angulo||0)+distancia*(1+patinagemLongitudinal*.75)/Math.max(.05,r.raio);
         r.malha.rotation[r.eixoGiro]=r.angulo;
         // Só as da frente esterçam; as de trás ficam retas, como em qualquer carro.
         if(r.dianteira)r.pivo.rotation.y=esterco;
@@ -695,6 +718,7 @@ export function criarVeiculo(cfg){
   };
   return{grupo,alternar,atualizar,regularAltura,montado:()=>montado,velocidade:()=>velocidade,marcaNoMapa,
     sondas:()=>sondas.map(q=>({...q})),dano:()=>dano,ultimoImpacto:()=>ultimoImpacto,
+    atrito:()=>({patinagemLongitudinal,deslizamentoLateral,forcaAtritoPneus}),
     // O teto em m/s. Quem precisa é a alavanca de acelerador: as marcas dela são em km/h e a escada
     // é filtrada pelo teto do veículo que está sendo dirigido (o carro chega a 50, a moto a 40).
     maxVel:()=>cfg.maxVel};
