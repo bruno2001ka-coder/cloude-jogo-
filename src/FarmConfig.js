@@ -20,6 +20,8 @@ export const FAZENDA_CONFIG=Object.freeze({
   }),
   acesso:Object.freeze({
     a:Object.freeze({x:porteiraX-.8,z:porteiraZ}),
+    // Cotovelo no corredor: passa entre os currais e só então vira para a porta, evitando cortar o curral das vacas.
+    via:Object.freeze({x:casaX+3.5,z:cz-.2}),
     b:Object.freeze({x:casaX,z:casaZ+2.75}),
     raio:1.9,
   }),
