@@ -1,7 +1,7 @@
 // Câmera terceira-pessoa estilo GTA SA (anti-clipping por raycaster) + modo drone.
 import*as THREE from'three';
 import{camera}from'./core.js';
-import{obstaculos}from'./Physics.js';
+import{obstaculos,obstaculosCamera}from'./Physics.js';
 import{obterElevacao}from'./Terrain.js';
 import{PLAYER_LIMIT}from'./WorldBounds.js';
 
@@ -10,6 +10,7 @@ const cameraRaycaster=new THREE.Raycaster();
 const cameraDirectionTemp=new THREE.Vector3();
 const cameraHitTemp=new THREE.Vector3();
 const cameraSafeGoalTemp=new THREE.Vector3();
+const LISTAS_BLOQUEIO_CAMERA=[obstaculos,obstaculosCamera];
 // A margem recuada era de 0,35 m com piso de 0,80 m — números pensados pro personagem de 1,4 m.
 // Com 0,9 m, esse piso deixa a câmera longe demais pra encostar na parede sem atravessar, e o recuo
 // grande faz ela pular pra frente cedo demais. Margem menor = a câmera chega perto da parede e para.
@@ -28,7 +29,7 @@ const CAM_MARGEM=.18,CAM_MIN=.4;
 // motivo o ponto ficou ruim, ele não sai daqui ruim.
 const RECUO_TESTE=.12;// passo com que a câmera é puxada pro jogador
 export function dentroDeParede(p){
-  for(const box of obstaculos)
+  for(const lista of LISTAS_BLOQUEIO_CAMERA)for(const box of lista)
     if(p.x>box.min.x&&p.x<box.max.x&&p.y>box.min.y&&p.y<box.max.y&&p.z>box.min.z&&p.z<box.max.z)return true;
   return false;
 }
@@ -48,7 +49,7 @@ export function desencravarCamera(alvo,ponto){
   }
   return escapeTemp.copy(alvo);
 }
-export function cameraSemClipping(target,goal){const distancia=target.distanceTo(goal);cameraDirectionTemp.subVectors(goal,target).normalize();cameraRaycaster.set(target,cameraDirectionTemp);let menor=distancia;for(const box of obstaculos){const hit=cameraRaycaster.ray.intersectBox(box,cameraHitTemp);if(hit){const d=hit.distanceTo(target);if(d>0&&d<menor)menor=d}}
+export function cameraSemClipping(target,goal){const distancia=target.distanceTo(goal);cameraDirectionTemp.subVectors(goal,target).normalize();cameraRaycaster.set(target,cameraDirectionTemp);let menor=distancia;for(const lista of LISTAS_BLOQUEIO_CAMERA)for(const box of lista){const hit=cameraRaycaster.ray.intersectBox(box,cameraHitTemp);if(hit){const d=hit.distanceTo(target);if(d>0&&d<menor)menor=d}}
   let dist=menor<distancia?Math.max(CAM_MIN,menor-CAM_MARGEM):distancia;
   cameraSafeGoalTemp.copy(cameraDirectionTemp).multiplyScalar(dist).add(target);
   if(!dentroDeParede(cameraSafeGoalTemp))return menor<distancia?cameraSafeGoalTemp:goal;
