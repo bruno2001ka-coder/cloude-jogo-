@@ -50,7 +50,9 @@ const carro=criarVeiculo({
   // depois de uma freada. O amortecedor agora fica perto do amortecimento crítico da mola: a frente
   // afunda com a transferência de peso e volta uma vez, sem o vai-e-volta lento da versão anterior.
   suspensaoCurso:.09,suspensaoMola:13.5,suspensaoAmortecedor:7.2,
-  alturaRoda:.16,
+  // Offset relativo ao cubo original do GLB: negativo deixa o carro visualmente mais baixo sem
+  // apagar a altura real do modelo e sem colocar todas as rodas num Y absoluto artificial.
+  alturaRoda:-.045,
   // Altura livre da carroceria, ajustável separadamente por eixo (metros): frente e traseira.
   alturaSuspensaoFrente:.10,alturaSuspensaoTraseira:.10,
   // Pequena folga visual para impedir que o pneu atravesse a malha do terreno por arredondamento.

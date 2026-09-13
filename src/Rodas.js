@@ -203,6 +203,9 @@ export function separarRodas(raiz,quantas=4,escalaRoda=1,recuoLateral=0){
     // Assim a roda pode subir/descer no curso sem deslocar a lataria nem perder o eixo de direção.
     const suspensao=new THREE.Group();
     suspensao.position.copy(cen);
+    // A altura do cubo já vem calibrada no GLB. Guardá-la é essencial: substituir esse Y por um
+    // número absoluto depois fazia o pneu sair da posição do modelo e deixava o carro alto.
+    const alturaNeutra=cen.y;
     // Embute o pneu no para-lama sem mexer no pivô de rolagem: o recuo é lateral, em direção ao
     // centro do carro, e a geometria continua recentrada no próprio cubo. Isso evita a roda ficar
     // saltada para fora da carroceria quando o GLB traz o pneu alinhado na borda externa.
@@ -228,7 +231,7 @@ export function separarRodas(raiz,quantas=4,escalaRoda=1,recuoLateral=0){
     // parecia ter 48 cm de raio num carro de 1,97 m, quando tem 18).
     const escala=new THREE.Vector3();m.getWorldScale(escala);
     rodas.push({
-      pivo,suspensao,malha:m,eixoGiro:eixo,raio:pneu.raio*escala.x,
+      pivo,suspensao,malha:m,alturaNeutra,eixoGiro:eixo,raio:pneu.raio*escala.x,
       dianteira:Number(chave.split('|')[0])<0,
       lado:Number(chave.split('|')[1]||1),
     });

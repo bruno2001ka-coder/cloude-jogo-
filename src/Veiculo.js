@@ -324,7 +324,7 @@ export function criarVeiculo(cfg){
       // O próprio contato também participa do alvo. Assim a mola encontra o piso
       // de forma estável, sem a correção instantânea que atravessava o curso e fazia
       // a roda “teleportar” para fora do para-lama em terrenos torcidos.
-      r.suspensao.position.y=(cfg.alturaRoda||0)+compressaoSuspensao[i];
+      r.suspensao.position.y=r.alturaNeutra+(cfg.alturaRoda||0)+compressaoSuspensao[i];
       r.suspensao.updateWorldMatrix(true,false);
       r.suspensao.getWorldPosition(_posRoda);
       const subidaVertical=Math.abs(r.suspensao.matrixWorld.elements[5]);
@@ -350,7 +350,7 @@ export function criarVeiculo(cfg){
       velSuspensao[i]=(compressaoSuspensao[i]-anterior)/Math.max(.001,dt);
       // Compressão real sobe a roda para dentro do para-lama; extensão desce a roda
       // até o limite do curso. O chassi continua baixo, sem levantar junto com a roda.
-      r.suspensao.position.y=(cfg.alturaRoda||0)+compressaoSuspensao[i];
+      r.suspensao.position.y=r.alturaNeutra+(cfg.alturaRoda||0)+compressaoSuspensao[i];
       maiorCompressao=Math.max(maiorCompressao,Math.max(0,compressaoSuspensao[i]));
     }
     // Em uma lombada forte o chassi rebaixado encosta de leve: é o raspado visual pedido, limitado

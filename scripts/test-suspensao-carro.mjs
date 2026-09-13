@@ -11,6 +11,8 @@ const checks=[
   ['alvo por roda',/alvoSuspensao=\[0,0,0,0\]/.test(veiculo)],
   ['altura dianteira e traseira reguláveis',/alturaSuspensaoFrente:\.10,alturaSuspensaoTraseira:\.10/.test(carro)&&/regularAlturaCarro/.test(carro)&&/regularAltura/.test(veiculo)],
   ['carroceria usa referência baixa',/const menorApoio=Math\.min\(\.\.\._alt\)/.test(veiculo)&&/py=menorApoio/.test(veiculo)],
+  ['cubo original preservado',/alturaNeutra=cen\.y/.test(fs.readFileSync(new URL('../src/Rodas.js',import.meta.url),'utf8'))&&/r\.alturaNeutra\+\(cfg\.alturaRoda\|\|0\)/.test(veiculo)],
+  ['offset de rebaixamento relativo',/alturaRoda:-\.045/.test(carro)],
   ['contato roda-solo inclinado',/folgaRodaSolo:\.006/.test(carro)&&/subidaVertical/.test(veiculo)&&/erroContato/.test(veiculo)&&/alvoContato/.test(veiculo)],
   ['mola e amortecedor aplicados',/suspensaoMola.*suspensaoAmortecedor/.test(veiculo)],
   ['roda no ar entra em extensão',/-cursoSuspensao\*\.75/.test(veiculo)&&/alvoSuspensao\[i\]-mediaAlvo/.test(veiculo)],
