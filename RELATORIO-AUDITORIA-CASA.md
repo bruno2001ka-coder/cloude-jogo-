@@ -69,3 +69,20 @@ A revisão seguinte incluiu também os objetos que não fazem parte da estrutura
 A auditoria completa agora verifica casa, varanda, degraus, janelas, cocho, barril, ponto de serviço, três currais, cultivo, caixa-d’água, moinho e limite externo. O resultado foi **zero sobreposições acidentais entre objetos**. As únicas interseções registradas são de projeção vertical ou encaixe arquitetônico intencional, como telhado sobre elementos baixos e casa contida dentro da cerca.
 
 A imagem conceitual gerada anteriormente deve ser entendida como uma simulação artística; a posição exata dos objetos é determinada pelas coordenadas do jogo e está refletida nesta auditoria.
+
+## Auditoria de vizinhança da casa
+
+Foi feita uma segunda análise com foco nos objetos que ficam à beira da casa. O ponto de serviço estava a `0 m` da casa porque sua coordenada caía dentro da projeção da fundação; isso foi corrigido para `x = -90,1, z = -57,2`, ficando a aproximadamente `0,35 m` da casa, na faixa lateral de serviço.
+
+Os itens próximos restantes fazem sentido no contexto rural:
+
+- cocho a aproximadamente `0,35 m`, encostado lateralmente à área de serviço;
+- ponto de interação no mesmo pátio lateral, a aproximadamente `0,35 m`;
+- barril a aproximadamente `0,40 m`, junto ao cocho;
+- curral das vacas a `1,85 m`, distância curta, mas plausível para manejo diário;
+- árvore oeste a `3,10 m`, funcionando como paisagismo e sombra;
+- plantação a `4,35 m`, preservando circulação e separação da casa.
+
+A área `limpeza` continua existindo apenas como reserva lógica para impedir o nascimento de canteiros sob o serviço; ela não cria um objeto físico e, portanto, não deve ser interpretada como sobreposição visual.
+
+Conclusão: não há mais objeto visível sem sentido dentro da casa. O único agrupamento intencionalmente compacto é o pátio lateral de serviço, que agora está fora da fundação e separado dos animais.
