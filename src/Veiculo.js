@@ -21,6 +21,7 @@ import{separarRodas}from'./Rodas.js';
 import{levanteContraQuina,PASSO_DA_FITA}from'./WorldGenerator.js';
 import{colideObstaculoXZ,registrarCaixa,marcarObstaculoMovel,buscarPosicaoLivre}from'./Physics.js';
 import{PLAYER_LIMIT}from'./WorldBounds.js';
+import{tocarSomColisaoCarro}from'./Audio.js';
 
 // O limite antigo de 124 m fazia carro e moto ignorarem a expansão do mapa, mesmo quando o jogador
 // a pé já conseguia chegar muito mais longe. Todos os modos agora usam a mesma borda jogável.
@@ -62,6 +63,8 @@ export function criarVeiculo(cfg){
   // Em 'YXZ' o giro vem primeiro e a inclinação acontece nos eixos DELE.
   grupo.rotation.order='YXZ';
   let montado=false,carregado=false,velocidade=0;
+  let dano=0,ultimoImpacto=0;
+  const sondas=[{nome:'dianteira-esquerda',x:-1,z:-1,altura:0},{nome:'dianteira-direita',x:1,z:-1,altura:0},{nome:'traseira-esquerda',x:-1,z:1,altura:0},{nome:'traseira-direita',x:1,z:1,altura:0}];
   let botaoVisivel=null;// null = ainda não decidido, pra o primeiro quadro sempre escrever
   // A parcela de CURVA da rolagem, guardada à parte pra poder ser amortecida sozinha, sem arrastar a
   // do terreno junto (ver o fim do `atualizar`). Só o veículo com `rolagemDoTerrenoDireta` usa.
@@ -432,12 +435,15 @@ export function criarVeiculo(cfg){
   // Freio e ré ficaram COMO ESTAVAM, a pedido dele: puxar pra trás freia forte e, passando do zero,
   // engata a ré. O que mudou de graça é que agora dá pra frear só ALIVIANDO o dedo — cair pra 30%
   // desce macio até 30% da máxima, em vez de não fazer nada.
-  function atualizarVelocidade(dt,acelerador){
-    const alvo=acelerador>=0?acelerador*cfg.maxVel:acelerador*cfg.maxRe;
+  function atualizarVelocidade(dt,acelerador,freioDeMao=false){
+    const eficiencia=Math.max(.35,1-dano/Math.max(1,cfg.danoMaximo||100)*.55);
+    const maximo=cfg.maxVel*eficiencia;
+    const alvo=freioDeMao?0:(acelerador>=0?acelerador*maximo:acelerador*Math.min(cfg.maxRe,maximo*.22));
+    if(freioDeMao){velocidade=THREE.MathUtils.damp(velocidade,0,cfg.freioDeMaoForca||16,dt);return}
     if(velocidade<alvo){
       // Ganhar velocidade pra frente. Vindo da ré isto é FREADA, não aceleração: quem tira o carro de
       // ré é o freio, e usar `aceleracao` aqui deixaria a inversão de sentido lerda.
-      const taxa=velocidade<0?cfg.freio:cfg.aceleracao*Math.abs(acelerador);
+      const taxa=velocidade<0?cfg.freio:cfg.aceleracao*Math.max(.15,Math.abs(acelerador))*eficiencia;
       velocidade=Math.min(alvo,velocidade+taxa*dt);
     }else if(velocidade>alvo){
       // Perder velocidade. Duas coisas bem diferentes moram aqui, e é a distinção que dá o controle:
@@ -448,6 +454,15 @@ export function criarVeiculo(cfg){
         ?(acelerador<0?cfg.freio:cfg.atrito)
         :cfg.aceleracaoRe*Math.abs(acelerador);// já em ré: acelerando pra trás
       velocidade=Math.max(alvo,velocidade-taxa*dt);
+    }
+  }
+
+  function atualizarSondas(){
+    const rumo=player.rotation.y,fx=-Math.sin(rumo),fz=-Math.cos(rumo),sx=Math.cos(rumo),sz=-Math.sin(rumo);
+    const frente=cfg.entreEixos||.7,lado=cfg.meiaBitola||.4;
+    for(let i=0;i<4;i++){
+      const q=sondas[i],x=player.position.x+fx*(q.z<0?frente:-frente)+sx*q.x*lado,z=player.position.z+fz*(q.z<0?frente:-frente)+sz*q.x*lado;
+      q.xWorld=x;q.zWorld=z;q.chao=alturaDoChaoDesenhado(x,z);q.altura=player.position.y-q.chao;
     }
   }
 
@@ -544,10 +559,11 @@ export function criarVeiculo(cfg){
     // O TECLADO CONTINUA INTEIRO: W acelera, S freia e dá ré. Quem joga no PC não perde nada, e o
     // `Math.max` deixa os dois caminhos conviverem sem um anular o outro.
     const reAtiva=reSegurada||!!keys.KeyS;
+    const freioDeMao=cfg.freioDeMao&&!!keys.KeyH;
     const acelerador=reAtiva?-1:Math.max(keys.KeyW?1:0,Math.max(0,Math.min(1,alavanca)));
     const direcao=limitar((keys.KeyD?1:0)-(keys.KeyA?1:0)+joyX);
     const velocidadeAntes=velocidade;
-    atualizarVelocidade(dt,acelerador);
+    atualizarVelocidade(dt,acelerador,freioDeMao);
     const aceleracao=(velocidade-velocidadeAntes)/Math.max(.001,dt);
 
     const rapidez=Math.min(1,Math.abs(velocidade)/cfg.maxVel);
@@ -572,7 +588,17 @@ export function criarVeiculo(cfg){
       const andou=Math.hypot(player.position.x-antesX,player.position.z-antesZ);
       // Perde quase toda a inércia, como bater de verdade. Sobra um resto pra não ficar grudado na
       // parede — com zero, um toque de raspão deixaria o veículo morto encostado no muro.
-      if(andou<pedido*.35)velocidade*=.15;
+      if(andou<pedido*.35){
+        const velocidadeAntesImpacto=Math.abs(velocidade),severidade=Math.min(1,Math.max(0,1-andou/Math.max(pedido,.001)));
+        const impacto=velocidadeAntesImpacto*severidade;
+        velocidade*=Math.max(.08,1-severidade*.92);
+        if(impacto>1.8){
+          dano=Math.min(cfg.danoMaximo||100,dano+impacto*(cfg.resistenciaImpacto||1));
+          ultimoImpacto=impacto;
+          if(cfg.somColisao!==false)tocarSomColisaoCarro(impacto,player.position);
+          cfg.aoImpacto?.({impacto,dano,velocidade});
+        }
+      }
     }
 
     // ===== AS RODAS GIRAM E AS DA FRENTE ESTERÇAM =====
@@ -610,6 +636,7 @@ export function criarVeiculo(cfg){
     }
 
     const rolamentoDoChao=assentar(player.position.x,player.position.z,player.rotation.y,player.position.y);
+    atualizarSondas();
     atualizarSuspensao(dt,player.rotation.y,aceleracao,direcao);
     // Inclinação de curva, visual, sem alterar a colisão. Somada ao rolamento do terreno: numa encosta
     // de través o veículo tomba pro lado de baixo, e é isso que mantém as rodas no chão.
@@ -667,6 +694,7 @@ export function criarVeiculo(cfg){
     cfg.alturaSuspensaoTraseira=THREE.MathUtils.clamp(traseira,-.05,.30);
   };
   return{grupo,alternar,atualizar,regularAltura,montado:()=>montado,velocidade:()=>velocidade,marcaNoMapa,
+    sondas:()=>sondas.map(q=>({...q})),dano:()=>dano,ultimoImpacto:()=>ultimoImpacto,
     // O teto em m/s. Quem precisa é a alavanca de acelerador: as marcas dela são em km/h e a escada
     // é filtrada pelo teto do veículo que está sendo dirigido (o carro chega a 50, a moto a 40).
     maxVel:()=>cfg.maxVel};

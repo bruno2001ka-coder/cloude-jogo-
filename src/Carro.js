@@ -23,7 +23,9 @@ const carro=criarVeiculo({
   // Disco de 0,42: o carro tem 0,95 de largura, e o beco mais apertado do mapa tem 2,45 m livres.
   // 0,84 de corpo deixa 1,6 m de folga — passa, e sem fantasma dos lados.
   raioDisco:.42,
-  maxVel:14,maxRe:4.5,aceleracao:9,aceleracaoRe:5,freio:20,atrito:4,
+  // 120 km/h = 33,33 m/s. A aceleração progressiva fica no Veiculo.js: o acelerador
+  // define um alvo e o motor se aproxima dele sem salto instantâneo.
+  maxVel:33.333,maxRe:4.5,aceleracao:12,aceleracaoRe:5,freio:24,atrito:4.5,
   // Esterço bem mais lento que o da moto (1,05 + 1,25): carro não pivota no lugar.
   esterco:.55,estercoPorVelocidade:.55,inclinacaoNaCurva:.06,
   entreEixos:.72,meiaBitola:.40,
@@ -75,10 +77,14 @@ const carro=criarVeiculo({
   botaoId:'carroBtn',rotuloEntrar:'CARRO',rotuloSair:'SAIR',tecla:'KeyV',
   avisoCarregando:'O carro ainda está carregando.',
   avisoLonge:'Chegue perto do carro para entrar.',
-  avisoMontar:'No carro — W acelera, S freia e A/D viram.',
+  avisoMontar:'No carro — W acelera, S freia, H freio de mão e A/D viram.',
   avisoDescer:'Você saiu do carro.',
   // Escondido: sem boneco, não há pose nem animação pra manter por quadro.
   motoristaVisivel:false,
+  freioDeMao:true,
+  danoMaximo:100,
+  resistenciaImpacto:1.35,
+  somColisao:true,
 });
 
 // ===== REAÇÃO NATURAL À BATIDA =====
@@ -117,6 +123,9 @@ export function atualizarCarro(dt,keys,joyX=0,joyY=0,alavanca=0,re=false){
 }
 // Teto em m/s, pra alavanca de acelerador saber até onde vai a escada de km/h.
 export function maxVelCarro(){return carro.maxVel()}
+export function sondasCarro(){return carro.sondas()}
+export function danoCarro(){return carro.dano()}
+export function ultimoImpactoCarro(){return carro.ultimoImpacto()}
 // Onde ele está parado, pro radar (null enquanto não carregou, e null quando o jogador está
 // montado nele — ver `marcaNoMapa` em Veiculo.js).
 export function marcaCarro(){return carro.marcaNoMapa()}

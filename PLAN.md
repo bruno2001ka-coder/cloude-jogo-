@@ -17,3 +17,7 @@ Corrigir a suspensão independente do carro para que ele permaneça visualmente 
 - A extensão pode ser negativa e não conta como raspagem.
 - Não existe mais ajuste instantâneo `position.y += erroContato` após a integração da mola.
 - O projeto mantém controles de entrada, carregamento do GLB e comportamento de carro parado/conduzido.
+
+## Atualização de dinâmica do carro
+
+O carro agora tem teto de **120 km/h**, aceleração progressiva por velocidade-alvo, ré limitada, freio de mão em `H`, quatro sondas de contato, inclinação e rolagem preservadas pela suspensão independente, reação a irregularidades e impacto contra paredes. A batida reduz a velocidade conforme a severidade, soma dano acumulado sem destruir o veículo e dispara som de colisão com intensidade proporcional. O dano reduz gradualmente a velocidade máxima e a eficiência de aceleração, mantendo o carro conservado e dirigível.
