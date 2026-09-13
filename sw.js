@@ -1,13 +1,14 @@
-// Service worker do Quintal 3D.
+// Service worker do Vale Verde.
 // Navegacao e codigo usam rede primeiro SEM cache HTTP para cada release aparecer imediatamente.
 // Assets pesados continuam cache-first para o PWA abrir rapido e funcionar offline.
-const VERSAO='quintal3d-v95-startup-fix-0410';
+const VERSAO='vale-verde-v0411-farm-camera';
 const CASCA=[
   './',
   './index.html',
   './manifest.webmanifest',
   './assets/icones/icone-192.png',
   './assets/icones/icone-512.png',
+  './assets/tela-inicial-vale-verde.webp',
 ];
 
 self.addEventListener('install',ev=>{
