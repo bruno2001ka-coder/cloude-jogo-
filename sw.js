@@ -9,6 +9,7 @@ const CASCA=[
   './assets/icones/icone-192.png',
   './assets/icones/icone-512.png',
   './assets/tela-inicial-vale-verde.webp',
+  './assets/tela-inicial-vale-verde.webp',
 ];
 
 self.addEventListener('install',ev=>{
