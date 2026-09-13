@@ -15,8 +15,10 @@ const checks=[
   ['raspagem limitada em lombadas',/raspagemSuspensao/.test(carro)&&/const fundo=/.test(veiculo)],
   ['chassi protegido em terreno torcido',/tetoAfundar:\.045/.test(carro)&&/cfg\.tetoAfundar\?\?TETO_AFUNDAR/.test(veiculo)],
   ['faíscas visuais habilitadas',/faiscas:true/.test(carro)&&/emitirFaiscas/.test(veiculo)],
-  ['pista de teste grossa e única',/pista-teste-carro-malha-unica/.test(rural)&&/espessura=\.38/.test(rural)&&/geo\.computeVertexNormals/.test(rural)],
+  ['pista de teste grossa e única',/pista-teste-carro-malha-unica/.test(rural)&&/passo=\.62/.test(rural)&&/espessura=\.38/.test(rural)&&/geo\.computeVertexNormals/.test(rural)],
+  ['topo alinhado à malha visível',/alturaDoChaoDesenhado\(x,z\)\+\.10\+perfil\(z\)/.test(rural)&&!/new THREE\.BoxGeometry\(\.08/.test(rural)],
   ['rampa quebra-molas e torção',/rampa\(-106,-98,\.82\)/.test(rural)&&/d<4/.test(rural)&&/z>-51&&z<-37/.test(rural)],
+  ['carro enxerga a rampa sem ampliar o jogador',/alturaApoioExtra\|\|0/.test(veiculo)&&/alturaApoioExtra:\.75/.test(carro)],
   ['pista registrada como superfície andável',/superficiesAndaveis\.push\(m\)/.test(rural)],
   ['roda contida no para-lama',/escalaRoda:\.86/.test(carro)&&/recuoRoda:\.035/.test(carro)&&/separarRodas\(gltf\.scene,cfg\.rodasQueGiram,cfg\.escalaRoda\|\|1,cfg\.recuoRoda/.test(veiculo)],
 ];

@@ -57,6 +57,8 @@ const carro=criarVeiculo({
   // Em terreno torcido, não enterra a carroceria para colar as quatro rodas no solo; a suspensão
   // independente resolve a diferença de altura entre elas.
   tetoAfundar:.045,
+  // A rampa sobe 82 cm; este alcance extra permite o raycast enxergar o topo sem buscar telhados.
+  alturaApoioExtra:.75,
   faiscas:true,
   // Chassi rebaixado: a carroceria desce 8 cm, enquanto o offset das rodas mantém os pneus apoiados.
   alturaAssento:-.04,

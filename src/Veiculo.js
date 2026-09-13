@@ -220,7 +220,7 @@ export function criarVeiculo(cfg){
   function alturaDeApoio(x,z,quina){
     const chao=levanteContraQuina(x,z,PASSO_DA_FITA);
     const base=Math.min(Math.max(_apoioAnterior[quina],chao),_tetoApoio);
-    const sup=topoAndavelAbaixo(x,z,base+ALCANCE_APOIO,chao-.35);
+    const sup=topoAndavelAbaixo(x,z,base+ALCANCE_APOIO+(cfg.alturaApoioExtra||0),chao-.35);
     const apoio=sup!==null&&sup>chao?sup:chao;
     _apoioAnterior[quina]=apoio;
     return apoio;

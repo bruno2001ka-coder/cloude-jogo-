@@ -78,12 +78,13 @@ function estradaDeTerra(parent,nome,pontos,largura=4.8,centroVerde=true){
 function pistaTesteLombada(parent){
   // Pista de ensaio única: topo, laterais e base fazem uma peça espessa, parcialmente enterrada.
   // Não é uma manta sobre o chão: as faces laterais projetam sombra e a base elimina borda de papel.
-  const cx=-108,z0=-116,z1=-22,meiaLarg=3.25,passo=1.25,espessura=.38;
+  const cx=-108,z0=-116,z1=-22,meiaLarg=3.25,passo=.62,espessura=.38;
   const n=Math.ceil((z1-z0)/passo),pos=[],uv=[],idx=[];
   const perfil=z=>{
-    const rampa=(a,b,h)=>z<a?0:z>b?h:(z-a)/(b-a)*h;
+    const suave=t=>t*t*(3-2*t);
+    const rampa=(a,b,h)=>z<=a?0:z>=b?h:suave((z-a)/(b-a))*h;
     let y=rampa(-106,-98,.82)-rampa(-86,-78,.82);
-    // Quebra-molas arredondado, com subida e descida suaves.
+    // Quebra-molas arredondado e largo: a roda encontra subida e descida reais na mesma malha.
     const d=Math.abs(z+66);if(d<4)y+=.30*(.5+.5*Math.cos(d/4*Math.PI));
     return y;
   };
@@ -91,7 +92,8 @@ function pistaTesteLombada(parent){
     const z=Math.min(z1,z0+i*passo),torcida=z>-51&&z<-37?Math.sin((z+51)/14*Math.PI)*.20:0;
     for(const lado of[-1,1]){
       const x=cx+lado*meiaLarg;
-      const topo=chao(x,z,.10)+perfil(z)+lado*torcida;
+      // A mesma altura da malha visível, não a curva analítica: elimina degrau/folga entre pista e chão.
+      const topo=alturaDoChaoDesenhado(x,z)+.10+perfil(z)+lado*torcida;
       pos.push(x,topo,z);uv.push((z-z0)/4,lado<0?0:1);
       pos.push(x,topo-espessura,z);uv.push((z-z0)/4,lado<0?0:1);
     }
@@ -104,10 +106,8 @@ function pistaTesteLombada(parent){
   const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
   geo.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));geo.setIndex(idx);geo.computeVertexNormals();
   const m=new THREE.Mesh(geo,matAsfalto());m.name='pista-teste-carro-malha-unica';m.receiveShadow=true;m.castShadow=true;parent.add(m);superficiesAndaveis.push(m);
-  const faixa=new THREE.Mesh(new THREE.BoxGeometry(.08,.012,z1-z0),materialCor(0xe1c16a,.8));
-  faixa.position.set(cx,0, (z0+z1)/2);faixa.position.y=chao(cx,faixa.position.z,.115)+.02;parent.add(faixa);
   const placas=[[-103,-101,'RAMPA'],[-103,-66,'QUEBRA-MOLAS'],[-103,-44,'SUSPENSÃO']];
-  for(const[x,z,nome]of placas){const placa=new THREE.Group();placa.position.set(x,chao(x,z,0),z);parent.add(placa);
+  for(const[x,z,nome]of placas){const placa=new THREE.Group();placa.position.set(x,alturaDoChaoDesenhado(x,z)+.10+perfil(z),z);parent.add(placa);
     const poste=new THREE.Mesh(new THREE.CylinderGeometry(.045,.06,1.7,6),matTronco);poste.position.y=.85;placa.add(poste);
     const sinal=new THREE.Mesh(new THREE.BoxGeometry(1.1,.45,.06),materialCor(0xd9a52e,.8));sinal.position.y=1.58;placa.add(sinal);placa.name=`placa-${nome.toLowerCase()}`;
   }
