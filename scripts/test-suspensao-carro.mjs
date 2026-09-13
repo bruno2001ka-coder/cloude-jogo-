@@ -4,8 +4,8 @@ const veiculo=fs.readFileSync(new URL('../src/Veiculo.js',import.meta.url),'utf8
 const rural=fs.readFileSync(new URL('../src/RuralWorld.js',import.meta.url),'utf8');
 const checks=[
   ['curso contido de suspensão',/suspensaoCurso:\.09/.test(carro)],
-  ['mola macia configurada',/suspensaoMola:11/.test(carro)],
-  ['amortecedor macio configurado',/suspensaoAmortecedor:2\.1/.test(carro)],
+  ['mola macia configurada',/suspensaoMola:13\.5/.test(carro)],
+  ['amortecedor controla o retorno',/suspensaoAmortecedor:7\.2/.test(carro)&&/bombeando/.test(carro)],
   ['transferência de peso configurada',/transferenciaPeso:\.055/.test(carro)],
   ['estado individual das quatro molas',/compressaoSuspensao=\[0,0,0,0\]/.test(veiculo)],
   ['alvo por roda',/alvoSuspensao=\[0,0,0,0\]/.test(veiculo)],
