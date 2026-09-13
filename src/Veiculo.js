@@ -247,9 +247,13 @@ export function criarVeiculo(cfg){
     const[DD,DE,TD,TE]=_alt;
     // Plano de mínimos quadrados por cima das quatro: num retângulo isso é exatamente a média de cada
     // par. Arfagem pela diferença frente/trás, rolagem pela diferença direita/esquerda.
-    const arfagem=Math.atan2((DD+DE)/2-(TD+TE)/2,cfg.entreEixos*2)-cfg.pesoNaFrente;
+    const alturaFrente=cfg.alturaSuspensaoFrente||0,alturaTraseira=cfg.alturaSuspensaoTraseira||0;
+    const arfagem=Math.atan2((DD+DE)/2-(TD+TE)/2,cfg.entreEixos*2)-cfg.pesoNaFrente
+      +Math.atan2(alturaFrente-alturaTraseira,cfg.entreEixos*2);
     const rolagem=Math.atan2((DD+TD)/2-(DE+TE)/2,cfg.meiaBitola*2);
-    let py=(DD+DE+TD+TE)/4+cfg.alturaAssento;
+    // A carroceria pode ficar acima das rodas: a frente e a traseira são regulagens de altura, não
+    // deslocamentos das rodas. Depois o contato individual mantém cada pneu sobre o terreno.
+    let py=(DD+DE+TD+TE)/4+cfg.alturaAssento+(alturaFrente+alturaTraseira)/2;
 
     grupo.rotation.y=rumo;
     grupo.rotation.x=arfagem;// ângulo positivo LEVANTA o bico; o peso na frente já veio subtraído
@@ -647,7 +651,11 @@ export function criarVeiculo(cfg){
   //   · MONTADO, porque aí o veículo está debaixo do jogador. Marca em cima do próprio jogador não
   //     informa nada e ainda tapa o ponto dele. O OUTRO veículo continua marcado, que é o que serve.
   const marcaNoMapa=()=>carregado&&!montado?{x:grupo.position.x,z:grupo.position.z}:null;
-  return{grupo,alternar,atualizar,montado:()=>montado,velocidade:()=>velocidade,marcaNoMapa,
+  const regularAltura=(frente,traseira)=>{
+    cfg.alturaSuspensaoFrente=THREE.MathUtils.clamp(frente,-.05,.30);
+    cfg.alturaSuspensaoTraseira=THREE.MathUtils.clamp(traseira,-.05,.30);
+  };
+  return{grupo,alternar,atualizar,regularAltura,montado:()=>montado,velocidade:()=>velocidade,marcaNoMapa,
     // O teto em m/s. Quem precisa é a alavanca de acelerador: as marcas dela são em km/h e a escada
     // é filtrada pelo teto do veículo que está sendo dirigido (o carro chega a 50, a moto a 40).
     maxVel:()=>cfg.maxVel};

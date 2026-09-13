@@ -9,6 +9,7 @@ const checks=[
   ['transferência de peso configurada',/transferenciaPeso:\.055/.test(carro)],
   ['estado individual das quatro molas',/compressaoSuspensao=\[0,0,0,0\]/.test(veiculo)],
   ['alvo por roda',/alvoSuspensao=\[0,0,0,0\]/.test(veiculo)],
+  ['altura dianteira e traseira reguláveis',/alturaSuspensaoFrente:\.10,alturaSuspensaoTraseira:\.10/.test(carro)&&/regularAlturaCarro/.test(carro)&&/regularAltura/.test(veiculo)],
   ['contato roda-solo inclinado',/folgaRodaSolo:\.006/.test(carro)&&/subidaVertical/.test(veiculo)&&/if\(fundo\)/.test(veiculo)],
   ['mola e amortecedor aplicados',/suspensaoMola.*suspensaoAmortecedor/.test(veiculo)],
   ['suspensão atualizada durante condução',/atualizarSuspensao\(dt,player\.rotation\.y,aceleracao,direcao\)/.test(veiculo)],

@@ -50,6 +50,8 @@ const carro=criarVeiculo({
   // a carroceria respirar nas lombadas. A raspagem é limitada pelo pequeno bottom-out do chassi.
   suspensaoCurso:.09,suspensaoMola:11,suspensaoAmortecedor:2.1,
   alturaRoda:.16,
+  // Altura livre da carroceria, ajustável separadamente por eixo (metros): frente e traseira.
+  alturaSuspensaoFrente:.10,alturaSuspensaoTraseira:.10,
   // Pequena folga visual para impedir que o pneu atravesse a malha do terreno por arredondamento.
   folgaRodaSolo:.006,
   transferenciaPeso:.055,
@@ -87,6 +89,8 @@ const RECUO_DURACAO=.24,VEL_MIN_IMPACTO=2.8;
 
 export function carroMontado(){return carro.montado()}
 export function alternarCarro(){carro.alternar()}
+// Regulagem em metros acima/abaixo da altura neutra: útil para testar chassi alto, baixo ou inclinado.
+export function regularAlturaCarro(frente,traseira){carro.regularAltura(frente,traseira)}
 export function atualizarCarro(dt,keys,joyX=0,joyY=0,alavanca=0,re=false){
   const montado=carro.montado();
   if(!montado){recuoImpacto=0;velAnterior=0;return carro.atualizar(dt,keys,joyX,joyY,alavanca,re)}
