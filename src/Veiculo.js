@@ -201,6 +201,7 @@ export function criarVeiculo(cfg){
   const _quinas=[[1,-1],[-1,-1],[1,1],[-1,1]];// (lado, frente/trás) em unidades de meiaBitola/entreEixos
   const _alt=[0,0,0,0];
   const _eulerQuina=new THREE.Euler(),_quatQuina=new THREE.Quaternion(),_vetQuina=new THREE.Vector3();
+  const _posRoda=new THREE.Vector3(),_escalaRoda=new THREE.Vector3();
   function assentar(x,z,rumo,refY){
     _tetoApoio=refY;
     const cy=Math.cos(rumo),sy=Math.sin(rumo);
@@ -283,6 +284,12 @@ export function criarVeiculo(cfg){
       // Compressão real sobe a roda para dentro do para-lama. O sinal anterior empurrava o pneu
       // para baixo e fazia metade das rodas desaparecer no terreno, como visto na captura mobile.
       r.suspensao.position.y=(cfg.alturaRoda||0)+compressaoSuspensao[i];
+      // Contato exato: o centro geométrico do pneu deve ficar no solo + o raio medido da própria roda.
+      // O cálculo anterior usava a quina da carroceria como se fosse o centro do pneu e enterrava rodas
+      // quando o modelo tinha o eixo da roda alguns centímetros abaixo dessa referência.
+      r.suspensao.getWorldPosition(_posRoda);r.suspensao.getWorldScale(_escalaRoda);
+      const erroContato=_alt[i]+r.raio-_posRoda.y;
+      r.suspensao.position.y+=erroContato/Math.max(.01,_escalaRoda.y);
       maiorCompressao=Math.max(maiorCompressao,compressaoSuspensao[i]);
     }
     // Em uma lombada forte o chassi rebaixado encosta de leve: é o raspado visual pedido, limitado
