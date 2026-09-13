@@ -316,12 +316,8 @@ function montarFazenda(zona,i){
 
 function montarVila(){
   const g=new THREE.Group();g.name='vila-rural';mundo.add(g);
-  // Casas seguem a estrada e têm recuos diferentes; nenhuma grade ortogonal.
-  const casas=[
-    [56,92,.18,1],[67,104,-.12,2],[79,111,.22,3],[91,106,-.28,4],
-    [102,96,.10,5],[93,84,.34,6],[73,82,-.20,7]
-  ];
-  for(const c of casas)casaRural(g,...c);
+  // Casas residenciais da vila removidas para deixar o entorno das fazendas aberto.
+  // Mantemos apenas vegetação e estruturas rurais de apoio; nenhuma casa extra é criada aqui.
   galpao(g,108,111,.18,2);reservatorioAzul(g,105,103);
   bananeiras(g,61,83,61);bananeiras(g,99,113,73);
   for(let i=0;i<24;i++){
