@@ -71,6 +71,33 @@ export function criarVeiculo(cfg){
   const cursoSuspensao=cfg.suspensaoCurso||0;
   const compressaoSuspensao=[0,0,0,0],velSuspensao=[0,0,0,0];
   const alvoSuspensao=[0,0,0,0];
+  const faiscaMax=cfg.faiscas?24:0;
+  const faiscaVida=new Float32Array(faiscaMax),faiscaVel=[];
+  const faiscaPos=new Float32Array(faiscaMax*3);
+  let faiscaTimer=0;
+  let faiscaPontos=null;
+  if(faiscaMax){
+    for(let i=0;i<faiscaMax;i++){faiscaVida[i]=0;faiscaPos[i*3+1]=-999;faiscaVel.push(new THREE.Vector3())}
+    const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(faiscaPos,3));
+    const m=new THREE.PointsMaterial({color:0xffb22e,size:.075,transparent:true,opacity:.95,blending:THREE.AdditiveBlending,depthWrite:false});
+    faiscaPontos=new THREE.Points(g,m);faiscaPontos.frustumCulled=false;scene.add(faiscaPontos);
+  }
+  function emitirFaiscas(){
+    if(!faiscaPontos)return;
+    const base=new THREE.Vector3();grupo.localToWorld(base.set(0,-cfg.alturaColisao*.42,.18));
+    for(let i=0;i<faiscaMax;i++)if(faiscaVida[i]<=0){
+      faiscaVida[i]=.16+Math.random()*.16;faiscaPos[i*3]=base.x;faiscaPos[i*3+1]=base.y;faiscaPos[i*3+2]=base.z;
+      faiscaVel[i].set((Math.random()-.5)*2.2,.8+Math.random()*1.8,(Math.random()-.5)*2.2);break;
+    }
+  }
+  function atualizarFaiscas(dt){
+    if(!faiscaPontos)return;
+    for(let i=0;i<faiscaMax;i++)if(faiscaVida[i]>0){
+      faiscaVida[i]-=dt;faiscaVel[i].y-=7*dt;faiscaPos[i*3]+=faiscaVel[i].x*dt;faiscaPos[i*3+1]+=faiscaVel[i].y*dt;faiscaPos[i*3+2]+=faiscaVel[i].z*dt;
+      if(faiscaVida[i]<=0)faiscaPos[i*3+1]=-999;
+    }
+    faiscaPontos.geometry.attributes.position.needsUpdate=true;
+  }
   // As rodas, se o modelo permitir separá-las (ver `Rodas.js`). `null` = modelo sem recorte, e aí o
   // veículo anda como sempre andou, com a roda desenhada parada.
   let rodas=null;
@@ -267,6 +294,7 @@ export function criarVeiculo(cfg){
 
   function atualizarSuspensao(dt,rumo,aceleracao,direcao){
     if(!rodas||!cursoSuspensao)return;
+    atualizarFaiscas(dt);faiscaTimer=Math.max(0,faiscaTimer-dt);
     // Freada comprime a dianteira; aceleração comprime a traseira. Curva comprime o lado externo.
     const longitudinal=THREE.MathUtils.clamp(aceleracao*(cfg.transferenciaPeso||0),-.10,.10);
     const lateral=THREE.MathUtils.clamp(direcao*Math.abs(velocidade)/Math.max(1,cfg.maxVel)*.07,-.07,.07);
@@ -299,6 +327,7 @@ export function criarVeiculo(cfg){
       ?(maiorCompressao-limite)/Math.max(.001,cursoSuspensao-limite)*(cfg.raspagemSuspensao||0)
       :0;
     grupo.position.y-=fundo;
+    if(fundo>.003&&faiscaTimer<=0&&Math.abs(velocidade)>1){emitirFaiscas();faiscaTimer=.055}
   }
 
   // ===== COLISOR DO VEÍCULO PARADO =====

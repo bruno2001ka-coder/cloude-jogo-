@@ -6,7 +6,7 @@ import{scene}from'./core.js';
 import{alturaDoChaoDesenhado}from'./Terrain.js';
 import{player}from'./Player.js';
 import{matTerraArada,matTerraBatida,matMadeira,matReboco,matTelha,matConcreto,bmat,uvPorMetro}from'./Materials.js';
-import{registrarObstaculo,registrarCaixa,marcarObstaculoMovel}from'./Physics.js';
+import{registrarObstaculo,registrarCaixa,marcarObstaculoMovel,superficiesAndaveis}from'./Physics.js';
 
 export const RURAL_ZONES=[
   {id:'boa-vista',nome:'Sítio Boa Vista',sigla:'BV',x:-145,z:76,raio:30},
@@ -74,6 +74,21 @@ function estradaDeTerra(parent,nome,pontos,largura=4.8,centroVerde=true){
   parent.add(faixa(c,.52, largura*.58,matGramaBorda,.027,1.9));
   if(centroVerde)parent.add(faixa(c,.24,0,matGramaBorda,.035,1.7));
   return c;
+}
+function pistaTesteLombada(parent){
+  const cx=-108,cz=-70,meiaLarg=2.35,meiaComp=3.2,altura=.24,n=16;
+  const pos=[],uv=[],idx=[];
+  for(let i=0;i<=n;i++){
+    const z=cz-meiaComp+(i/n)*meiaComp*2,perfil=Math.max(0,1-Math.abs(z-cz)/meiaComp);
+    for(const x of[cx-meiaLarg,cx+meiaLarg]){pos.push(x,chao(x,z,.06)+altura*perfil,z);uv.push(x,z)}
+  }
+  for(let i=0;i<n;i++){const a=i*2,b=a+1,c=a+2,d=a+3;idx.push(a,c,b,b,c,d)}
+  const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));g.setIndex(idx);g.computeVertexNormals();
+  const m=new THREE.Mesh(g,matBarro);m.name='lombada-teste';m.receiveShadow=true;parent.add(m);superficiesAndaveis.push(m);
+  const placa=new THREE.Group();placa.position.set(cx+3.1,chao(cx+3.1,cz,0),cz);parent.add(placa);
+  const poste=new THREE.Mesh(new THREE.CylinderGeometry(.045,.06,1.7,6),matTronco);poste.position.y=.85;placa.add(poste);
+  const sinal=new THREE.Mesh(new THREE.BoxGeometry(.75,.45,.06),materialCor(0xd9a52e,.8));sinal.position.y=1.58;placa.add(sinal);
+  estradaDeTerra(parent,'Pista de Teste da Lombada',[[-124,-70],[-108,-70],[-92,-70]],5.2,false);
 }
 
 function poligonoTerreno(cx,cz,rx,rz,seed){
@@ -338,6 +353,7 @@ estradaDeTerra(estradas,'Estrada do Ribeirão',[[31,68],[50,52],[73,30],[99,2],[
 estradaDeTerra(estradas,'Acesso Boa Vista',[[-118,90],[-130,84],[-145,76]],3.4,false);
 estradaDeTerra(estradas,'Acesso Vale do Cedro',[[106,110],[116,115],[126,112]],3.6,false);
 estradaDeTerra(estradas,'Acesso Ribeirão',[[132,-47],[143,-65],[154,-86]],3.3,false);
+pistaTesteLombada(estradas);
 
 montarVila();
 RURAL_ZONES.forEach(montarFazenda);

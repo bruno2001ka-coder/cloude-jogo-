@@ -49,6 +49,7 @@ const carro=criarVeiculo({
   alturaRoda:.16,
   transferenciaPeso:.055,
   raspagemSuspensao:.025,
+  faiscas:true,
   // Chassi rebaixado: a carroceria desce 8 cm, enquanto o offset das rodas mantém os pneus apoiados.
   alturaAssento:-.10,
   raioMontar:4,
