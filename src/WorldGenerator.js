@@ -346,6 +346,12 @@ function criarFazenda(){
     if(larg<.25)break;
     bloco(new THREE.BoxGeometry(larg,hDegrau,.14),paredeCasa,bx,by+yTopo-hDegrau/2,bz+lz*2.5);
   }
+  // Forro interno: sem esta face clara a câmera entra no volume e enxerga o verso escuro das águas
+  // do telhado como uma faixa preta contínua. O forro fica abaixo do beiral, recebe luz da varanda e
+  // é apenas visual — não fecha o vão, não cria colisor e mantém a casa navegável.
+  const forroRural=new THREE.MeshStandardMaterial({color:0xd7c9ad,roughness:.95,metalness:0});
+  bloco(new THREE.BoxGeometry(5.72,.08,4.72),forroRural,bx,by+3.08,bz);
+  for(const z of[-1.65,0,1.65])bloco(new THREE.BoxGeometry(5.55,.12,.12),ripaEscura,bx,by+3.15,bz+z);
   // Portas duplas funcionais. Cada folha tem colisor móvel próprio, exatamente onde a madeira está.
   const pivosCeleiro=[],LARGURA_FOLHA=LARGURA_PORTA_CELEIRO/2-.05;
   for(const lado of[-1,1]){
