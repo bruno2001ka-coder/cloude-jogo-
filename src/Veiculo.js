@@ -316,11 +316,14 @@ export function criarVeiculo(cfg){
       // para baixo e fazia metade das rodas desaparecer no terreno, como visto na captura mobile.
       r.suspensao.position.y=(cfg.alturaRoda||0)+compressaoSuspensao[i];
       // Contato exato: o centro geométrico do pneu deve ficar no solo + o raio medido da própria roda.
-      // O cálculo anterior usava a quina da carroceria como se fosse o centro do pneu e enterrava rodas
-      // quando o modelo tinha o eixo da roda alguns centímetros abaixo dessa referência.
+      // A folga positiva evita que a textura do pneu entre no solo por arredondamento da malha.
+      r.suspensao.updateWorldMatrix(true,false);
       r.suspensao.getWorldPosition(_posRoda);r.suspensao.getWorldScale(_escalaRoda);
-      const erroContato=_alt[i]+r.raio-_posRoda.y;
-      r.suspensao.position.y+=erroContato/Math.max(.01,_escalaRoda.y);
+      const erroContato=_alt[i]+r.raio+(cfg.folgaRodaSolo||0)-_posRoda.y;
+      // Y local não é Y do mundo quando o carro está inclinado. Usar só a escala errava justamente
+      // nas ladeiras; o elemento da matriz mede quanto 1 m de Y local sobe no mundo.
+      const subidaVertical=Math.abs(r.suspensao.matrixWorld.elements[5]);
+      r.suspensao.position.y+=erroContato/Math.max(.05,subidaVertical);
       maiorCompressao=Math.max(maiorCompressao,compressaoSuspensao[i]);
     }
     // Em uma lombada forte o chassi rebaixado encosta de leve: é o raspado visual pedido, limitado
@@ -330,6 +333,18 @@ export function criarVeiculo(cfg){
       ?(maiorCompressao-limite)/Math.max(.001,cursoSuspensao-limite)*(cfg.raspagemSuspensao||0)
       :0;
     grupo.position.y-=fundo;
+    // Abaixar o chassi para o efeito de raspagem também abaixa as rodas. Recalibra o contato depois
+    // desse deslocamento para que o pneu continue apoiado por cima do solo, nunca dentro dele.
+    if(fundo){
+      for(let i=0;i<rodas.length;i++){
+        const r=rodas[i];
+        r.suspensao.updateWorldMatrix(true,false);
+        r.suspensao.getWorldPosition(_posRoda);
+        const erroContato=_alt[i]+r.raio+(cfg.folgaRodaSolo||0)-_posRoda.y;
+        const subidaVertical=Math.abs(r.suspensao.matrixWorld.elements[5]);
+        r.suspensao.position.y+=erroContato/Math.max(.05,subidaVertical);
+      }
+    }
     if(fundo>.003&&faiscaTimer<=0&&Math.abs(velocidade)>1){emitirFaiscas();faiscaTimer=.055}
   }
 

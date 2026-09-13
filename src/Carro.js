@@ -50,6 +50,8 @@ const carro=criarVeiculo({
   // a carroceria respirar nas lombadas. A raspagem é limitada pelo pequeno bottom-out do chassi.
   suspensaoCurso:.09,suspensaoMola:11,suspensaoAmortecedor:2.1,
   alturaRoda:.16,
+  // Pequena folga visual para impedir que o pneu atravesse a malha do terreno por arredondamento.
+  folgaRodaSolo:.006,
   transferenciaPeso:.055,
   raspagemSuspensao:.025,
   // Em terreno torcido, não enterra a carroceria para colar as quatro rodas no solo; a suspensão
