@@ -66,6 +66,11 @@ export function criarVeiculo(cfg){
   // A parcela de CURVA da rolagem, guardada à parte pra poder ser amortecida sozinha, sem arrastar a
   // do terreno junto (ver o fim do `atualizar`). Só o veículo com `rolagemDoTerrenoDireta` usa.
   let inclinacaoDeCurva=0;
+  // Estado independente das quatro molas. O assentamento define a altura média da carroceria;
+  // a suspensão resolve a diferença local de cada roda sem transformar o carro num bloco rígido.
+  const cursoSuspensao=cfg.suspensaoCurso||0;
+  const compressaoSuspensao=[0,0,0,0],velSuspensao=[0,0,0,0];
+  const alvoSuspensao=[0,0,0,0];
   // As rodas, se o modelo permitir separá-las (ver `Rodas.js`). `null` = modelo sem recorte, e aí o
   // veículo anda como sempre andou, com a roda desenhada parada.
   let rodas=null;
@@ -251,7 +256,30 @@ export function criarVeiculo(cfg){
       if(maiorFolga>0)py-=Math.min(maiorFolga,Math.max(0,TETO_AFUNDAR+menorFolga));
     }
     grupo.position.set(x,py,z);
+    _eulerQuina.set(arfagem,rumo,rolagem,grupo.rotation.order);_quatQuina.setFromEuler(_eulerQuina);
+    for(let i=0;i<4;i++){
+      _vetQuina.set(_quinas[i][0]*cfg.meiaBitola,0,_quinas[i][1]*cfg.entreEixos).applyQuaternion(_quatQuina);
+      alvoSuspensao[i]=Math.max(0,py+_vetQuina.y-_alt[i]);
+    }
     return rolagem;// rolamento do terreno, pra somar com o de curva
+  }
+
+  function atualizarSuspensao(dt,rumo,aceleracao,direcao){
+    if(!rodas||!cursoSuspensao)return;
+    // Freada comprime a dianteira; aceleração comprime a traseira. Curva comprime o lado externo.
+    const longitudinal=THREE.MathUtils.clamp(aceleracao*(cfg.transferenciaPeso||0),-.10,.10);
+    const lateral=THREE.MathUtils.clamp(direcao*Math.abs(velocidade)/Math.max(1,cfg.maxVel)*.07,-.07,.07);
+    for(const r of rodas){
+      const i=(r.dianteira?0:2)+(r.lado<0?1:0);
+      const alvo=THREE.MathUtils.clamp(
+        alvoSuspensao[i]+longitudinal*(r.dianteira?-1:1)+lateral*(r.lado>0?1:-1),
+        0,cursoSuspensao
+      );
+      const erro=alvo-compressaoSuspensao[i];
+      velSuspensao[i]+=((erro*(cfg.suspensaoMola||18))-velSuspensao[i]*(cfg.suspensaoAmortecedor||4.2))*dt;
+      compressaoSuspensao[i]=THREE.MathUtils.clamp(compressaoSuspensao[i]+velSuspensao[i]*dt,0,cursoSuspensao);
+      r.suspensao.position.y=-compressaoSuspensao[i];
+    }
   }
 
   // ===== COLISOR DO VEÍCULO PARADO =====
@@ -437,7 +465,9 @@ export function criarVeiculo(cfg){
     const reAtiva=reSegurada||!!keys.KeyS;
     const acelerador=reAtiva?-1:Math.max(keys.KeyW?1:0,Math.max(0,Math.min(1,alavanca)));
     const direcao=limitar((keys.KeyD?1:0)-(keys.KeyA?1:0)+joyX);
+    const velocidadeAntes=velocidade;
     atualizarVelocidade(dt,acelerador);
+    const aceleracao=(velocidade-velocidadeAntes)/Math.max(.001,dt);
 
     const rapidez=Math.min(1,Math.abs(velocidade)/cfg.maxVel);
     if(Math.abs(velocidade)>.08&&direcao){
@@ -499,6 +529,7 @@ export function criarVeiculo(cfg){
     }
 
     const rolamentoDoChao=assentar(player.position.x,player.position.z,player.rotation.y,player.position.y);
+    atualizarSuspensao(dt,player.rotation.y,aceleracao,direcao);
     // Inclinação de curva, visual, sem alterar a colisão. Somada ao rolamento do terreno: numa encosta
     // de través o veículo tomba pro lado de baixo, e é isso que mantém as rodas no chão.
     const inclinacao=direcao*rapidez*cfg.inclinacaoNaCurva;

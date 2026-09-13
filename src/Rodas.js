@@ -199,12 +199,17 @@ export function separarRodas(raiz,quantas=4){
     // AO LONGO do eixo, tanto faz: girar em torno de uma reta não depende de onde se está nela.
     const c=caixaDe(geo,tris),cen=new THREE.Vector3();c.getCenter(cen);
     for(const k of['x','y','z'])if(k!==eixo)cen[k]=pneu.cen[k];
+    // O suporte da suspensão fica preso à carroceria; o pivô da roda é filho dele.
+    // Assim a roda pode subir/descer no curso sem deslocar a lataria nem perder o eixo de direção.
+    const suspensao=new THREE.Group();
+    suspensao.position.copy(cen);
     const pivo=new THREE.Group();
-    pivo.position.copy(cen);
+    pivo.position.set(0,0,0);
     const m=new THREE.Mesh(recortar(geo,tris,cen),malha.material);
     m.castShadow=true;m.receiveShadow=true;
     pivo.add(m);
-    malha.add(pivo);// entra no MESMO referencial da malha original, então herda escala e giro dela
+    suspensao.add(pivo);
+    malha.add(suspensao);// herda escala e giro da malha original
     // ===== O RAIO SAI EM METROS, NÃO EM UNIDADES DO ARQUIVO =====
     // A geometria continua na escala CRUA do .glb; quem encolhe pro tamanho do jogo é a escala da
     // raiz, posta pelo `ajustarModelo`. O giro da roda é `distância / raio`, e a distância vem em
@@ -212,8 +217,9 @@ export function separarRodas(raiz,quantas=4){
     // parecia ter 48 cm de raio num carro de 1,97 m, quando tem 18).
     const escala=new THREE.Vector3();m.getWorldScale(escala);
     rodas.push({
-      pivo,malha:m,eixoGiro:eixo,raio:pneu.raio*escala.x,
+      pivo,suspensao,malha:m,eixoGiro:eixo,raio:pneu.raio*escala.x,
       dianteira:Number(chave.split('|')[0])<0,
+      lado:Number(chave.split('|')[1]||1),
     });
   }
   // Todas as rodas giram no MESMO eixo, sejam duas ou quatro. Se a detecção discordar entre elas,

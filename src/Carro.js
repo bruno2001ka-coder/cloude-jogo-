@@ -42,6 +42,9 @@ const carro=criarVeiculo({
   // ficam fora da linha central, numa moto ficam EM CIMA dela).
   rodasQueGiram:4,
   rolagemDoTerrenoDireta:true,
+  // Suspensão independente: curso visível de 12 cm, mola progressiva e amortecimento separado.
+  suspensaoCurso:.12,suspensaoMola:18,suspensaoAmortecedor:4.2,
+  transferenciaPeso:.055,
   alturaAssento:-.02,
   raioMontar:4,
   // Nasce do lado OPOSTO ao da moto (que nasce em +3): sem isso os dois apareceriam um dentro do
