@@ -44,9 +44,10 @@ const carro=criarVeiculo({
   rolagemDoTerrenoDireta:true,
   // Suspensão independente: curso visível de 12 cm, mola progressiva e amortecimento separado.
   suspensaoCurso:.12,suspensaoMola:18,suspensaoAmortecedor:4.2,
-  alturaRoda:.10,
+  alturaRoda:.16,
   transferenciaPeso:.055,
-  alturaAssento:-.02,
+  // Chassi rebaixado: a carroceria desce 8 cm, enquanto o offset das rodas mantém os pneus apoiados.
+  alturaAssento:-.10,
   raioMontar:4,
   // Nasce do lado OPOSTO ao da moto (que nasce em +3): sem isso os dois apareceriam um dentro do
   // outro no primeiro quadro, e o colisor de um empurraria o outro.
