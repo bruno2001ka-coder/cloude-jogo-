@@ -54,8 +54,10 @@ export const FAZENDA_CONFIG=Object.freeze({
     margem:.65,
   }),
   servico:Object.freeze({
-    cocho:Object.freeze({x:casaX+4.5,z:casaZ,largura:2.1,profundidade:.7}),
-    barril:Object.freeze({x:casaX+4.3,z:casaZ-1.2,raio:.4}),
+    // A faixa entre a parede leste da casa e o curral das vacas tem 2 m. O cocho anterior
+    // media 2,1 m e invadia 55 cm o curral; agora cabe com folga e continua acessível.
+    cocho:Object.freeze({x:casaX+4.0,z:casaZ,largura:1.0,profundidade:.7}),
+    barril:Object.freeze({x:casaX+3.8,z:casaZ-1.2,raio:.25}),
     // Área já existente ao lado da casa reservada para circulação/serviço. Não cria piso nem construção:
     // apenas impede a roça de nascer atravessando cocho, barril e ponto de compra.
     limpeza:Object.freeze({x:casaX+4.85,z:casaZ-.6,meiaX:1.7,meiaZ:1.5}),
