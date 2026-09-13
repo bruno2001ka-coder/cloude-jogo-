@@ -1,8 +1,8 @@
 {
   "id": "/cloude-jogo-/",
-  "name": "Quintal 3D — Cultivo Rural",
-  "short_name": "Quintal 3D",
-  "description": "Jogo 3D de bairro brasileiro: cultive, atravesse a favela patrulhada e escape da polícia.",
+  "name": "Vale Verde — Mundo Rural",
+  "short_name": "Vale Verde",
+  "description": "Mundo aberto rural brasileiro em Three.js, com fazenda, veículos, economia e ação.",
   "start_url": "./",
   "scope": "./",
   "display": "fullscreen",
