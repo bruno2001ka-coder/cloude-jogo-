@@ -41,11 +41,12 @@ const carro=criarVeiculo({
   // rodas procurar: a moto passa 2, e o `Rodas.js` muda o recorte por causa disso (num carro as rodas
   // ficam fora da linha central, numa moto ficam EM CIMA dela).
   rodasQueGiram:4,
+  escalaRoda:.86,
   rolagemDoTerrenoDireta:true,
   // Suspensão independente: curso visível de 12 cm, mola progressiva e amortecimento separado.
   // Setup macio de carro rebaixado: bastante curso útil, mola suave e pouco amortecimento para
   // a carroceria respirar nas lombadas. A raspagem é limitada pelo pequeno bottom-out do chassi.
-  suspensaoCurso:.14,suspensaoMola:11,suspensaoAmortecedor:2.1,
+  suspensaoCurso:.09,suspensaoMola:11,suspensaoAmortecedor:2.1,
   alturaRoda:.16,
   transferenciaPeso:.055,
   raspagemSuspensao:.025,

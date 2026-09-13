@@ -368,7 +368,7 @@ export function criarVeiculo(cfg){
     ajustarModelo(gltf.scene);grupo.add(gltf.scene);carregado=true;
     // DEPOIS do `ajustarModelo`: ele escala, centra e gira a raiz, e as rodas entram como filhas da
     // malha, herdando tudo isso. Separar antes daria peças na escala crua do arquivo.
-    if(cfg.rodasQueGiram)rodas=separarRodas(gltf.scene,cfg.rodasQueGiram);
+    if(cfg.rodasQueGiram)rodas=separarRodas(gltf.scene,cfg.rodasQueGiram,cfg.escalaRoda||1);
     assentar(player.position.x+cfg.nascePerto,player.position.z+cfg.nascePerto,0,player.position.y);
     atualizarCaixa();// já nasce sendo obstáculo: chega parado, e parado ele tem corpo
     grupo.visible=true;

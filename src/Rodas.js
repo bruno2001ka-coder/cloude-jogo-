@@ -91,7 +91,7 @@ function caixaDe(geo,triangulos){
  * evita a armadilha da ordem de Euler — a mesma que já me custou duas medidas erradas no assentamento
  * do carro. Com pai e filho, a ordem é a hierarquia, e não há convenção pra errar.
  */
-export function separarRodas(raiz,quantas=4){
+export function separarRodas(raiz,quantas=4,escalaRoda=1){
   let malha=null;
   raiz.traverse(o=>{if(o.isMesh&&!malha)malha=o});
   if(!malha)return null;
@@ -206,6 +206,9 @@ export function separarRodas(raiz,quantas=4){
     const pivo=new THREE.Group();
     pivo.position.set(0,0,0);
     const m=new THREE.Mesh(recortar(geo,tris,cen),malha.material);
+    // O pneu é reduzido no próprio pivô, preservando o centro do cubo e o alinhamento do eixo.
+    // Isso evita que a lateral do pneu atravesse o para-lama quando o modelo vem com roda grande.
+    m.scale.setScalar(escalaRoda);
     m.castShadow=true;m.receiveShadow=true;
     pivo.add(m);
     suspensao.add(pivo);
