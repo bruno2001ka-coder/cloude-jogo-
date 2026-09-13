@@ -139,10 +139,9 @@ function arvore(x,z,s=1){const g=new THREE.Group();g.position.set(x,obterElevaca
 // que têm porta (ver `casasCliente` e DeliveryPoints.js).
 
 function distanciaAoCorredorFazenda(px,pz){
-  const a=FAZENDA_CONFIG.acesso.a,b=FAZENDA_CONFIG.acesso.b;
-  const dx=b.x-a.x,dz=b.z-a.z,den=dx*dx+dz*dz;
-  const t=den?Math.max(0,Math.min(1,((px-a.x)*dx+(pz-a.z)*dz)/den)):0;
-  return Math.hypot(px-(a.x+dx*t),pz-(a.z+dz*t));
+  const{a,via,b}=FAZENDA_CONFIG.acesso;
+  const seg=(p,q)=>{const dx=q.x-p.x,dz=q.z-p.z,den=dx*dx+dz*dz;const t=den?Math.max(0,Math.min(1,((px-p.x)*dx+(pz-p.z)*dz)/den)):0;return Math.hypot(px-(p.x+dx*t),pz-(p.z+dz*t))};
+  return Math.min(seg(a,via),seg(via,b));
 }
 
 export const porteiraFazenda={x:0,y:0,z:0,aberta:true,raio:3.6,pivos:[],anguloAtual:0};
