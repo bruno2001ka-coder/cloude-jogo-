@@ -269,10 +269,11 @@ export function criarVeiculo(cfg){
     // Freada comprime a dianteira; aceleração comprime a traseira. Curva comprime o lado externo.
     const longitudinal=THREE.MathUtils.clamp(aceleracao*(cfg.transferenciaPeso||0),-.10,.10);
     const lateral=THREE.MathUtils.clamp(direcao*Math.abs(velocidade)/Math.max(1,cfg.maxVel)*.07,-.07,.07);
+    const mediaAlvo=alvoSuspensao.reduce((s,v)=>s+v,0)/4;
     for(const r of rodas){
       const i=(r.dianteira?0:2)+(r.lado<0?1:0);
       const alvo=THREE.MathUtils.clamp(
-        alvoSuspensao[i]+longitudinal*(r.dianteira?-1:1)+lateral*(r.lado>0?1:-1),
+        (alvoSuspensao[i]-mediaAlvo)+longitudinal*(r.dianteira?-1:1)+lateral*(r.lado>0?1:-1),
         0,cursoSuspensao
       );
       const erro=alvo-compressaoSuspensao[i];
