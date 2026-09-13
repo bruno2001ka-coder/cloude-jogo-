@@ -341,6 +341,58 @@ function criarFazenda(){
   marcarSemFusao(registrarObstaculo(vergaParede,'celeiro'));
   portasCeleiro.x=bx;portasCeleiro.y=by;portasCeleiro.z=bz+2.7;portasCeleiro.pivos=pivosCeleiro;portasCeleiro.aberta=true;aplicarPortasCeleiroImediata();
   bloco(new THREE.BoxGeometry(.9,.7,.1),ripaEscura,bx,by+3.05,bz+2.53);// portinhola do feno, lá em cima
+  // --- CASA DE FAZENDA: varanda frontal e detalhes de leitura ---
+  // A referência do sítio tem uma varanda contínua, com pilares de madeira, banco e telhado baixo.
+  // São peças decorativas: não entram nos obstáculos para preservar o corredor da porta e a navegação.
+  const varandaFrente=bz+2.95,largVaranda=6.8,profVaranda=1.35;
+  const pisoVaranda=bloco(new THREE.BoxGeometry(largVaranda,.16,profVaranda),matConcreto(),bx,by+.13,varandaFrente);
+  superficiesAndaveis.push(pisoVaranda);
+  const pilaresVaranda=matMadeira(0x68452f);
+  for(const px of[-2.85,2.85])for(const pz of[2.43,3.47])
+    bloco(new THREE.BoxGeometry(.22,2.65,.22),pilaresVaranda,bx+px,by+1.42,bz+pz);
+  // Vigas e telheiro criam a silhueta de varanda mesmo à distância.
+  bloco(new THREE.BoxGeometry(7.1,.18,.22),ripaEscura,bx,by+2.72,varandaFrente-0.55);
+  const telheiroVaranda=new THREE.Mesh(uvPorMetro(new THREE.BoxGeometry(7.15,.14,1.7)),telhadoFazenda);
+  telheiroVaranda.position.set(bx,by+2.92,varandaFrente+.05);telheiroVaranda.rotation.x=-.08;
+  telheiroVaranda.castShadow=true;telheiroVaranda.receiveShadow=true;bairro.add(telheiroVaranda);
+  bloco(new THREE.BoxGeometry(1.8,.16,.48),madeiraCeleiro,bx,by+.72,varandaFrente+.42);
+  bloco(new THREE.BoxGeometry(1.62,.08,.42),ripaEscura,bx,by+1.12,varandaFrente+.42);
+  // Vasos simples dão escala humana e quebram a repetição da fachada.
+  const vasoTerracota=bmat(0x9b5937),folhaVaso=folhaMat;
+  for(const px of[-2.35,2.35]){
+    bloco(new THREE.CylinderGeometry(.16,.21,.28,8),vasoTerracota,bx+px,by+.34,varandaFrente+.40);
+    bloco(new THREE.DodecahedronGeometry(.28,0),folhaVaso,bx+px,by+.68,varandaFrente+.40);
+  }
+
+  // Marco vertical do sítio: caixa d’água elevada e moinho, inspirados no painel enviado.
+  // Ficam no fundo da propriedade e não ocupam o campo, os currais nem o acesso.
+  function criarCaixaAgua(x,z){
+    const g=new THREE.Group();g.position.set(x,obterElevacao(x,z),z);bairro.add(g);
+    const metalRural=new THREE.MeshStandardMaterial({color:0x56616a,roughness:.72,metalness:.38});
+    const metalEscuro=new THREE.MeshStandardMaterial({color:0x30383d,roughness:.8,metalness:.3});
+    for(const px of[-.62,.62])for(const pz of[-.62,.62])bloco(new THREE.CylinderGeometry(.075,.09,3.15,8),metalEscuro,px,1.58,pz,g);
+    bloco(new THREE.CylinderGeometry(.82,.82,1.15,16),metalRural,0,3.35,0,g);
+    bloco(new THREE.CylinderGeometry(.78,.78,.10,16),metalEscuro,0,3.94,0,g);
+    bloco(new THREE.CylinderGeometry(.10,.10,.18,8),metalEscuro,0,4.10,0,g);
+    criarSombraContato(1.25,g,0,0);
+  }
+  function criarMoinho(x,z){
+    const g=new THREE.Group();g.position.set(x,obterElevacao(x,z),z);bairro.add(g);
+    const ferro=new THREE.MeshStandardMaterial({color:0x667078,roughness:.78,metalness:.45});
+    const ferrugem=new THREE.MeshStandardMaterial({color:0x7a4b32,roughness:.88,metalness:.18});
+    bloco(new THREE.CylinderGeometry(.10,.17,6.6,8),ferro,0,3.3,0,g);
+    const topo=new THREE.Group();topo.position.set(0,6.45,.05);g.add(topo);
+    bloco(new THREE.CylinderGeometry(.18,.18,.30,10),ferrugem,0,0,0,topo).rotation.x=Math.PI/2;
+    for(let i=0;i<8;i++){
+      const ang=i*Math.PI/4;
+      const pa=new THREE.Group();pa.rotation.z=ang;topo.add(pa);
+      bloco(new THREE.BoxGeometry(.10,1.42,.06),ferro,0,.82,0,pa);
+      bloco(new THREE.BoxGeometry(.22,.10,.07),ferro,0,1.50,0,pa);
+    }
+    criarSombraContato(1.2,g,0,0);
+  }
+  criarCaixaAgua(cx+8.4,cz-7.2);
+  criarMoinho(cx+5.7,cz-8.2);
   // Cocho e barril continuam existindo, mas saem da parede: antes atravessavam o canto traseiro.
   // Agora formam a área de serviço lateral, fora da porta e fora do corredor da porteira.
   const cocho=FAZENDA_CONFIG.servico.cocho,barril=FAZENDA_CONFIG.servico.barril;
