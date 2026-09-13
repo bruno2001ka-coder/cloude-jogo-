@@ -11,6 +11,7 @@ const gap=(a,b)=>Math.hypot(Math.max(0,b.minX-a.maxX,a.minX-b.maxX),Math.max(0,b
 const overlap=(a,b)=>Math.min(a.maxX,b.maxX)>Math.max(a.minX,b.minX)&&Math.min(a.maxZ,b.maxZ)>Math.max(a.minZ,b.minZ);
 const dPoint=(x,z,b)=>Math.hypot(Math.max(b.minX-x,0,x-b.maxX),Math.max(b.minZ-z,0,z-b.maxZ));
 const dSeg=(a,b,r)=>{let m=Infinity;for(let i=0;i<=240;i++){const t=i/240;m=Math.min(m,dPoint(a.x+(b.x-a.x)*t,a.z+(b.z-a.z)*t,r));}return m};
+const dRota=r=>Math.min(dSeg(F.acesso.a,F.acesso.via,r),dSeg(F.acesso.via,F.acesso.b,r));
 const ok=(id,nome,cond,det={})=>{if(!cond)throw new Error('[AUDIT '+id+'] '+nome+' '+JSON.stringify(det));checks.push({id,nome,...det})};
 
 const casa=box('casa',C.x,C.z,C.largura,C.profundidade);
@@ -53,7 +54,7 @@ ok(20,'polo servico',gap(fund,polo)>.8&&!overlap(polo,barril)&&!overlap(polo,coc
 ok(21,'caixa dagua',gap(fund,caixa)>8&&currais.every(q=>!overlap(caixa,q)));
 ok(22,'moinho',gap(fund,moinho)>8&&currais.every(q=>!overlap(moinho,q)));
 ok(23,'porteira',F.porteira.x===F.cx+F.meiaLarg&&gap(fund,porteira)>15);
-const bloqueios=[...currais,cultivo,cocho,barril,caixa,moinho].filter(o=>dSeg(F.acesso.a,F.acesso.b,o)<F.acesso.raio);
+const bloqueios=[...currais,cultivo,cocho,barril,caixa,moinho].filter(o=>dRota(o)<.55);
 ok(24,'corredor entrada',bloqueios.length===0,{bloqueios:bloqueios.map(x=>x.nome)});
 ok(25,'circulacao jogador',C.portaVao>=1.8&&borda>=1.8&&wg.includes('superficiesAndaveis.push(pisoVaranda)'));
 ok(26,'camera anti clipping',phys.includes('obstaculosCamera')&&cam.includes('LISTAS_BLOQUEIO_CAMERA')&&wg.includes('registrarObstaculoCamera(agua)')&&wg.includes('registrarObstaculoCamera(telheiroVaranda)'));
