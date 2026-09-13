@@ -387,8 +387,10 @@ function criarFazenda(){
   const telheiroVaranda=new THREE.Mesh(uvPorMetro(new THREE.BoxGeometry(7.15,.14,1.7)),telhadoFazenda);
   telheiroVaranda.position.set(bx,by+2.92,varandaFrente+.05);telheiroVaranda.rotation.x=-.08;
   telheiroVaranda.castShadow=true;telheiroVaranda.receiveShadow=true;bairro.add(telheiroVaranda);
-  bloco(new THREE.BoxGeometry(1.8,.16,.48),madeiraCeleiro,bx,by+.72,varandaFrente+.42);
-  bloco(new THREE.BoxGeometry(1.62,.08,.42),ripaEscura,bx,by+1.12,varandaFrente+.42);
+  // Banco fica no canto esquerdo da varanda, nunca no eixo da porta nem sobre os degraus.
+  const bancoX=bx-1.95;
+  bloco(new THREE.BoxGeometry(1.8,.16,.48),madeiraCeleiro,bancoX,by+.72,varandaFrente+.42);
+  bloco(new THREE.BoxGeometry(1.62,.08,.42),ripaEscura,bancoX,by+1.12,varandaFrente+.42);
   // Vasos simples dão escala humana e quebram a repetição da fachada.
   const vasoTerracota=bmat(0x9b5937),folhaVaso=folhaMat;
   for(const px of[-2.35,2.35]){

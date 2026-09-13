@@ -86,3 +86,9 @@ Os itens próximos restantes fazem sentido no contexto rural:
 A área `limpeza` continua existindo apenas como reserva lógica para impedir o nascimento de canteiros sob o serviço; ela não cria um objeto físico e, portanto, não deve ser interpretada como sobreposição visual.
 
 Conclusão: não há mais objeto visível sem sentido dentro da casa. O único agrupamento intencionalmente compacto é o pátio lateral de serviço, que agora está fora da fundação e separado dos animais.
+
+## Auditoria da entrada
+
+A análise do eixo frontal da porta encontrou um problema visual: o banco da varanda estava centralizado em `x = -94`, exatamente sobre o eixo da porta e dos degraus. Isso não fazia sentido para uma varanda rural e podia bloquear a leitura da entrada. O banco foi deslocado para `x = -95,95`, no canto esquerdo da varanda.
+
+A faixa imediata da porta agora está livre de banco, vasos, cocho, barril e ponto de serviço. O teste dedicado `audit-entrada-casa.mjs` retornou **OK: zero bloqueios**.
