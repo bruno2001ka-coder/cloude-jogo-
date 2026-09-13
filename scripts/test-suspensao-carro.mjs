@@ -12,6 +12,7 @@ const checks=[
   ['mola e amortecedor aplicados',/suspensaoMola.*suspensaoAmortecedor/.test(veiculo)],
   ['suspensão atualizada durante condução',/atualizarSuspensao\(dt,player\.rotation\.y,aceleracao,direcao\)/.test(veiculo)],
   ['raspagem limitada em lombadas',/raspagemSuspensao/.test(carro)&&/const fundo=/.test(veiculo)],
+  ['chassi protegido em terreno torcido',/tetoAfundar:\.045/.test(carro)&&/cfg\.tetoAfundar\?\?TETO_AFUNDAR/.test(veiculo)],
   ['faíscas visuais habilitadas',/faiscas:true/.test(carro)&&/emitirFaiscas/.test(veiculo)],
   ['pista de teste registrada',/pistaTesteLombada/.test(rural)&&/superficiesAndaveis\.push\(m\)/.test(rural)],
   ['roda contida no para-lama',/escalaRoda:\.86/.test(carro)&&/recuoRoda:\.035/.test(carro)&&/separarRodas\(gltf\.scene,cfg\.rodasQueGiram,cfg\.escalaRoda\|\|1,cfg\.recuoRoda/.test(veiculo)],

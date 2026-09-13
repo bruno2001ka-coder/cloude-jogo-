@@ -281,7 +281,10 @@ export function criarVeiculo(cfg){
       // A primeira versão limitava o quanto o corpo DESCE. Errado: a roda mais funda já estava
       // `espalhamento` abaixo da mais alta, então o afundamento final é espalhamento + descida —
       // medido, deu 13,8 cm com um teto de 6. Limitar o passo não limita o resultado.
-      if(maiorFolga>0)py-=Math.min(maiorFolga,Math.max(0,TETO_AFUNDAR+menorFolga));
+      // Não deixe o plantio das rodas empurrar o assoalho para dentro do morro. Em terreno torcido,
+      // o contato da roda deve ser resolvido pela suspensão, não baixando a carroceria inteira.
+      const tetoAfundar=cfg.tetoAfundar??TETO_AFUNDAR;
+      if(maiorFolga>0)py-=Math.min(maiorFolga,Math.max(0,tetoAfundar+menorFolga));
     }
     grupo.position.set(x,py,z);
     _eulerQuina.set(arfagem,rumo,rolagem,grupo.rotation.order);_quatQuina.setFromEuler(_eulerQuina);

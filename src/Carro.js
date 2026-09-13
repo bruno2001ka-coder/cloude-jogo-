@@ -52,9 +52,12 @@ const carro=criarVeiculo({
   alturaRoda:.16,
   transferenciaPeso:.055,
   raspagemSuspensao:.025,
+  // Em terreno torcido, não enterra a carroceria para colar as quatro rodas no solo; a suspensão
+  // independente resolve a diferença de altura entre elas.
+  tetoAfundar:.045,
   faiscas:true,
   // Chassi rebaixado: a carroceria desce 8 cm, enquanto o offset das rodas mantém os pneus apoiados.
-  alturaAssento:-.10,
+  alturaAssento:-.04,
   raioMontar:4,
   // Nasce do lado OPOSTO ao da moto (que nasce em +3): sem isso os dois apareceriam um dentro do
   // outro no primeiro quadro, e o colisor de um empurraria o outro.
