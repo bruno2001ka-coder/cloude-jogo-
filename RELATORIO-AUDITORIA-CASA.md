@@ -61,3 +61,11 @@ As seguintes interseções são construtivamente corretas e não são bugs:
 - Assets de entrada: **aprovados**.
 
 Arquivos envolvidos: `src/FarmConfig.js`, `scripts/audit-casa-sobreposicoes.mjs` e `src/WorldGenerator.js`.
+
+## Auditoria do layout completo
+
+A revisão seguinte incluiu também os objetos que não fazem parte da estrutura da casa. O ponto de serviço foi movido para `(-91, -57,2)`, a caixa-d’água para `(-76,5, -59,5)` e o moinho para `(-78,8, -59,2)`. Essas posições deixam os elementos atrás/lateralmente dos currais, dentro da propriedade, mas sem atravessar cercas ou áreas de animais.
+
+A auditoria completa agora verifica casa, varanda, degraus, janelas, cocho, barril, ponto de serviço, três currais, cultivo, caixa-d’água, moinho e limite externo. O resultado foi **zero sobreposições acidentais entre objetos**. As únicas interseções registradas são de projeção vertical ou encaixe arquitetônico intencional, como telhado sobre elementos baixos e casa contida dentro da cerca.
+
+A imagem conceitual gerada anteriormente deve ser entendida como uma simulação artística; a posição exata dos objetos é determinada pelas coordenadas do jogo e está refletida nesta auditoria.

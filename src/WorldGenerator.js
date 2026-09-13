@@ -423,8 +423,10 @@ function criarFazenda(){
     }
     criarSombraContato(1.2,g,0,0);
   }
-  criarCaixaAgua(cx+8.4,cz-7.2);
-  criarMoinho(cx+5.7,cz-8.2);
+  // Fundo sudeste livre: a posição anterior caiu dentro do curral das galinhas e fazia a caixa
+  // d'água atravessar a cerca. Aqui os dois marcos ficam fora dos três currais, com corredor de serviço.
+  criarCaixaAgua(cx+9.5,cz-9.5);
+  criarMoinho(cx+7.2,cz-9.2);
   // Cocho e barril continuam existindo, mas saem da parede: antes atravessavam o canto traseiro.
   // Agora formam a área de serviço lateral, fora da porta e fora do corredor da porteira.
   const cocho=FAZENDA_CONFIG.servico.cocho,barril=FAZENDA_CONFIG.servico.barril;

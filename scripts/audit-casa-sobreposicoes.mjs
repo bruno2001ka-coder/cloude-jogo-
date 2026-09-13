@@ -19,14 +19,23 @@ for(const x of[casa.x-1.78,casa.x+1.78])push(`janela-frontal-${x< casa.x?'E':'D'
 push('janela-lateral',casa.x-3.02,casa.z-.55,.24,1.62,'esquadria',true);
 push('cocho',F.servico.cocho.x,F.servico.cocho.z,F.servico.cocho.largura,F.servico.cocho.profundidade,'servico');
 push('barril',F.servico.barril.x,F.servico.barril.z,F.servico.barril.raio*2,F.servico.barril.raio*2,'servico');
+push('polo-servico',F.polo.x,F.polo.z,.8,.8,'servico');
 const externos=[];
 for(const c of Object.values(F.currais))externos.push(box(`curral-${c.tipo}`,c.cx,c.cz,c.w,c.d,'curral'));
 const C=F.cultivo;externos.push(box('cultivo',(C.minX+C.maxX)/2,(C.minZ+C.maxZ)/2,C.maxX-C.minX,C.maxZ-C.minZ,'cultivo'));
+// Marcos verticais: a caixa em planta cobre pernas/tanque, não a altura total.
+externos.push(box('caixa-agua',F.cx+9.5,F.cz-9.5,1.6,1.6,'marco'));
+externos.push(box('moinho',F.cx+7.2,F.cz-9.2,.6,.6,'marco'));
 const cerca=box('cerca-interna',F.cx,F.cz,F.meiaLarg*2,F.meiaProf*2,'limite',true);
 externos.push(cerca);
 // A casa e a varanda precisam ficar dentro da cerca; isso é contenção intencional, não erro.
 const acidentes=[];
 for(const h of house)for(const e of externos)if(!e.intentional&&overlap(h,e))acidentes.push({a:h.nome,b:e.nome,inter:inter(h,e),gap:gap(h,e)});
+for(let i=0;i<externos.length;i++)for(let j=i+1;j<externos.length;j++){
+  const a=externos[i],b=externos[j];
+  if(a.intentional||b.intentional||a.grupo==='limite'||b.grupo==='limite')continue;
+  if(overlap(a,b))acidentes.push({a:a.nome,b:b.nome,inter:inter(a,b),gap:gap(a,b)});
+}
 const casaFoot=house.find(x=>x.nome==='paredes');
 console.log(JSON.stringify({
   origem:{x:casa.x,z:casa.z},
@@ -34,6 +43,7 @@ console.log(JSON.stringify({
   volumes:house.map(({nome,cx,cz,w,d,grupo})=>({nome,cx,cz,w,d,grupo})),
   sobreposicoesIntencionais:house.flatMap(a=>house.filter(b=>a.nome<b.nome&&overlap(a,b)).map(b=>({a:a.nome,b:b.nome,inter:inter(a,b)}))),
   sobreposicoesAcidentais:acidentes,
+  sobreposicoesEntreObjetos:acidentes.filter(x=>!house.some(h=>h.nome===x.a||h.nome===x.b)),
   folgasExternas:externos.map(e=>({nome:e.nome,distanciaDaCasa:gap(casaFoot,e)})),
   resultado:acidentes.length?'FALHA':'OK'
 },null,2));
