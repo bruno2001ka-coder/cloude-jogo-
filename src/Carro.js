@@ -43,9 +43,12 @@ const carro=criarVeiculo({
   rodasQueGiram:4,
   rolagemDoTerrenoDireta:true,
   // Suspensão independente: curso visível de 12 cm, mola progressiva e amortecimento separado.
-  suspensaoCurso:.12,suspensaoMola:18,suspensaoAmortecedor:4.2,
+  // Setup macio de carro rebaixado: bastante curso útil, mola suave e pouco amortecimento para
+  // a carroceria respirar nas lombadas. A raspagem é limitada pelo pequeno bottom-out do chassi.
+  suspensaoCurso:.14,suspensaoMola:11,suspensaoAmortecedor:2.1,
   alturaRoda:.16,
   transferenciaPeso:.055,
+  raspagemSuspensao:.025,
   // Chassi rebaixado: a carroceria desce 8 cm, enquanto o offset das rodas mantém os pneus apoiados.
   alturaAssento:-.10,
   raioMontar:4,

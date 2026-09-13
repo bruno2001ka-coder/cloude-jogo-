@@ -270,6 +270,7 @@ export function criarVeiculo(cfg){
     const longitudinal=THREE.MathUtils.clamp(aceleracao*(cfg.transferenciaPeso||0),-.10,.10);
     const lateral=THREE.MathUtils.clamp(direcao*Math.abs(velocidade)/Math.max(1,cfg.maxVel)*.07,-.07,.07);
     const mediaAlvo=alvoSuspensao.reduce((s,v)=>s+v,0)/4;
+    let maiorCompressao=0;
     for(const r of rodas){
       const i=(r.dianteira?0:2)+(r.lado<0?1:0);
       const alvo=THREE.MathUtils.clamp(
@@ -282,7 +283,15 @@ export function criarVeiculo(cfg){
       // Compressão real sobe a roda para dentro do para-lama. O sinal anterior empurrava o pneu
       // para baixo e fazia metade das rodas desaparecer no terreno, como visto na captura mobile.
       r.suspensao.position.y=(cfg.alturaRoda||0)+compressaoSuspensao[i];
+      maiorCompressao=Math.max(maiorCompressao,compressaoSuspensao[i]);
     }
+    // Em uma lombada forte o chassi rebaixado encosta de leve: é o raspado visual pedido, limitado
+    // para não atravessar o terreno nem transformar a suspensão em colisão instável.
+    const limite=cursoSuspensao*.72;
+    const fundo=maiorCompressao>limite
+      ?(maiorCompressao-limite)/Math.max(.001,cursoSuspensao-limite)*(cfg.raspagemSuspensao||0)
+      :0;
+    grupo.position.y-=fundo;
   }
 
   // ===== COLISOR DO VEÍCULO PARADO =====
