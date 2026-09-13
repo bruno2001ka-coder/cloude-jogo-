@@ -4,7 +4,7 @@
 import*as THREE from'three';
 import{scene}from'./core.js';
 import{obterElevacao}from'./Terrain.js';
-import{registrarObstaculo,registrarCaixa,superficiesAndaveis,marcarObstaculoMovel,marcarSemFusao}from'./Physics.js';
+import{registrarObstaculo,registrarObstaculoCamera,registrarCaixa,superficiesAndaveis,marcarObstaculoMovel,marcarSemFusao}from'./Physics.js';
 import{bmat,matTelha,matConcreto,matParedeRural,matTelhaBarroRural,matMadeira,matTerraArada,matTerraBatida,uvPorMetro,janela,porta,agua,posteMat,folhaMat,folhaClara,criarSombraContato}from'./Materials.js';
 import{POLOS}from'./Poles.js';
 import{FAZENDA_CONFIG}from'./FarmConfig.js';
@@ -336,7 +336,7 @@ function criarFazenda(){
                       by+alturaCume-Math.sin(inclinacao)*compAgua/2,bz);
     // A caixa é simétrica, então girar -incl (lado +1) ou +incl (lado -1) cobre o mesmo trecho.
     agua.rotation.z=-lado*inclinacao;
-    agua.castShadow=true;agua.receiveShadow=true;bairro.add(agua);
+    agua.castShadow=true;agua.receiveShadow=true;bairro.add(agua);registrarObstaculoCamera(agua);
   }
   bloco(new THREE.BoxGeometry(.3,.26,6),ripaEscura,bx,by+alturaCume-.05,bz);// cumeeira: fecha a junta
   // Empena em degraus de ripa. Cada degrau usa a largura do telhado no TOPO dele (a parte estreita):
@@ -394,7 +394,7 @@ function criarFazenda(){
   bloco(new THREE.BoxGeometry(7.1,.18,.22),ripaEscura,bx,by+2.72,varandaFrente-0.55);
   const telheiroVaranda=new THREE.Mesh(uvPorMetro(new THREE.BoxGeometry(7.15,.14,1.7)),telhadoFazenda);
   telheiroVaranda.position.set(bx,by+2.92,varandaFrente+.05);telheiroVaranda.rotation.x=-.08;
-  telheiroVaranda.castShadow=true;telheiroVaranda.receiveShadow=true;bairro.add(telheiroVaranda);
+  telheiroVaranda.castShadow=true;telheiroVaranda.receiveShadow=true;bairro.add(telheiroVaranda);registrarObstaculoCamera(telheiroVaranda);
   // Vasos simples dão escala humana e quebram a repetição da fachada.
   const vasoTerracota=bmat(0x9b5937),folhaVaso=folhaMat;
   for(const px of[-2.35,2.35]){
