@@ -10,6 +10,7 @@ const checks=[
   ['estado individual das quatro molas',/compressaoSuspensao=\[0,0,0,0\]/.test(veiculo)],
   ['alvo por roda',/alvoSuspensao=\[0,0,0,0\]/.test(veiculo)],
   ['altura dianteira e traseira reguláveis',/alturaSuspensaoFrente:\.10,alturaSuspensaoTraseira:\.10/.test(carro)&&/regularAlturaCarro/.test(carro)&&/regularAltura/.test(veiculo)],
+  ['carroceria usa referência baixa',/const menorApoio=Math\.min\(\.\.\._alt\)/.test(veiculo)&&/py=menorApoio/.test(veiculo)],
   ['contato roda-solo inclinado',/folgaRodaSolo:\.006/.test(carro)&&/subidaVertical/.test(veiculo)&&/erroContato/.test(veiculo)&&/alvoContato/.test(veiculo)],
   ['mola e amortecedor aplicados',/suspensaoMola.*suspensaoAmortecedor/.test(veiculo)],
   ['roda no ar entra em extensão',/-cursoSuspensao\*\.75/.test(veiculo)&&/alvoSuspensao\[i\]-mediaAlvo/.test(veiculo)],

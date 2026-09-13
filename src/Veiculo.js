@@ -252,8 +252,11 @@ export function criarVeiculo(cfg){
       +Math.atan2(alturaFrente-alturaTraseira,cfg.entreEixos*2);
     const rolagem=Math.atan2((DD+TD)/2-(DE+TE)/2,cfg.meiaBitola*2);
     // A carroceria pode ficar acima das rodas: a frente e a traseira são regulagens de altura, não
-    // deslocamentos das rodas. Depois o contato individual mantém cada pneu sobre o terreno.
-    let py=(DD+DE+TD+TE)/4+cfg.alturaAssento+(alturaFrente+alturaTraseira)/2;
+    // deslocamentos das rodas. A referência do chassi é o apoio MAIS BAIXO, não a média: usar a média
+    // fazia o carro levantar inteiro quando uma quina encontrava uma lombada. As rodas independentes
+    // absorvem a diferença e o assoalho continua sempre baixo, como num carro realmente rebaixado.
+    const menorApoio=Math.min(..._alt);
+    let py=menorApoio+cfg.alturaAssento+(alturaFrente+alturaTraseira)/2;
 
     grupo.rotation.y=rumo;
     grupo.rotation.x=arfagem;// ângulo positivo LEVANTA o bico; o peso na frente já veio subtraído
