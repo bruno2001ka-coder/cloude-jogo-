@@ -53,7 +53,9 @@ check('19 novo polo fica fora do corredor',distSeg(F.polo.x,F.polo.z)>F.acesso.r
 {
   const c=F.servico.cocho,foraCocho=Math.abs(F.polo.x-c.x)>c.largura/2+.25||Math.abs(F.polo.z-c.z)>c.profundidade/2+.25;
   const l=F.servico.limpeza,dentroServico=Math.abs(F.polo.x-l.x)<=l.meiaX&&Math.abs(F.polo.z-l.z)<=l.meiaZ;
-  check('20 polo fica acessível no pátio de serviço',Math.abs(F.polo.x-F.cx)<F.meiaLarg-1&&Math.abs(F.polo.z-F.cz)<F.meiaProf-1&&foraCocho&&dentroServico);
+  const b=F.servico.barril,foraBarril=Math.hypot(F.polo.x-b.x,F.polo.z-b.z)>b.raio+.45;
+  const foraCurrais=Object.values(F.currais).every(q=>Math.abs(F.polo.x-q.cx)>q.w/2+.15||Math.abs(F.polo.z-q.cz)>q.d/2+.15);
+  check('20 polo fica acessível no pátio de serviço',Math.abs(F.polo.x-F.cx)<F.meiaLarg-1&&Math.abs(F.polo.z-F.cz)<F.meiaProf-1&&foraCocho&&foraBarril&&foraCurrais&&dentroServico);
 }
 
 // 21–30 · regressões de código/física/interação
