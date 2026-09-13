@@ -29,6 +29,7 @@ const checks=[
   ['carro enxerga a rampa sem ampliar o jogador',/alturaApoioExtra\|\|0/.test(veiculo)&&/alturaApoioExtra:\.75/.test(carro)],
   ['pista registrada como superfície andável',/superficiesAndaveis\.push\(m\)/.test(rural)],
   ['roda contida no para-lama',/escalaRoda:\.86/.test(carro)&&/recuoRoda:\.035/.test(carro)&&/separarRodas\(gltf\.scene,cfg\.rodasQueGiram,cfg\.escalaRoda\|\|1,cfg\.recuoRoda/.test(veiculo)],
+  ['pivô central no pneu',/const cen=pneu\.cen\.clone\(\)/.test(fs.readFileSync(new URL('../src/Rodas.js',import.meta.url),'utf8'))&&/recortar\(geo,tris,cen\)/.test(fs.readFileSync(new URL('../src/Rodas.js',import.meta.url),'utf8'))],
 ];
 const falhas=checks.filter(([,ok])=>!ok);
 console.log(JSON.stringify({ok:!falhas.length,total:checks.length,checks:checks.map(([nome,ok])=>({nome,ok})),falhas:falhas.map(([nome])=>nome)},null,2));

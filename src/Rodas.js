@@ -197,8 +197,11 @@ export function separarRodas(raiz,quantas=4,escalaRoda=1,recuoLateral=0){
     // não muda nada ali — mas se um dia entrar uma peça levemente descentrada, usar o pneu impede que
     // ela puxe o eixo de rotação pra fora do lugar.
     // AO LONGO do eixo, tanto faz: girar em torno de uma reta não depende de onde se está nela.
-    const c=caixaDe(geo,tris),cen=new THREE.Vector3();c.getCenter(cen);
-    for(const k of['x','y','z'])if(k!==eixo)cen[k]=pneu.cen[k];
+    // O pivô precisa ser o CENTRO DO PNEU em todos os três eixos. Antes o eixo da roda
+    // usava o centro da caixa combinada pneu+calota e só copiava os dois eixos do plano;
+    // como a calota fica deslocada para fora, isso movia o pivô lateralmente e a roda
+    // parecia orbitar ou ficar fora do para-lama quando girava.
+    const cen=pneu.cen.clone();
     // O suporte da suspensão fica preso à carroceria; o pivô da roda é filho dele.
     // Assim a roda pode subir/descer no curso sem deslocar a lataria nem perder o eixo de direção.
     const suspensao=new THREE.Group();
