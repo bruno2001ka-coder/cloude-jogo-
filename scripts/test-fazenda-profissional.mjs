@@ -13,11 +13,8 @@ function check(nome,cond,detalhe=''){
   resultados.push(nome);
 }
 const perto=(a,b,eps=1e-9)=>Math.abs(a-b)<=eps;
-function distSeg(px,pz,a=F.acesso.a,b=F.acesso.b){
-  const dx=b.x-a.x,dz=b.z-a.z,den=dx*dx+dz*dz;
-  const t=den?Math.max(0,Math.min(1,((px-a.x)*dx+(pz-a.z)*dz)/den)):0;
-  return Math.hypot(px-(a.x+dx*t),pz-(a.z+dz*t));
-}
+function distTrecho(px,pz,a,b){const dx=b.x-a.x,dz=b.z-a.z,den=dx*dx+dz*dz;const t=den?Math.max(0,Math.min(1,((px-a.x)*dx+(pz-a.z)*dz)/den)):0;return Math.hypot(px-(a.x+dx*t),pz-(a.z+dz*t))}
+function distSeg(px,pz){return Math.min(distTrecho(px,pz,F.acesso.a,F.acesso.via),distTrecho(px,pz,F.acesso.via,F.acesso.b))}
 const portaPonto={x:F.casa.x,z:F.casa.portaFrenteZ};
 const larguraLateral=(F.casa.largura-F.casa.portaVao)/2;
 const folha=F.casa.portaVao/2-.05;
@@ -46,7 +43,7 @@ check('12 platô da porteira cobre os dois batentes',F.nivelamentoPorteira.inner
 check('13 platô da casa cobre toda a fundação',F.nivelamentoCasa.innerX>=F.casa.baseLargura/2&&F.nivelamentoCasa.innerZ>=F.casa.baseProfundidade/2);
 check('14 transições de terreno têm faixa suave',F.nivelamentoCasa.outerX>F.nivelamentoCasa.innerX&&F.nivelamentoCasa.outerZ>F.nivelamentoCasa.innerZ&&F.nivelamentoPorteira.outerX>F.nivelamentoPorteira.innerX&&F.nivelamentoPorteira.outerZ>F.nivelamentoPorteira.innerZ);
 check('15 corredor é mais largo que a porteira',F.acesso.raio*2>=F.porteira.vao+.3);
-check('16 corredor liga porteira e porta sem ser degenerado',Math.hypot(F.acesso.b.x-F.acesso.a.x,F.acesso.b.z-F.acesso.a.z)>20);
+check('16 corredor liga porteira e porta sem ser degenerado',Math.hypot(F.acesso.via.x-F.acesso.a.x,F.acesso.via.z-F.acesso.a.z)+Math.hypot(F.acesso.b.x-F.acesso.via.x,F.acesso.b.z-F.acesso.via.z)>20);
 check('17 antigo balcão realmente invadia o corredor',distSeg(-94,-53)<F.acesso.raio);
 check('18 novo polo não disputa com a porta',Math.hypot(F.polo.x-portaPonto.x,F.polo.z-portaPonto.z)>3.2);
 check('19 novo polo fica fora do corredor',distSeg(F.polo.x,F.polo.z)>F.acesso.raio+1);
