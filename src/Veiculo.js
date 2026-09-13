@@ -279,7 +279,9 @@ export function criarVeiculo(cfg){
       const erro=alvo-compressaoSuspensao[i];
       velSuspensao[i]+=((erro*(cfg.suspensaoMola||18))-velSuspensao[i]*(cfg.suspensaoAmortecedor||4.2))*dt;
       compressaoSuspensao[i]=THREE.MathUtils.clamp(compressaoSuspensao[i]+velSuspensao[i]*dt,0,cursoSuspensao);
-      r.suspensao.position.y=-compressaoSuspensao[i];
+      // Compressão real sobe a roda para dentro do para-lama. O sinal anterior empurrava o pneu
+      // para baixo e fazia metade das rodas desaparecer no terreno, como visto na captura mobile.
+      r.suspensao.position.y=compressaoSuspensao[i];
     }
   }
 
