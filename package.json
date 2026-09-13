@@ -1,12 +1,12 @@
 {
-  "name": "quintal-3d",
+  "name": "vale-verde",
   "private": true,
-  "version": "0.4.9",
-  "description": "Jogo 3D web em Three.js",
+  "version": "0.4.11",
+  "description": "Vale Verde — jogo 3D rural brasileiro em Three.js",
   "type": "module",
   "scripts": {
     "check": "node scripts/check-syntax.mjs && node scripts/validate-assets.mjs",
-    "test": "node scripts/test-colisores.mjs && node scripts/test-celeiro-geometria.mjs && node scripts/test-fazenda-profissional.mjs"
+    "test": "node scripts/test-colisores.mjs && node scripts/test-celeiro-geometria.mjs && node scripts/test-fazenda-profissional.mjs && node scripts/audit-fazenda-completa.mjs"
   },
   "engines": {
     "node": ">=20"
