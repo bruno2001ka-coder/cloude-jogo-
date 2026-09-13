@@ -36,6 +36,8 @@ jobs:
         run: npm run check
       - name: Run regression tests
         run: npm test
+      - name: Check committed diff whitespace
+        run: git diff --check HEAD^ HEAD
 
   # Single deploy job since we're just deploying
   deploy:
