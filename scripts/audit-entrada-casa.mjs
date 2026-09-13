@@ -1,7 +1,6 @@
 import{FAZENDA_CONFIG as F}from'../src/FarmConfig.js';
 const c=F.casa,porta={x:c.x,z:c.z+2.53};
 const objetos=[
- ['banco',c.x-1.95,c.z+3.37,1.8,.48],
  ['vaso-esquerdo',c.x-2.35,c.z+3.35,.42,.42],
  ['vaso-direito',c.x+2.35,c.z+3.35,.42,.42],
  ['ponto-servico',F.polo.x,F.polo.z,.8,.8],

@@ -300,7 +300,9 @@ function criarFazenda(){
       }
     }
   }
-  janelaRural(bx-1.78,bz+2.53,true);janelaRural(bx+1.78,bz+2.53,true);
+  // Centralização exata nos dois panos laterais: (2,35/2) + ((6-2,35)/2) = 2,0875 m.
+  const centroPano=LARGURA_PORTA_CELEIRO/2+larguraLateral/2;
+  janelaRural(bx-centroPano,bz+2.53,true);janelaRural(bx+centroPano,bz+2.53,true);
   janelaRural(bx-3.02,bz-.55,false);
   // Soleira de pedra e dois degraus assentam a entrada no terreno e criam sombra de contato natural.
   bloco(new THREE.BoxGeometry(2.8,.18,.46),pedraBase,bx,by+.10,bz+3.17);
@@ -393,10 +395,6 @@ function criarFazenda(){
   const telheiroVaranda=new THREE.Mesh(uvPorMetro(new THREE.BoxGeometry(7.15,.14,1.7)),telhadoFazenda);
   telheiroVaranda.position.set(bx,by+2.92,varandaFrente+.05);telheiroVaranda.rotation.x=-.08;
   telheiroVaranda.castShadow=true;telheiroVaranda.receiveShadow=true;bairro.add(telheiroVaranda);
-  // Banco fica no canto esquerdo da varanda, nunca no eixo da porta nem sobre os degraus.
-  const bancoX=bx-1.95;
-  bloco(new THREE.BoxGeometry(1.8,.16,.48),madeiraCeleiro,bancoX,by+.72,varandaFrente+.42);
-  bloco(new THREE.BoxGeometry(1.62,.08,.42),ripaEscura,bancoX,by+1.12,varandaFrente+.42);
   // Vasos simples dão escala humana e quebram a repetição da fachada.
   const vasoTerracota=bmat(0x9b5937),folhaVaso=folhaMat;
   for(const px of[-2.35,2.35]){
