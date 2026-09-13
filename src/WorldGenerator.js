@@ -279,6 +279,38 @@ function criarFazenda(){
   const larguraLateral=(6-LARGURA_PORTA_CELEIRO)/2;
   const paredeFrenteE=bloco(new THREE.BoxGeometry(larguraLateral,ALTURA_CELEIRO,.18),paredeCasa,bx-((LARGURA_PORTA_CELEIRO+larguraLateral)/2),by+1.6,bz+2.41);
   const paredeFrenteD=bloco(new THREE.BoxGeometry(larguraLateral,ALTURA_CELEIRO,.18),paredeCasa,bx+((LARGURA_PORTA_CELEIRO+larguraLateral)/2),by+1.6,bz+2.41);
+  // Acabamento construtivo: embasamento de pedra e janelas de madeira evitam o aspecto de caixa branca.
+  const pedraBase=matMadeira(0x625344),madeiraJanela=matMadeira(0x60402b);
+  const vidroJanela=new THREE.MeshStandardMaterial({color:0x8fa9a0,roughness:.28,metalness:.04,
+    transparent:true,opacity:.74,emissive:0x243b38,emissiveIntensity:.12});
+  bloco(new THREE.BoxGeometry(6.04,.42,.24),pedraBase,bx,by+.28,bz+2.47);
+  bloco(new THREE.BoxGeometry(6.04,.42,.24),pedraBase,bx,by+.28,bz-2.47);
+  function janelaRural(x,z,frente=true){
+    const g=new THREE.Group();g.position.set(x,by+1.72,z);if(!frente)g.rotation.y=Math.PI/2;bairro.add(g);
+    bloco(new THREE.BoxGeometry(1.12,1.02,.10),madeiraJanela,0,0,0,g);
+    bloco(new THREE.BoxGeometry(.86,.76,.035),vidroJanela,0,0,.065,g);
+    bloco(new THREE.BoxGeometry(.055,.82,.05),madeiraJanela,0,0,.10,g);
+    bloco(new THREE.BoxGeometry(.92,.055,.05),madeiraJanela,0,0,.10,g);
+    for(const lado of[-1,1]){
+      const veneziana=new THREE.Group();veneziana.position.set(lado*.67,0,.04);g.add(veneziana);
+      bloco(new THREE.BoxGeometry(.28,1.06,.12),madeiraJanela,0,0,0,veneziana);
+      for(const yy of[-.34,-.17,0,.17,.34]){
+        const r=bloco(new THREE.BoxGeometry(.23,.035,.14),ripaEscura,0,yy,.075,veneziana);
+        r.rotation.z=lado*.18;
+      }
+    }
+  }
+  janelaRural(bx-1.78,bz+2.53,true);janelaRural(bx+1.78,bz+2.53,true);
+  janelaRural(bx-3.02,bz-.55,false);
+  // Soleira de pedra e dois degraus assentam a entrada no terreno e criam sombra de contato natural.
+  bloco(new THREE.BoxGeometry(2.8,.18,.46),pedraBase,bx,by+.10,bz+3.17);
+  bloco(new THREE.BoxGeometry(2.25,.16,.34),pedraBase,bx,by+.04,bz+3.42);
+  // Calhas e descidas simples: detalhes pequenos, mas decisivos para uma casa rural construída.
+  const metalCalha=new THREE.MeshStandardMaterial({color:0x4b4540,roughness:.72,metalness:.22});
+  for(const z of[bz-3.02,bz+3.02]){
+    bloco(new THREE.BoxGeometry(6.55,.10,.12),metalCalha,bx,by+3.32,z);
+    for(const x of[bx-3.02,bx+3.02])bloco(new THREE.BoxGeometry(.10,3.05,.10),metalCalha,x,by+1.78,z);
+  }
   // Fundo e laterais podem ser otimizados normalmente. As duas peças da FACHADA não podem fundir
   // com a verga: se fundirem, o otimizador transforma o vão de 2,35 m numa parede invisível inteira.
   for(const parede of[paredeFundo,paredeLateralE,paredeLateralD])registrarObstaculo(parede,'celeiro');
