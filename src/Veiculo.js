@@ -326,17 +326,25 @@ export function criarVeiculo(cfg){
       r.suspensao.getWorldPosition(_posRoda);
       const subidaVertical=Math.abs(r.suspensao.matrixWorld.elements[5]);
       const erroContato=_alt[i]+r.raio+(cfg.folgaRodaSolo||0)-_posRoda.y;
+      // O erro de contato é um deslocamento pedido pelo piso, não uma nova posição.
+      // Somar a compressão atual aqui criava uma realimentação: a mola recebia o próprio
+      // movimento como alvo e, ao soltar o freio, atravessava o ponto neutro antes de voltar.
       const alvoContato=THREE.MathUtils.clamp(
-        compressaoSuspensao[i]+erroContato/Math.max(.05,subidaVertical),
+        erroContato/Math.max(.05,subidaVertical),
         -cursoSuspensao*.75,cursoSuspensao
       );
       const alvoFinal=THREE.MathUtils.clamp(alvo+alvoContato, -cursoSuspensao*.75,cursoSuspensao);
-      const erro=alvoFinal-compressaoSuspensao[i];
-      velSuspensao[i]+=((erro*(cfg.suspensaoMola||18))-velSuspensao[i]*(cfg.suspensaoAmortecedor||4.2))*dt;
+      // Integração exponencial monotônica: a suspensão chega ao alvo como um amortecedor
+      // real, mas não passa dele. O Euler com velocidade acumulada era o responsável pelo
+      // “vai e volta devagarzinho” depois da frenagem, mesmo com amortecedor alto.
+      const resposta=Math.max(8,Math.sqrt(cfg.suspensaoMola||18)*2+(cfg.suspensaoAmortecedor||4.2)*.35);
+      const passo=1-Math.exp(-resposta*Math.min(dt,.05));
+      const anterior=compressaoSuspensao[i];
       compressaoSuspensao[i]=THREE.MathUtils.clamp(
-        compressaoSuspensao[i]+velSuspensao[i]*dt,
+        anterior+(alvoFinal-anterior)*passo,
         -cursoSuspensao*.75,cursoSuspensao
       );
+      velSuspensao[i]=(compressaoSuspensao[i]-anterior)/Math.max(.001,dt);
       // Compressão real sobe a roda para dentro do para-lama; extensão desce a roda
       // até o limite do curso. O chassi continua baixo, sem levantar junto com a roda.
       r.suspensao.position.y=(cfg.alturaRoda||0)+compressaoSuspensao[i];

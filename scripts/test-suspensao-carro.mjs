@@ -14,6 +14,7 @@ const checks=[
   ['mola e amortecedor aplicados',/suspensaoMola.*suspensaoAmortecedor/.test(veiculo)],
   ['roda no ar entra em extensão',/-cursoSuspensao\*\.75/.test(veiculo)&&/alvoSuspensao\[i\]-mediaAlvo/.test(veiculo)],
   ['contato não teleporta a roda',/alvoContato=/.test(veiculo)&&/alvoFinal=/.test(veiculo)&&!/r\.suspensao\.position\.y\+=erroContato/.test(veiculo)],
+  ['retorno monotônico sem overshoot',/Integração exponencial monotônica/.test(veiculo)&&/1-Math\.exp\(-resposta\*Math\.min\(dt,\.05\)\)/.test(veiculo)&&!/velSuspensao\[i\]\+=/.test(veiculo)],
   ['extensão não dispara raspagem',/Math\.max\(0,compressaoSuspensao\[i\]\)/.test(veiculo)],
   ['suspensão atualizada durante condução',/atualizarSuspensao\(dt,player\.rotation\.y,aceleracao,direcao\)/.test(veiculo)],
   ['raspagem limitada em lombadas',/raspagemSuspensao/.test(carro)&&/const fundo=/.test(veiculo)],
