@@ -5,7 +5,7 @@ import*as THREE from'three';
 import{scene}from'./core.js';
 import{alturaDoChaoDesenhado}from'./Terrain.js';
 import{player}from'./Player.js';
-import{matTerraArada,matTerraBatida,matMadeira,matReboco,matTelha,matConcreto,bmat,uvPorMetro}from'./Materials.js';
+import{matTerraArada,matTerraBatida,matMadeira,matReboco,matTelha,matConcreto,matAsfalto,bmat,uvPorMetro}from'./Materials.js';
 import{registrarObstaculo,registrarCaixa,marcarObstaculoMovel,superficiesAndaveis}from'./Physics.js';
 
 export const RURAL_ZONES=[
@@ -76,19 +76,41 @@ function estradaDeTerra(parent,nome,pontos,largura=4.8,centroVerde=true){
   return c;
 }
 function pistaTesteLombada(parent){
-  const cx=-108,cz=-70,meiaLarg=2.35,meiaComp=3.2,altura=.24,n=16;
-  const pos=[],uv=[],idx=[];
+  // Pista de ensaio única: topo, laterais e base fazem uma peça espessa, parcialmente enterrada.
+  // Não é uma manta sobre o chão: as faces laterais projetam sombra e a base elimina borda de papel.
+  const cx=-108,z0=-116,z1=-22,meiaLarg=3.25,passo=1.25,espessura=.38;
+  const n=Math.ceil((z1-z0)/passo),pos=[],uv=[],idx=[];
+  const perfil=z=>{
+    const rampa=(a,b,h)=>z<a?0:z>b?h:(z-a)/(b-a)*h;
+    let y=rampa(-106,-98,.82)-rampa(-86,-78,.82);
+    // Quebra-molas arredondado, com subida e descida suaves.
+    const d=Math.abs(z+66);if(d<4)y+=.30*(.5+.5*Math.cos(d/4*Math.PI));
+    return y;
+  };
   for(let i=0;i<=n;i++){
-    const z=cz-meiaComp+(i/n)*meiaComp*2,perfil=Math.max(0,1-Math.abs(z-cz)/meiaComp);
-    for(const x of[cx-meiaLarg,cx+meiaLarg]){pos.push(x,chao(x,z,.06)+altura*perfil,z);uv.push(x,z)}
+    const z=Math.min(z1,z0+i*passo),torcida=z>-51&&z<-37?Math.sin((z+51)/14*Math.PI)*.20:0;
+    for(const lado of[-1,1]){
+      const x=cx+lado*meiaLarg;
+      const topo=chao(x,z,.10)+perfil(z)+lado*torcida;
+      pos.push(x,topo,z);uv.push((z-z0)/4,lado<0?0:1);
+      pos.push(x,topo-espessura,z);uv.push((z-z0)/4,lado<0?0:1);
+    }
   }
-  for(let i=0;i<n;i++){const a=i*2,b=a+1,c=a+2,d=a+3;idx.push(a,c,b,b,c,d)}
-  const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));g.setIndex(idx);g.computeVertexNormals();
-  const m=new THREE.Mesh(g,matBarro);m.name='lombada-teste';m.receiveShadow=true;parent.add(m);superficiesAndaveis.push(m);
-  const placa=new THREE.Group();placa.position.set(cx+3.1,chao(cx+3.1,cz,0),cz);parent.add(placa);
-  const poste=new THREE.Mesh(new THREE.CylinderGeometry(.045,.06,1.7,6),matTronco);poste.position.y=.85;placa.add(poste);
-  const sinal=new THREE.Mesh(new THREE.BoxGeometry(.75,.45,.06),materialCor(0xd9a52e,.8));sinal.position.y=1.58;placa.add(sinal);
-  estradaDeTerra(parent,'Pista de Teste da Lombada',[[-124,-70],[-108,-70],[-92,-70]],5.2,false);
+  for(let i=0;i<n;i++){
+    const a=i*4,b=a+1,c=a+4,d=c+1,e=a+2,f=a+3,g=c+2,h=c+3;
+    idx.push(a,c,e,e,c,g, b,f,d,d,f,h, a,b,c,c,b,d, e,g,f,f,g,h);
+  }
+  const i=n*4;idx.push(i,i+1,i+2,i+1,i+3,i+2, 2,0,1,2,1,3);
+  const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
+  geo.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));geo.setIndex(idx);geo.computeVertexNormals();
+  const m=new THREE.Mesh(geo,matAsfalto());m.name='pista-teste-carro-malha-unica';m.receiveShadow=true;m.castShadow=true;parent.add(m);superficiesAndaveis.push(m);
+  const faixa=new THREE.Mesh(new THREE.BoxGeometry(.08,.012,z1-z0),materialCor(0xe1c16a,.8));
+  faixa.position.set(cx,0, (z0+z1)/2);faixa.position.y=chao(cx,faixa.position.z,.115)+.02;parent.add(faixa);
+  const placas=[[-103,-101,'RAMPA'],[-103,-66,'QUEBRA-MOLAS'],[-103,-44,'SUSPENSÃO']];
+  for(const[x,z,nome]of placas){const placa=new THREE.Group();placa.position.set(x,chao(x,z,0),z);parent.add(placa);
+    const poste=new THREE.Mesh(new THREE.CylinderGeometry(.045,.06,1.7,6),matTronco);poste.position.y=.85;placa.add(poste);
+    const sinal=new THREE.Mesh(new THREE.BoxGeometry(1.1,.45,.06),materialCor(0xd9a52e,.8));sinal.position.y=1.58;placa.add(sinal);placa.name=`placa-${nome.toLowerCase()}`;
+  }
 }
 
 function poligonoTerreno(cx,cz,rx,rz,seed){
