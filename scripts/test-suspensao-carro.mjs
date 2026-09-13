@@ -14,7 +14,7 @@ const checks=[
   ['raspagem limitada em lombadas',/raspagemSuspensao/.test(carro)&&/const fundo=/.test(veiculo)],
   ['faíscas visuais habilitadas',/faiscas:true/.test(carro)&&/emitirFaiscas/.test(veiculo)],
   ['pista de teste registrada',/pistaTesteLombada/.test(rural)&&/superficiesAndaveis\.push\(m\)/.test(rural)],
-  ['roda contida no para-lama',/escalaRoda:\.86/.test(carro)&&/separarRodas\(gltf\.scene,cfg\.rodasQueGiram,cfg\.escalaRoda/.test(veiculo)],
+  ['roda contida no para-lama',/escalaRoda:\.86/.test(carro)&&/recuoRoda:\.035/.test(carro)&&/separarRodas\(gltf\.scene,cfg\.rodasQueGiram,cfg\.escalaRoda\|\|1,cfg\.recuoRoda/.test(veiculo)],
 ];
 const falhas=checks.filter(([,ok])=>!ok);
 console.log(JSON.stringify({ok:!falhas.length,total:checks.length,checks:checks.map(([nome,ok])=>({nome,ok})),falhas:falhas.map(([nome])=>nome)},null,2));

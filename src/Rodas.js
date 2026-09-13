@@ -91,7 +91,7 @@ function caixaDe(geo,triangulos){
  * evita a armadilha da ordem de Euler — a mesma que já me custou duas medidas erradas no assentamento
  * do carro. Com pai e filho, a ordem é a hierarquia, e não há convenção pra errar.
  */
-export function separarRodas(raiz,quantas=4,escalaRoda=1){
+export function separarRodas(raiz,quantas=4,escalaRoda=1,recuoLateral=0){
   let malha=null;
   raiz.traverse(o=>{if(o.isMesh&&!malha)malha=o});
   if(!malha)return null;
@@ -203,6 +203,14 @@ export function separarRodas(raiz,quantas=4,escalaRoda=1){
     // Assim a roda pode subir/descer no curso sem deslocar a lataria nem perder o eixo de direção.
     const suspensao=new THREE.Group();
     suspensao.position.copy(cen);
+    // Embute o pneu no para-lama sem mexer no pivô de rolagem: o recuo é lateral, em direção ao
+    // centro do carro, e a geometria continua recentrada no próprio cubo. Isso evita a roda ficar
+    // saltada para fora da carroceria quando o GLB traz o pneu alinhado na borda externa.
+    if(recuoLateral){
+      const centroLargo=caixaToda.getCenter(new THREE.Vector3())[eixoLargo];
+      const lado=Math.sign(cen[eixoLargo]-centroLargo);
+      suspensao.position[eixoLargo]-=lado*recuoLateral;
+    }
     const pivo=new THREE.Group();
     pivo.position.set(0,0,0);
     const m=new THREE.Mesh(recortar(geo,tris,cen),malha.material);

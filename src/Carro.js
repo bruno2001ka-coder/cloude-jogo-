@@ -42,6 +42,8 @@ const carro=criarVeiculo({
   // ficam fora da linha central, numa moto ficam EM CIMA dela).
   rodasQueGiram:4,
   escalaRoda:.86,
+  // Pneus embutidos no para-lama: recuo lateral medido a partir do cubo, sem alterar a altura da roda.
+  recuoRoda:.035,
   rolagemDoTerrenoDireta:true,
   // Suspensão independente: curso visível de 12 cm, mola progressiva e amortecimento separado.
   // Setup macio de carro rebaixado: bastante curso útil, mola suave e pouco amortecimento para
