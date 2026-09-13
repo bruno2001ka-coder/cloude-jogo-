@@ -5,6 +5,8 @@ import{COLLISION_CELL_SIZE,COLLISION_GRID_DIM,COLLISION_GRID_OFFSET}from'./World
 
 export const COLLISION_EPSILON=.0001;
 export const obstaculos=[];
+// Bloqueadores exclusivos da câmera: evitam clipping em telhados/telheiros sem virar parede invisível para jogador/NPC.
+export const obstaculosCamera=[];
 export const superficiesAndaveis=[];
 // Obstáculos que valem SÓ para quem anda a pé pelo bairro (moradores e policiais): principalmente os
 // degraus das escadarias. Eles não podem entrar em `obstaculos` porque o jogador precisa subir neles —
@@ -165,11 +167,16 @@ export function contarColisores(){
 }
 export function registrarObstaculo(meshParede,categoria='sem-categoria'){
   gradeMontada=false;otimizado=false;
-  // Atualiza a hierarquia antes de converter o espaço local para world space.
   meshParede.updateWorldMatrix(true,false);
-  // A AABB é calculada somente da parede recebida, nunca do grupo/telhado.
   const box=new THREE.Box3().setFromObject(meshParede);
   obstaculos.push(box);categoriasObstaculo.push(categoria);
+  return box;
+}
+// Não entra na broadphase nem na colisão horizontal. Serve apenas para a câmera terceira pessoa.
+export function registrarObstaculoCamera(meshParede){
+  meshParede.updateWorldMatrix(true,false);
+  const box=new THREE.Box3().setFromObject(meshParede);
+  obstaculosCamera.push(box);
   return box;
 }
 // Pra quem monta a Box3 na mão (escadaria, cerca, porta) e não tem malha pra medir.
