@@ -281,7 +281,7 @@ export function criarVeiculo(cfg){
       compressaoSuspensao[i]=THREE.MathUtils.clamp(compressaoSuspensao[i]+velSuspensao[i]*dt,0,cursoSuspensao);
       // Compressão real sobe a roda para dentro do para-lama. O sinal anterior empurrava o pneu
       // para baixo e fazia metade das rodas desaparecer no terreno, como visto na captura mobile.
-      r.suspensao.position.y=compressaoSuspensao[i];
+      r.suspensao.position.y=(cfg.alturaRoda||0)+compressaoSuspensao[i];
     }
   }
 

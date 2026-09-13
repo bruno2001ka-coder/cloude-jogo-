@@ -44,6 +44,7 @@ const carro=criarVeiculo({
   rolagemDoTerrenoDireta:true,
   // Suspensão independente: curso visível de 12 cm, mola progressiva e amortecimento separado.
   suspensaoCurso:.12,suspensaoMola:18,suspensaoAmortecedor:4.2,
+  alturaRoda:.10,
   transferenciaPeso:.055,
   alturaAssento:-.02,
   raioMontar:4,
