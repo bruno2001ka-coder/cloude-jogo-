@@ -241,7 +241,7 @@ function quadro(){
   // não pelo jogador: no drone ela sobe e se afasta, e quem decide o que aparece é de onde se olha.
   atualizarChaoVisivel(camera.position.x,camera.position.z);
   atualizarMundoRural(camera.position.x,camera.position.z);
-  atualizarAmbiente(dt,player.position);atualizarSkyline();definirPosicaoAudio(camera.position.x,camera.position.z);
+  atualizarAmbiente(dt,player.position);atualizarSkyline();definirPosicaoAudio(camera.position.x,camera.position.z,inputState.yaw);
   {const banda=obterBandaFase();if(banda!==bandaAnteriorHud){faseIcone.textContent=ICONES_FASE[banda];bandaAnteriorHud=banda}}
   // O tiro contínuo vem ANTES do atualizarPolicia: a bala criada neste frame já entra no
   // atualizarBalas que roda lá dentro, com os alvos deste frame. Depois, ela ficaria um frame parada
