@@ -16,7 +16,7 @@ import*as THREE from'three';
 import{GLTFLoader}from'three/addons/loaders/GLTFLoader.js';
 import{player,topoAndavelAbaixo}from'./Player.js';
 import{scene}from'./core.js';
-import{obterElevacao,alturaDoChaoDesenhado}from'./Terrain.js';
+import{obterElevacao,alturaDoChaoDesenhado,alturaDeSuporteVeiculo}from'./Terrain.js';
 import{separarRodas}from'./Rodas.js';
 import{levanteContraQuina,PASSO_DA_FITA}from'./WorldGenerator.js';
 import{colideObstaculoXZ,registrarCaixa,marcarObstaculoMovel,buscarPosicaoLivre}from'./Physics.js';
@@ -221,7 +221,10 @@ export function criarVeiculo(cfg){
   const _apoioAnterior=[-Infinity,-Infinity,-Infinity,-Infinity];
   let _tetoApoio=0;
   function alturaDeApoio(x,z,quina){
-    const chao=levanteContraQuina(x,z,PASSO_DA_FITA);
+    // O carro apoia no mesmo topo que o jogador vê. A curva analítica pode ficar alguns centímetros
+    // acima da malha desenhada entre vértices; a via também pode subir localmente para cobrir uma
+    // quina. Usar o maior dos dois evita a roda entrar no asfalto sem transformar uma rampa em degrau.
+    const chao=Math.max(alturaDeSuporteVeiculo(x,z),levanteContraQuina(x,z,PASSO_DA_FITA));
     const base=Math.min(Math.max(_apoioAnterior[quina],chao),_tetoApoio);
     const sup=topoAndavelAbaixo(x,z,base+ALCANCE_APOIO+(cfg.alturaApoioExtra||0),chao-.35);
     const apoio=sup!==null&&sup>chao?sup:chao;
@@ -231,7 +234,7 @@ export function criarVeiculo(cfg){
   const _quinas=[[1,-1],[-1,-1],[1,1],[-1,1]];// (lado, frente/trás) em unidades de meiaBitola/entreEixos
   const _alt=[0,0,0,0];
   const _eulerQuina=new THREE.Euler(),_quatQuina=new THREE.Quaternion(),_vetQuina=new THREE.Vector3();
-  const _posRoda=new THREE.Vector3(),_escalaRoda=new THREE.Vector3();
+  const _posRoda=new THREE.Vector3(),_escalaRoda=new THREE.Vector3(),_eixoRoda=new THREE.Vector3(),_quatRoda=new THREE.Quaternion();
   function assentar(x,z,rumo,refY){
     _tetoApoio=refY;
     const cy=Math.cos(rumo),sy=Math.sin(rumo);
@@ -331,7 +334,14 @@ export function criarVeiculo(cfg){
       r.suspensao.updateWorldMatrix(true,false);
       r.suspensao.getWorldPosition(_posRoda);
       const subidaVertical=Math.abs(r.suspensao.matrixWorld.elements[5]);
-      const erroContato=_alt[i]+r.raio+(cfg.folgaRodaSolo||0)-_posRoda.y;
+      // O raio não deve ser tratado como uma esfera vertical fixa: a roda está inclinada junto com
+      // o chassi. Projeta-se o eixo real do pneu no mundo e calcula-se o raio vertical efetivo; isso
+      // evita deixar a parte inferior atravessar o terreno em rampas e rolamentos.
+      r.pivo.getWorldQuaternion(_quatRoda);
+      _eixoRoda.set(0,0,1).applyQuaternion(_quatRoda).normalize();
+      const raioVertical=r.raio*Math.sqrt(Math.max(0,1-_eixoRoda.y*_eixoRoda.y));
+      const apoioAtual=alturaDeApoio(_posRoda.x,_posRoda.z,i);
+      const erroContato=apoioAtual+raioVertical+(cfg.folgaRodaSolo||0)-_posRoda.y;
       // O erro de contato é um deslocamento pedido pelo piso, não uma nova posição.
       // Somar a compressão atual aqui criava uma realimentação: a mola recebia o próprio
       // movimento como alvo e, ao soltar o freio, atravessava o ponto neutro antes de voltar.

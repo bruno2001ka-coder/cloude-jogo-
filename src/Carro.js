@@ -60,7 +60,8 @@ const carro=criarVeiculo({
   // Altura livre da carroceria, ajustável separadamente por eixo (metros): frente e traseira.
   alturaSuspensaoFrente:.10,alturaSuspensaoTraseira:.10,
   // Pequena folga visual para impedir que o pneu atravesse a malha do terreno por arredondamento.
-  folgaRodaSolo:.006,
+  // O contato usa o raio orientado da roda; 8 mm deixam a borracha fora da malha mesmo em triângulos inclinados.
+  folgaRodaSolo:.008,
   transferenciaPeso:.055,
   raspagemSuspensao:.025,
   // Em terreno torcido, não enterra a carroceria para colar as quatro rodas no solo; a suspensão

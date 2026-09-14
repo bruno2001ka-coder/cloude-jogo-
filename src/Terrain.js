@@ -174,6 +174,9 @@ export function alturaDoChaoDesenhado(x,z){
     ? ha+v*(hb-ha)+u*(hd-ha)
     : hc+(1-u)*(hb-hc)+(1-v)*(hd-hc);
 }
+// Altura de apoio da superfície natural que o veículo vê. Mantém o nome semântico separado da curva
+// analítica usada pela colisão do jogador, para que rodas nunca dependam de uma referência invisível.
+export function alturaDeSuporteVeiculo(x,z){return alturaDoChaoDesenhado(x,z)}
 // `ground` continua sendo UMA coisa só pra quem usa de fora — virou Grupo em vez de Malha. O único
 // uso externo é o raycast da mira de plantio (`Economy.js`), que já é recursivo e atravessa o grupo
 // sem precisar de mudança nenhuma.

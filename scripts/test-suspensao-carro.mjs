@@ -13,7 +13,7 @@ const checks=[
   ['carroceria usa referência baixa',/const menorApoio=Math\.min\(\.\.\._alt\)/.test(veiculo)&&/py=menorApoio/.test(veiculo)],
   ['cubo original preservado',/alturaNeutra=cen\.y/.test(fs.readFileSync(new URL('../src/Rodas.js',import.meta.url),'utf8'))&&/r\.alturaNeutra\+\(cfg\.alturaRoda\|\|0\)/.test(veiculo)],
   ['offset de rebaixamento relativo',/alturaRoda:-\.045/.test(carro)],
-  ['contato roda-solo inclinado',/folgaRodaSolo:\.006/.test(carro)&&/subidaVertical/.test(veiculo)&&/erroContato/.test(veiculo)&&/alvoContato/.test(veiculo)],
+  ['contato roda-solo inclinado',/folgaRodaSolo:\.008/.test(carro)&&/subidaVertical/.test(veiculo)&&/erroContato/.test(veiculo)&&/alvoContato/.test(veiculo)],
   ['mola e amortecedor aplicados',/suspensaoMola.*suspensaoAmortecedor/.test(veiculo)],
   ['roda no ar entra em extensão',/-cursoSuspensao\*\.75/.test(veiculo)&&/alvoSuspensao\[i\]-mediaAlvo/.test(veiculo)],
   ['contato não teleporta a roda',/alvoContato=/.test(veiculo)&&/alvoFinal=/.test(veiculo)&&!/r\.suspensao\.position\.y\+=erroContato/.test(veiculo)],
@@ -30,6 +30,8 @@ const checks=[
   ['pista registrada como superfície andável',/superficiesAndaveis\.push\(m\)/.test(rural)],
   ['roda contida no para-lama',/escalaRoda:\.86/.test(carro)&&/recuoRoda:\.035/.test(carro)&&/separarRodas\(gltf\.scene,cfg\.rodasQueGiram,cfg\.escalaRoda\|\|1,cfg\.recuoRoda/.test(veiculo)],
   ['pivô central no pneu',/const cen=pneu\.cen\.clone\(\)/.test(fs.readFileSync(new URL('../src/Rodas.js',import.meta.url),'utf8'))&&/recortar\(geo,tris,cen\)/.test(fs.readFileSync(new URL('../src/Rodas.js',import.meta.url),'utf8'))],
+  ['apoio usa solo visível e quina',/alturaDeSuporteVeiculo\(x,z\)/.test(veiculo)&&/Math\.max\(alturaDeSuporteVeiculo\(x,z\),levanteContraQuina/.test(veiculo)],
+  ['contato usa raio orientado da roda',/raioVertical=r\.raio\*Math\.sqrt/.test(veiculo)&&/apoioAtual=alturaDeApoio/.test(veiculo)],
 ];
 const falhas=checks.filter(([,ok])=>!ok);
 console.log(JSON.stringify({ok:!falhas.length,total:checks.length,checks:checks.map(([nome,ok])=>({nome,ok})),falhas:falhas.map(([nome])=>nome)},null,2));
