@@ -24,6 +24,7 @@ import{valorAcelerador,reSegurada,configurar as configurarAcelerador,modoDirigin
 import{atualizarCarro,maxVelCarro}from'./Carro.js';
 import{atualizarChaoVisivel}from'./Terrain.js';
 import{atualizarMundoRural}from'./RuralWorld.js';
+import{atualizarPistaRibeirao}from'./Pistas.js';
 
 camera.position.set(0,EYE_HEIGHT,16);
 initDragLook(renderer.domElement);
@@ -240,7 +241,7 @@ function quadro(){
   // O chão é cortado em pedaços e só os de perto são desenhados (ver `Terrain.js`). Vai pela CÂMERA,
   // não pelo jogador: no drone ela sobe e se afasta, e quem decide o que aparece é de onde se olha.
   atualizarChaoVisivel(camera.position.x,camera.position.z);
-  atualizarMundoRural(camera.position.x,camera.position.z);
+  atualizarMundoRural(camera.position.x,camera.position.z);atualizarPistaRibeirao(dt);
   atualizarAmbiente(dt,player.position);atualizarSkyline();definirPosicaoAudio(camera.position.x,camera.position.z,inputState.yaw);
   {const banda=obterBandaFase();if(banda!==bandaAnteriorHud){faseIcone.textContent=ICONES_FASE[banda];bandaAnteriorHud=banda}}
   // O tiro contínuo vem ANTES do atualizarPolicia: a bala criada neste frame já entra no
