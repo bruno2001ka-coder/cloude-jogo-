@@ -140,17 +140,22 @@ export function obterBandaFase(){return fase<.22||fase>.78?'noite':fase<.30?'nas
 // Chamado a cada frame: avança o ciclo dia/noite, mantém céu/pano de fundo centrados na câmera e as nuvens derivando devagar.
 // `alvo` é a posição do jogador: a caixa de sombra viaja com ele (ver SOMBRA_RAIO).
 const _alvoSol=new THREE.Vector3();
+const _offsetSol=new THREE.Vector3();
 export function atualizarAmbiente(dt,alvo){
+  atualizarCicloDia(dt);
   if(alvo){
     // Trava o alvo na grade de um texel. Sem isso a caixa de sombra desliza continuamente com o
     // jogador e a borda de toda sombra ferve (shadow swimming) enquanto ele anda.
     const passo=SOMBRA_RAIO*2/2048;
     _alvoSol.set(Math.round(alvo.x/passo)*passo,0,Math.round(alvo.z/passo)*passo);
     sun.target.position.copy(_alvoSol);
-    sun.position.copy(_alvoSol).add(SOL_OFFSET);
+    // O ciclo solar acabou de calcular a direção/altura do sol. Apenas trasladamos essa posição
+    // relativa para o jogador; antes, o ciclo seguinte sobrescrevia este deslocamento e fazia a
+    // sombra parecer presa ao mundo em vez de acompanhar o jogador.
+    _offsetSol.copy(sun.position);
+    sun.position.copy(_alvoSol).add(_offsetSol);
     sun.target.updateMatrixWorld();
   }
-  atualizarCicloDia(dt);
   ceu.position.copy(camera.position);
   horizonte.position.set(camera.position.x,22,camera.position.z);
   for(const nv of nuvens){nv.position.x+=dt*.6;nv.position.z+=dt*.25;if(nv.position.x>200)nv.position.x-=400;if(nv.position.z>200)nv.position.z-=400}
