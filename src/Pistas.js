@@ -23,6 +23,7 @@ const chao=(x,z)=>alturaDoChaoDesenhado(x,z)+.045;
 const caixas=[];
 const checkpoints=[];
 const dinamicos=[];
+const temposMedalha={ouro:32,prata:46,bronze:65};
 const inicio={x:-58,z:-145,raio:7};
 const rota=[[-58,-145],[-35,-124],[-8,-105],[18,-82],[42,-58],[63,-35]];
 const fase={ativa:false,indice:0,tempo:0,melhor:Infinity,concluida:false,avisado:false};
@@ -38,7 +39,7 @@ function arco(x,z,mat=checkpointMat){const h=3.3,w=7;caixa(x-w/2,z,w*.12,.18,h,m
 function anel(x,z,mat=checkpointMat){const y=chao(x,z)+1.9;const t=new THREE.Mesh(new THREE.TorusGeometry(2.2,.10,8,24),mat);t.position.set(x,y,z);t.rotation.x=Math.PI/2;t.castShadow=true;grupo.add(t);checkpoints.push({x,z,mesh:t,base:mat,raio:5})}
 function tronco(x,z,ang){const len=3.1,m=new THREE.Mesh(new THREE.CylinderGeometry(.28,.34,len,10),madeiraMat);m.position.set(x,chao(x,z)+.35,z);m.rotation.z=Math.PI/2;m.rotation.y=ang;m.castShadow=true;grupo.add(m);const w=Math.abs(Math.cos(ang))*len+.7,d=Math.abs(Math.sin(ang))*len+.7;registrarCaixa(new THREE.Box3(new THREE.Vector3(x-w/2,chao(x,z),z-d/2),new THREE.Vector3(x+w/2,chao(x,z)+.7,z+d/2)),'pista-tronco')}
 function cone(x,z){const m=new THREE.Mesh(new THREE.ConeGeometry(.34,.85,10),faixaMat);m.position.set(x,chao(x,z)+.4,z);m.castShadow=true;grupo.add(m);registrarCaixa(new THREE.Box3(new THREE.Vector3(x-.32,chao(x,z),z-.32),new THREE.Vector3(x+.32,chao(x,z)+.85,z+.32)),'pista-cone')}
-function barreiraMovel(x,z){const m=new THREE.Mesh(new THREE.BoxGeometry(5.6,.18,.18),metalMat);m.position.set(x,chao(x,z)+1.02,z);m.castShadow=true;grupo.add(m);const b=new THREE.Box3().setFromObject(m);marcarObstaculoMovel(b);dinamicos.push({m,b,x,z,tempo:0});const luz=new THREE.Mesh(new THREE.SphereGeometry(.18,8,6),finishMat);luz.position.set(x-2.65,m.position.y+.18,z);grupo.add(luz)}
+function barreiraMovel(x,z){const m=new THREE.Mesh(new THREE.BoxGeometry(5.6,.18,.18),metalMat);m.position.set(x,chao(x,z)+1.02,z);m.castShadow=true;grupo.add(m);const b=new THREE.Box3().setFromObject(m);marcarObstaculoMovel(b);const luz=new THREE.Mesh(new THREE.SphereGeometry(.18,8,6),finishMat);luz.position.set(x-2.65,m.position.y+.18,z);grupo.add(luz);dinamicos.push({m,b,luz,x,z,tempo:0})}
 function baliza(x,z){const pole=new THREE.Mesh(new THREE.CylinderGeometry(.055,.07,2.5,7),metalMat);pole.position.set(x,chao(x,z)+1.25,z);pole.castShadow=true;grupo.add(pole);const flag=new THREE.Mesh(new THREE.BoxGeometry(.62,.34,.035),faixaMat);flag.position.set(x+.32,chao(x,z)+2.15,z);flag.castShadow=true;grupo.add(flag)}
 function montar(){
   for(let i=0;i<rota.length-1;i++)trecho(rota[i],rota[i+1]);
@@ -60,13 +61,13 @@ function atualizarPainel(txt,visivel=true){if(!painel)return;painel.style.displa
 function distancia(x,z,p){return Math.hypot(x-p[0],z-p[1])}
 export function atualizarPistaRibeirao(dt){
   const x=player.position.x,z=player.position.z;
-  for(const d of dinamicos){d.tempo+=dt;d.m.rotation.y=.62*Math.sin(d.tempo*1.25);d.b.setFromObject(d.m)}
+  for(const d of dinamicos){d.tempo+=dt;d.m.rotation.y=.62*Math.sin(d.tempo*1.25);d.b.setFromObject(d.m);d.luz.material.emissiveIntensity=1.2+Math.sin(d.tempo*7)*.7}
   const alvoAtual=checkpoints[fase.indice];if(alvoAtual&&fase.ativa){const pulso=1+Math.sin(performance.now()*.006)*.08;alvoAtual.mesh.scale.setScalar(pulso)}
   if(fase.concluida&&Math.hypot(x-inicio.x,z-inicio.z)<inicio.raio){fase.concluida=false;fase.indice=0;fase.tempo=0;for(const cp of checkpoints){cp.mesh.material=cp.base;cp.mesh.scale.setScalar(1)}atualizarPainel('PISTA DO RIBEIRAO  ·  nova tentativa iniciada  ·  1/5')}
   if(!fase.ativa&&!fase.concluida&&Math.hypot(x-inicio.x,z-inicio.z)<inicio.raio){fase.ativa=true;fase.indice=0;fase.tempo=0;fase.avisado=true;atualizarPainel('PISTA DO RIBEIRAO  ·  passe pelos porticos verdes  ·  1/5')}
   if(!fase.ativa){if(Math.hypot(x-inicio.x,z-inicio.z)<14)atualizarPainel('PISTA DO RIBEIRAO  ·  aproxime-se da faixa amarela para iniciar');else atualizarPainel('',false);return}
   fase.tempo+=dt;const alvo=checkpoints[fase.indice];
-  if(alvo&&distancia(x,z,[alvo.x,alvo.z])<alvo.raio){alvo.mesh.material=fase.indice===checkpoints.length-1?finishMat:checkpointMat;fase.indice++;if(fase.indice>=checkpoints.length){fase.ativa=false;fase.concluida=true;const novo=fase.tempo<fase.melhor;fase.melhor=Math.min(fase.melhor,fase.tempo);atualizarPainel(`PISTA CONCLUIDA  ·  ${fase.tempo.toFixed(1)} s  ·  ${novo?'novo melhor tempo':''}`)}else atualizarPainel(`PISTA DO RIBEIRAO  ·  checkpoint ${fase.indice+1}/${checkpoints.length}  ·  ${fase.tempo.toFixed(1)} s`)}
-  else atualizarPainel(`PISTA DO RIBEIRAO  ·  checkpoint ${Math.min(fase.indice+1,checkpoints.length)}/${checkpoints.length}  ·  ${fase.tempo.toFixed(1)} s`);
+  if(alvo&&distancia(x,z,[alvo.x,alvo.z])<alvo.raio){alvo.mesh.material=fase.indice===checkpoints.length-1?finishMat:checkpointMat;fase.indice++;if(fase.indice>=checkpoints.length){fase.ativa=false;fase.concluida=true;const novo=fase.tempo<fase.melhor;fase.melhor=Math.min(fase.melhor,fase.tempo);const medalha=fase.tempo<=temposMedalha.ouro?'OURO':fase.tempo<=temposMedalha.prata?'PRATA':fase.tempo<=temposMedalha.bronze?'BRONZE':'CONCLUIDA';atualizarPainel(`PISTA CONCLUIDA  ·  ${fase.tempo.toFixed(1)} s  ·  ${medalha}${novo?'  ·  novo melhor tempo':''}`)}else atualizarPainel(`PISTA DO RIBEIRAO  ·  checkpoint ${fase.indice+1}/${checkpoints.length}  ·  ${fase.tempo.toFixed(1)} s`)}
+  else {const perigo=dinamicos.some(d=>Math.hypot(x-d.x,z-d.z)<8);atualizarPainel(perigo?`ATENCAO  ·  barreira movel  ·  checkpoint ${fase.indice+1}/${checkpoints.length}`:`PISTA DO RIBEIRAO  ·  checkpoint ${Math.min(fase.indice+1,checkpoints.length)}/${checkpoints.length}  ·  ${fase.tempo.toFixed(1)} s`)}
 }
 montar();criarPainel();
