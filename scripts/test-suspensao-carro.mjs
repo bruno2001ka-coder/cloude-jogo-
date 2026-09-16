@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 const carro=fs.readFileSync(new URL('../src/Carro.js',import.meta.url),'utf8');
+const moto=fs.readFileSync(new URL('../src/Moto.js',import.meta.url),'utf8');
 const veiculo=fs.readFileSync(new URL('../src/Veiculo.js',import.meta.url),'utf8');
 const rural=fs.readFileSync(new URL('../src/RuralWorld.js',import.meta.url),'utf8');
 const checks=[
@@ -7,6 +8,7 @@ const checks=[
   ['mola macia configurada',/suspensaoMola:13\.5/.test(carro)],
   ['amortecedor controla o retorno',/suspensaoAmortecedor:7\.2/.test(carro)&&/bombeando/.test(carro)],
   ['transferência de peso configurada',/transferenciaPeso:\.055/.test(carro)],
+  ['outro modelo com suspensão curta',/suspensaoCurso:\.045,suspensaoMola:10,suspensaoAmortecedor:6/.test(moto)&&/folgaRodaSolo:\.006/.test(moto)],
   ['estado individual das quatro molas',/compressaoSuspensao=\[0,0,0,0\]/.test(veiculo)],
   ['alvo por roda',/alvoSuspensao=\[0,0,0,0\]/.test(veiculo)],
   ['altura dianteira e traseira reguláveis',/alturaSuspensaoFrente:\.10,alturaSuspensaoTraseira:\.10/.test(carro)&&/regularAlturaCarro/.test(carro)&&/regularAltura/.test(veiculo)],

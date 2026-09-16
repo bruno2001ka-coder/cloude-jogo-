@@ -44,6 +44,9 @@ const moto=criarVeiculo({
   //     trás    centro x +0,483  0,389 x 0,387 x 0,059  (raio 0,194)
   // Roda da frente maior que a de trás, como manda uma trail bike.
   rodasQueGiram:2,
+  // Suspensão curta de trail: suficiente para lombadas sem separar rodas e quadro.
+  suspensaoCurso:.045,suspensaoMola:10,suspensaoAmortecedor:6,
+  folgaRodaSolo:.006,
   // O bico pesa e desce um tico, como moto parada de verdade.
   pesoNaFrente:.05,
   // NEGATIVO de propósito: afunda 2 cm. `obterElevacao` é a curva analítica, mas o chão DESENHADO é
