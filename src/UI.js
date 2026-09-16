@@ -8,6 +8,7 @@ import{plantas,lojaPos,receptadorPos,fazendaPos,armasPos}from'./Economy.js';
 import{POLOS}from'./Poles.js';
 import{marcaCarro}from'./Carro.js';
 import{marcaMoto}from'./Moto.js';
+import{marcaPickup}from'./Pickup.js';
 import{corredores}from'./WorldGenerator.js';
 import{npcs}from'./NPCs.js';
 import{ALT_CANO,ALT_TORSO}from'./Combate.js';
@@ -192,9 +193,10 @@ export function atualizarRadar(){
   // partida, então de longe eles ficam quase no MESMO RUMO: com um anel só, o CAR comeu o rótulo do
   // MOTO exatamente como os polos tinham comido os dois. Separados em raio, empilham um sobre o
   // outro em vez de um DENTRO do outro, e os dois nomes cabem.
-  const CAR=marcaCarro(),MOT=marcaMoto();
+  const CAR=marcaCarro(),MOT=marcaMoto(),RAM=marcaPickup();
   if(CAR)desenharPontoRadar(CAR.x,CAR.z,'#eef2f5',4.5,true,'CAR',RADAR_LIMITE-9);
   if(MOT)desenharPontoRadar(MOT.x,MOT.z,'#eef2f5',4.5,true,'MOTO',RADAR_LIMITE-20);
+  if(RAM)desenharPontoRadar(RAM.x,RAM.z,'#e6b85c',4.5,true,'RAM',RADAR_LIMITE-31);
   // Os quatro polos econômicos e a delegacia grudam na borda: são eles que ficam FORA do bairro, e
   // saber onde a polícia mora é o que deixa o jogador desviar dela em vez de só reagir.
   desenharPontoRadar(lojaPos.x,lojaPos.z,POLOS.sementes.cor,5,true,SIGLAS.sementes);

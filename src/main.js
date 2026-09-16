@@ -22,6 +22,7 @@ import{definirPosicaoAudio}from'./Audio.js';
 import{atualizarMoto,maxVelMoto}from'./Moto.js';
 import{valorAcelerador,reSegurada,configurar as configurarAcelerador,modoDirigindo}from'./Acelerador.js';
 import{atualizarCarro,maxVelCarro}from'./Carro.js';
+import{atualizarPickup,maxVelPickup}from'./Pickup.js';
 import{atualizarChaoVisivel}from'./Terrain.js';
 import{atualizarMundoRural}from'./RuralWorld.js';
 import{atualizarPistaRibeirao}from'./Pistas.js';
@@ -175,12 +176,13 @@ function quadro(){
     const alavanca=valorAcelerador(),re=reSegurada();
     const naMoto=atualizarMoto(dt,keys,inputState.joyX,inputState.joyY,alavanca,re);
     const noCarro=atualizarCarro(dt,keys,inputState.joyX,inputState.joyY,alavanca,re);
-    const dirigindoMoto=naMoto||noCarro;
+    const naPickup=atualizarPickup(dt,keys,inputState.joyX,inputState.joyY,alavanca,re);
+    const dirigindoMoto=naMoto||noCarro||naPickup;
     // A alavanca aparece com o veículo e some com ele, já zerada — é a rede contra ficar engatada de
     // uma pilotagem pra outra. A escala em km/h sai do teto de QUEM está sendo dirigido: 50 no carro,
     // 40 na moto, então a escada de marcas nunca mostra um número que aquele veículo não alcança.
     if(dirigindoMoto!==dirigindoMotoAntes){
-      configurarAcelerador(dirigindoMoto?(noCarro?maxVelCarro():maxVelMoto())*3.6:null);
+      configurarAcelerador(dirigindoMoto?(naPickup?maxVelPickup():(noCarro?maxVelCarro():maxVelMoto()))*3.6:null);
       modoDirigindo(dirigindoMoto);
     }
     if(!dirigindoMoto)atualizarMovimentoJogador(dt,keys,inputState.joyX,inputState.joyY,inputState.yaw,fatorVelocidadeDesejado());
