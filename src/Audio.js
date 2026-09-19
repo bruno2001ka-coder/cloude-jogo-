@@ -1,6 +1,7 @@
 // ===== SOUND ENGINE NATIVO, LEVE E ESPACIAL =====
 // Todos os buffers são criados uma vez por contexto. O disparo só instancia nós curtos e reutilizáveis.
 let contexto=null,ruidoBuffer=null,preparado=false,ecoEntrada=null,ecoDelay=null,ecoGanho=null;
+let motorBuffer=null,motorCarregando=null,motorFonte=null,motorGanho=null,motorFiltro=null,motorElemento=null;
 const buffers=new Map(),vozes=[];const MAX_VOZES=12;
 const PERFIS={
   pistola:{f:185,d:.105,crack:3900,cauda:.045,ganho:1.0},
@@ -10,7 +11,7 @@ const PERFIS={
   policia:{f:135,d:.13,crack:3000,cauda:.075,ganho:.72},
 };
 function obterContexto(){try{const AudioContext=globalThis.AudioContext||globalThis.webkitAudioContext;if(!AudioContext)return null;contexto??=new AudioContext();if(contexto.state==='suspended')contexto.resume().catch(()=>{});preparar();return contexto}catch(e){return null}}
-export function desbloquearAudio(){const ctx=obterContexto();if(ctx?.state==='suspended')ctx.resume().catch(()=>{});return ctx}
+export function desbloquearAudio(){const ctx=obterContexto();if(ctx?.state==='suspended')ctx.resume().catch(()=>{});prepararMotorHTMLNoGesto();return ctx}
 if(typeof window!=='undefined'){const acordar=()=>desbloquearAudio();window.addEventListener('pointerdown',acordar,{once:false,passive:true});window.addEventListener('touchstart',acordar,{once:false,passive:true})}
 function ruído(ctx){if(ruidoBuffer)return ruidoBuffer;const n=Math.floor(ctx.sampleRate*.4),b=ctx.createBuffer(1,n,ctx.sampleRate),d=b.getChannelData(0);let s=0;for(let i=0;i<n;i++){s=s*.985+(Math.random()*2-1)*.32;d[i]=s}return ruidoBuffer=b}
 // ===== TIRO É RUÍDO, NÃO TOM =====
@@ -79,6 +80,57 @@ function conectarEspacial(ctx,no,t,volume,posicao,cauda){const g=ganho(ctx,t,vol
 function tocarPerfil(id,posicao,origem='jogador'){const ctx=obterContexto();if(!ctx)return;if(ctx.state==='suspended'){ctx.resume().then(()=>tocarPerfil(id,posicao,origem)).catch(()=>{});return}const p=PERFIS[id]||PERFIS.pistola,b=buffers.get(id)||buffers.get('pistola'),t=ctx.currentTime,dist=posicao?Math.hypot(posicao.x-(globalThis.__audioListenerX||0),posicao.z-(globalThis.__audioListenerZ||0)):0;let volume=p.ganho*(origem==='policia'?.9:1);if(dist>75)return;if(vozes.length>=MAX_VOZES){const velha=vozes.shift();velha?.stop()};const body=ctx.createBufferSource(),crack=ctx.createBufferSource();body.buffer=b.body;crack.buffer=b.crack;const cb=conectarEspacial(ctx,body,t,volume*.8,posicao,p.d+p.cauda);conectarEspacial(ctx,crack,t,volume*(dist>15?.46:.72),posicao,.06);body.playbackRate.value=.985+Math.random()*.03;crack.playbackRate.value=.97+Math.random()*.06;body.start(t);crack.start(t);if(ecoEntrada){ecoGanho.gain.value=origem==='policia'?.035:.045;cb.g.connect(ecoEntrada)}const voz={stop:()=>{try{body.stop()}catch(e){}try{crack.stop()}catch(e){}}};vozes.push(voz);const retirar=()=>{const i=vozes.indexOf(voz);if(i>=0)vozes.splice(i,1)};body.onended=retirar;crack.onended=retirar}
 export function tocarSomTiro(perfil='pistola',posicao=null,origem='jogador'){tocarPerfil(perfil,posicao,origem)}
 export function definirPosicaoAudio(x,z,yaw=0){globalThis.__audioListenerX=x;globalThis.__audioListenerZ=z;globalThis.__audioListenerYaw=yaw}
+// ===== MOTOR DO CARRO PRINCIPAL =====
+// O arquivo é um recorte real do Opala enviado pelo usuário. Ele toca em loop somente enquanto o
+// jogador está dentro do carro principal; a velocidade altera pitch e filtro, e o acelerador altera
+// a presença do som. O carregamento é assíncrono para não bloquear a entrada do jogo.
+async function carregarSomMotor(ctx){
+  if(motorBuffer||motorCarregando)return motorCarregando;
+  const url=new URL('../assets/som-carro-opala.mp3',import.meta.url).href;
+  motorCarregando=fetch(url).then(r=>{if(!r.ok)throw new Error(`HTTP ${r.status} ao carregar ${url}`);return r.arrayBuffer()}).then(b=>ctx.decodeAudioData(b)).then(b=>{motorBuffer=b;return b}).catch(e=>{
+    console.warn('Quintal 3D: Web Audio não decodificou o motor; usando Audio HTML',e);
+    if(typeof Audio!=='undefined'){
+      motorElemento=new Audio(url);motorElemento.loop=true;motorElemento.preload='auto';motorElemento.volume=.55;
+      motorElemento.addEventListener('error',()=>console.warn('Quintal 3D: o arquivo do motor não pôde ser reproduzido',motorElemento.error),{once:true});
+    }
+    return null;
+  }).finally(()=>{motorCarregando=null});
+  return motorCarregando;
+}
+function prepararMotorHTMLNoGesto(){
+  if(motorElemento||typeof Audio==='undefined')return;
+  const url=new URL('../assets/som-carro-opala.mp3',import.meta.url).href;
+  motorElemento=new Audio(url);motorElemento.loop=true;motorElemento.preload='auto';motorElemento.volume=0;
+  const tentativa=motorElemento.play();
+  if(tentativa?.then)tentativa.then(()=>{motorElemento.pause();motorElemento.currentTime=0}).catch(()=>{});
+}
+function iniciarSomMotor(ctx){
+  if(!motorBuffer||motorFonte)return;
+  motorFonte=ctx.createBufferSource();motorFonte.buffer=motorBuffer;motorFonte.loop=true;
+  motorFiltro=ctx.createBiquadFilter();motorFiltro.type='lowpass';motorFiltro.frequency.value=1900;motorFiltro.Q.value=.7;
+  motorGanho=ctx.createGain();motorGanho.gain.value=.0001;
+  motorFonte.connect(motorFiltro);motorFiltro.connect(motorGanho);motorGanho.connect(ctx.destination);
+  motorFonte.start();
+}
+export function atualizarSomMotorCarro(montado,velocidade=0,acelerador=0){
+  const ctx=obterContexto();if(!ctx)return;
+  if(ctx.state==='suspended'){ctx.resume().catch(()=>{});return}
+  if(montado&&!motorBuffer&&!motorElemento){carregarSomMotor(ctx).then(b=>{if(b&&motorBuffer)iniciarSomMotor(ctx)});return}
+  if(motorElemento){
+    const v=Math.min(1,Math.abs(velocidade)/33.333),a=Math.max(0,Math.min(1,acelerador));
+    motorElemento.playbackRate=montado?.70+v*.40+a*.18:.70;
+    motorElemento.volume=montado?Math.min(1,.44+.16*v+.13*a):0;
+    if(montado){motorElemento.play().catch(e=>console.warn('Quintal 3D: o navegador bloqueou o motor até uma interação',e))}else motorElemento.pause();
+    return;
+  }
+  if(!motorFonte||!motorGanho||!motorFiltro)return;
+  const t=ctx.currentTime,v=Math.min(1,Math.abs(velocidade)/33.333),a=Math.max(0,Math.min(1,acelerador));
+  const volume=montado?.22+.16*v+.13*a:.0001;
+  const pitch=montado?.70+.40*v+.18*a:.70;
+  motorFonte.playbackRate.setTargetAtTime(pitch,t,.055);
+  motorFiltro.frequency.setTargetAtTime(1500+v*2100+a*700,t,.08);
+  motorGanho.gain.setTargetAtTime(volume,t,montado?.07:.18);
+}
 export function tocarSomEquiparColete(){const ctx=obterContexto();if(!ctx)return;const t=ctx.currentTime;const o=ctx.createOscillator(),g=ganho(ctx,t,.045,.12);o.type='square';o.frequency.setValueAtTime(155,t);o.frequency.exponentialRampToValueAtTime(235,t+.1);o.connect(g);g.connect(ctx.destination);o.start(t);o.stop(t+.13)}
 export function tocarSomImpacto(alvo='parede'){const ctx=obterContexto();if(!ctx)return;const t=ctx.currentTime,src=ctx.createBufferSource(),f=ctx.createBiquadFilter();src.buffer=ruído(ctx);f.type=alvo==='inimigo'?'lowpass':'highpass';f.frequency.value=alvo==='inimigo'?420:900;const g=ganho(ctx,t,alvo==='inimigo'?.09:.065,alvo==='inimigo'?.11:.075);src.connect(f);f.connect(g);g.connect(ctx.destination);src.start(t);src.stop(t+(alvo==='inimigo'?.11:.08))}
 export function tocarSomColisaoCarro(impacto=2,posicao=null){const ctx=obterContexto();if(!ctx)return;if(ctx.state==='suspended'){ctx.resume().then(()=>tocarSomColisaoCarro(impacto,posicao)).catch(()=>{});return}const t=ctx.currentTime,src=ctx.createBufferSource(),f=ctx.createBiquadFilter();src.buffer=ruído(ctx);f.type='lowpass';f.frequency.setValueAtTime(2600,t);f.frequency.exponentialRampToValueAtTime(480,t+.18);const força=Math.min(1,Math.max(.15,impacto/18)),dist=posicao?Math.hypot(posicao.x-(globalThis.__audioListenerX||0),posicao.z-(globalThis.__audioListenerZ||0)):0;if(dist>75)return;const g=ganho(ctx,t,(.06+.22*força)/(1+dist*.045),.16+.18*força),yaw=globalThis.__audioListenerYaw||0,dx=posicao?posicao.x-(globalThis.__audioListenerX||0):0,dz=posicao?posicao.z-(globalThis.__audioListenerZ||0):0,pan=posicao?Math.max(-1,Math.min(1,(dx*Math.cos(yaw)-dz*Math.sin(yaw))/Math.max(1,dist))):0,p=ctx.createStereoPanner?ctx.createStereoPanner():null;src.connect(f);f.connect(g);if(p){p.pan.setValueAtTime(pan,t);g.connect(p);p.connect(ctx.destination)}else g.connect(ctx.destination);src.start(t);src.stop(t+.22+.18*força)}

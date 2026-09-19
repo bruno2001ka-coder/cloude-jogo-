@@ -1,7 +1,7 @@
 // Service worker do Vale Verde.
 // Navegacao e codigo usam rede primeiro SEM cache HTTP para cada release aparecer imediatamente.
 // Assets pesados continuam cache-first para o PWA abrir rapido e funcionar offline.
-const VERSAO='vale-verde-v0411-farm-camera';
+const VERSAO='vale-verde-v0411-opala-audio-1';
 const CASCA=[
   './',
   './index.html',
@@ -9,6 +9,7 @@ const CASCA=[
   './assets/icones/icone-192.png',
   './assets/icones/icone-512.png',
   './assets/tela-inicial-vale-verde.webp',
+  './assets/som-carro-opala.mp3',
   './assets/tela-inicial-vale-verde.webp',
 ];
 

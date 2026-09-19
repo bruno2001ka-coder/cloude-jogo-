@@ -126,6 +126,7 @@ export function atualizarCarro(dt,keys,joyX=0,joyY=0,alavanca=0,re=false){
 }
 // Teto em m/s, pra alavanca de acelerador saber até onde vai a escada de km/h.
 export function maxVelCarro(){return carro.maxVel()}
+export function velocidadeCarro(){return carro.velocidade()}
 export function sondasCarro(){return carro.sondas()}
 export function danoCarro(){return carro.dano()}
 export function ultimoImpactoCarro(){return carro.ultimoImpacto()}

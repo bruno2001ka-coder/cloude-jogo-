@@ -18,10 +18,10 @@ import{personagemCarregado}from'./Personagem.js';
 import{atualizarEfeitos}from'./CombatFX.js';
 import{atualizarRecuoArmas}from'./Weapons.js';
 import{isHUDEditando}from'./HUDEditor.js';
-import{definirPosicaoAudio}from'./Audio.js';
+import{definirPosicaoAudio,atualizarSomMotorCarro,desbloquearAudio}from'./Audio.js';
 import{atualizarMoto,maxVelMoto}from'./Moto.js';
 import{valorAcelerador,reSegurada,configurar as configurarAcelerador,modoDirigindo}from'./Acelerador.js';
-import{atualizarCarro,maxVelCarro}from'./Carro.js';
+import{atualizarCarro,maxVelCarro,carroMontado,velocidadeCarro}from'./Carro.js';
 import{atualizarPickup,maxVelPickup}from'./Pickup.js';
 import{atualizarChaoVisivel}from'./Terrain.js';
 import{atualizarMundoRural}from'./RuralWorld.js';
@@ -73,7 +73,7 @@ let dirigindoMotoAntes=false;
 const FOLGA_CAMERA=1.6;
 let folgaCamera=0;
 const startScreen=document.getElementById('startScreen'),playBtn=document.getElementById('playBtn');let gameStarted=!!window.__quintalStartRequested;
-const iniciarPartida=()=>{gameStarted=true;window.__quintalStartRequested=true;startScreen?.classList.add('hide');document.body.classList.add('started')};
+const iniciarPartida=()=>{desbloquearAudio();gameStarted=true;window.__quintalStartRequested=true;startScreen?.classList.add('hide');document.body.classList.add('started')};
 playBtn?.addEventListener('click',iniciarPartida);document.addEventListener('quintal:start',iniciarPartida);
 {
   // O hint cobre a faixa dos botões embaixo. Ele serve pra primeira partida, não pro jogo todo:
@@ -176,6 +176,7 @@ function quadro(){
     const alavanca=valorAcelerador(),re=reSegurada();
     const naMoto=atualizarMoto(dt,keys,inputState.joyX,inputState.joyY,alavanca,re);
     const noCarro=atualizarCarro(dt,keys,inputState.joyX,inputState.joyY,alavanca,re);
+    atualizarSomMotorCarro(noCarro||carroMontado(),velocidadeCarro(),alavanca);
     const naPickup=atualizarPickup(dt,keys,inputState.joyX,inputState.joyY,alavanca,re);
     const dirigindoMoto=naMoto||noCarro||naPickup;
     // A alavanca aparece com o veículo e some com ele, já zerada — é a rede contra ficar engatada de
