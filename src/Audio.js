@@ -1,7 +1,7 @@
 // ===== SOUND ENGINE NATIVO, LEVE E ESPACIAL =====
 // Todos os buffers são criados uma vez por contexto. O disparo só instancia nós curtos e reutilizáveis.
 let contexto=null,ruidoBuffer=null,preparado=false,ecoEntrada=null,ecoDelay=null,ecoGanho=null;
-let motorBuffer=null,motorCarregando=null,motorFonte=null,motorGanho=null,motorFiltro=null,motorElemento=null;
+let motorBuffer=null,motorCarregando=null,motorFonte=null,motorGanho=null,motorFiltro=null,motorElemento=null,motorRotacao=.18,motorCarga=0;
 const buffers=new Map(),vozes=[];const MAX_VOZES=12;
 const PERFIS={
   pistola:{f:185,d:.105,crack:3900,cauda:.045,ganho:1.0},
@@ -118,17 +118,25 @@ export function atualizarSomMotorCarro(montado,velocidade=0,acelerador=0){
   if(montado&&!motorBuffer&&!motorElemento){carregarSomMotor(ctx).then(b=>{if(b&&motorBuffer)iniciarSomMotor(ctx)});return}
   if(motorElemento){
     const v=Math.min(1,Math.abs(velocidade)/33.333),a=Math.max(0,Math.min(1,acelerador));
-    motorElemento.playbackRate=montado?.70+v*.40+a*.18:.70;
-    motorElemento.volume=montado?Math.min(1,.44+.16*v+.13*a):0;
+    const alvo=montado?.18+v*.48+a*(.20+(1-v)*.22):.18;
+    motorRotacao+=(alvo-motorRotacao)*(1-Math.exp(-7*(1/60)));
+    const carga=montado?Math.max(a*.72,(a-v)*.9,0):0;
+    motorCarga+=(carga-motorCarga)*(1-Math.exp(-6*(1/60)));
+    motorElemento.playbackRate=montado?.68+motorRotacao*.62:.68;
+    motorElemento.volume=montado?Math.min(1,.34+motorRotacao*.16+motorCarga*.22):0;
     if(montado){motorElemento.play().catch(e=>console.warn('Quintal 3D: o navegador bloqueou o motor até uma interação',e))}else motorElemento.pause();
     return;
   }
   if(!motorFonte||!motorGanho||!motorFiltro)return;
   const t=ctx.currentTime,v=Math.min(1,Math.abs(velocidade)/33.333),a=Math.max(0,Math.min(1,acelerador));
-  const volume=montado?.22+.16*v+.13*a:.0001;
-  const pitch=montado?.70+.40*v+.18*a:.70;
+  const alvo=montado?.18+v*.48+a*(.20+(1-v)*.22):.18;
+  motorRotacao+=(alvo-motorRotacao)*(1-Math.exp(-7*(1/60)));
+  const carga=montado?Math.max(a*.72,(a-v)*.9,0):0;
+  motorCarga+=(carga-motorCarga)*(1-Math.exp(-6*(1/60)));
+  const volume=montado?.18+motorRotacao*.16+motorCarga*.18:.0001;
+  const pitch=montado?.68+motorRotacao*.62:.68;
   motorFonte.playbackRate.setTargetAtTime(pitch,t,.055);
-  motorFiltro.frequency.setTargetAtTime(1500+v*2100+a*700,t,.08);
+  motorFiltro.frequency.setTargetAtTime(1250+motorRotacao*2600+motorCarga*900,t,.08);
   motorGanho.gain.setTargetAtTime(volume,t,montado?.07:.18);
 }
 export function tocarSomEquiparColete(){const ctx=obterContexto();if(!ctx)return;const t=ctx.currentTime;const o=ctx.createOscillator(),g=ganho(ctx,t,.045,.12);o.type='square';o.frequency.setValueAtTime(155,t);o.frequency.exponentialRampToValueAtTime(235,t+.1);o.connect(g);g.connect(ctx.destination);o.start(t);o.stop(t+.13)}
